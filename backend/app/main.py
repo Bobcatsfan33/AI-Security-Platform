@@ -28,6 +28,7 @@ from app.security.audit_log import AuditEventType, log_event
 from app.security.headers import RequestValidationMiddleware, SecurityHeadersMiddleware
 from app.security.secret_gate import assert_production_secrets
 from app.services.redis_client import close_redis, get_redis
+from app.telemetry.clickhouse_writer import start_writer, stop_writer
 
 
 @asynccontextmanager
@@ -47,6 +48,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Eagerly open the Redis connection so a misconfiguration fails fast at boot.
     await get_redis()
 
+    # Background telemetry writer (drains a queue to ClickHouse every 5s).
+    await start_writer()
+
     log_event(
         AuditEventType.STARTUP,
         resource="platform",
@@ -57,6 +61,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     log.info("platform_stopping")
     log_event(AuditEventType.SHUTDOWN, resource="platform")
+    await stop_writer()
     await close_redis()
 
 

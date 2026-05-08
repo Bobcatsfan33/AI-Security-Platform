@@ -26,6 +26,10 @@ dependencies = [
     # Cache / pub-sub
     "redis[hiredis]>=5.2",
 
+    # Telemetry — ClickHouse (sync HTTP client; we wrap async via run_in_executor
+    # to avoid pulling in an experimental async fork).
+    "clickhouse-connect>=0.8",
+
     # Identity federation
     "authlib>=1.3.2",          # OIDC client (battle-tested)
     "httpx>=0.27",             # required by authlib
