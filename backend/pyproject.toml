@@ -7,7 +7,7 @@ name = "ai-security-platform-backend"
 version = "0.1.0"
 description = "Control plane for the AI security platform — Sprint 1 (infrastructure + identity federation)"
 requires-python = ">=3.11"
-license = { text = "MIT" }
+license = { text = "BUSL-1.1" }
 authors = [{ name = "Ryan Wallace" }]
 
 dependencies = [

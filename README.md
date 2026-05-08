@@ -9,6 +9,12 @@ Sprint 11).
 
 > Status: **Sprint 1 — Core Infrastructure & Identity Federation, scaffold + core path.**
 > See "What's in this commit" and "What's deferred" below.
+>
+> **Roadmap revised 2026-05-07** after surveying [TokenDNA](https://github.com/Bobcatsfan33/TokenDNA),
+> which already implements most blueprint capabilities. The two repos
+> evolve in parallel; this repo selectively ports TokenDNA modules into
+> the blueprint-aligned architecture. See [`docs/ROADMAP.md`](docs/ROADMAP.md)
+> for the revised sprint sequence.
 
 ---
 
@@ -198,4 +204,10 @@ ai-security-platform/
 
 ## License
 
-MIT — see `LICENSE`.
+**BUSL-1.1** (Business Source License 1.1) — see `LICENSE`. Source-available;
+production use is permitted unless you are offering the work to third parties
+on a hosted or embedded basis to compete with the Licensor. Converts to
+Apache 2.0 four years after each version's publish date. The license matches
+TokenDNA's commercial-protection model.
+
+For alternative licensing, contact ryanwallac33@gmail.com.
