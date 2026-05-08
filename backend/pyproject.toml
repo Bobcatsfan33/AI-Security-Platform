@@ -33,6 +33,8 @@ dependencies = [
     # Identity federation
     "authlib>=1.3.2",          # OIDC client (battle-tested)
     "httpx>=0.27",             # required by authlib
+    "python3-saml>=1.16",      # SAML 2.0 (XMLDSig via xmlsec wheels)
+    "python-multipart>=0.0.9", # SAML ACS form-data parsing
 
     # Auth primitives
     "python-jose[cryptography]>=3.3",  # JWT
@@ -62,8 +64,7 @@ dev = [
     "freezegun>=1.5",
 ]
 
-# SAML adapter is deferred — uncomment when implementing
-# saml = ["python3-saml>=1.16"]
+# SAML 2.0 is now a hard dependency above. See app/identity/saml_adapter.py.
 
 [tool.setuptools.packages.find]
 include = ["app*"]
