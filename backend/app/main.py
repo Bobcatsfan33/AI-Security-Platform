@@ -25,6 +25,7 @@ from app.api.v1 import policies as policies_routes
 from app.core.config import get_settings
 from app.core.logging import configure_logging, get_logger
 from app.security.audit_log import AuditEventType, log_event
+from app.security.headers import RequestValidationMiddleware, SecurityHeadersMiddleware
 from app.security.secret_gate import assert_production_secrets
 from app.services.redis_client import close_redis, get_redis
 
@@ -71,6 +72,16 @@ def create_app() -> FastAPI:
         redoc_url=f"{settings.api_v1_prefix}/redoc",
     )
 
+    # Middleware execution order is the REVERSE of registration order in
+    # Starlette. We register from outermost (first to see request) to
+    # innermost. So:
+    #   1. SecurityHeadersMiddleware (outermost — adds headers to every
+    #      response, even errors emitted by other middlewares)
+    #   2. CORSMiddleware
+    #   3. CorrelationIdMiddleware
+    #   4. RequestValidationMiddleware (innermost — runs just before routing,
+    #      rejects malformed requests early)
+    app.add_middleware(RequestValidationMiddleware)
     app.add_middleware(CorrelationIdMiddleware)
     app.add_middleware(
         CORSMiddleware,
@@ -79,6 +90,7 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    app.add_middleware(SecurityHeadersMiddleware)
 
     prefix = settings.api_v1_prefix
     app.include_router(health_routes.router, prefix=prefix)

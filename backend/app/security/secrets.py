@@ -125,6 +125,43 @@ class AwsSecretsManagerResolver:
         return secret
 
 
+class EncryptedInlineResolver:
+    """Resolve ``enc:vN:...`` references — inline ciphertext stored in the DB.
+
+    Use case: an admin pastes an OIDC client_secret into the platform UI
+    and the platform encrypts it with field_crypto before persisting. The
+    stored reference IS the ciphertext (prefixed with ``enc:``); no
+    external secret store entry needed.
+
+    The reference format ``enc:`` is the resolver prefix; the value after
+    the colon is the field_crypto ciphertext (which has its own ``vN:``
+    prefix). Full example:
+
+        enc:v1:gAAAAABm7p3a...
+
+    Distinct from ``env:`` / ``awssm:`` / ``vault:`` so dispatch works.
+    """
+
+    prefix: Final[str] = "enc:"
+
+    def resolve(self, reference: str) -> str:
+        if not reference.startswith(self.prefix):
+            raise SecretResolutionError(
+                f"EncryptedInlineResolver only handles {self.prefix!r} refs"
+            )
+        ciphertext = reference[len(self.prefix) :]
+
+        # Lazy import to avoid a circular: secrets is imported by field_crypto.
+        from app.security.field_crypto import FieldCryptoError, decrypt as fc_decrypt
+
+        try:
+            return fc_decrypt(ciphertext)
+        except FieldCryptoError as exc:
+            raise SecretResolutionError(
+                f"inline ciphertext decrypt failed: {exc}"
+            ) from exc
+
+
 class VaultResolver:
     """Resolve ``vault:path`` against HashiCorp Vault KV v2.
 
@@ -204,6 +241,7 @@ def _build_default_resolver() -> SecretResolver:
     """
     return CompositeResolver(
         EnvVarResolver(),
+        EncryptedInlineResolver(),
         AwsSecretsManagerResolver(),
         VaultResolver(),
     )

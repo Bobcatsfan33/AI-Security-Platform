@@ -21,6 +21,7 @@ from app.db.models.idp_config import IdpConfig
 from app.db.session import get_db
 from app.identity.types import IdentityContext
 from app.security.audit_log import AuditEventType, AuditOutcome, log_event
+from app.security.field_crypto import FieldCryptoError, encrypt as fc_encrypt
 
 router = APIRouter(tags=["admin", "idp"])
 
@@ -83,6 +84,36 @@ class IdpConfigResponse(BaseModel):
     updated_at: datetime
 
 
+ENC_PENDING_PREFIX = "enc-pending:"
+
+
+def _maybe_encrypt_pending_secret(oidc_config: dict[str, Any]) -> dict[str, Any]:
+    """If client_secret_ref starts with ``enc-pending:<plaintext>``, encrypt the
+    plaintext via field_crypto and replace the ref with ``enc:vN:...``.
+
+    This lets admins paste a raw secret in the UI without provisioning an
+    AWS SM / Vault entry first. The stored reference is encrypted at rest
+    with a key that lives in a separate secret store, so DB dumps cannot
+    reveal it without also compromising the field_crypto key.
+    """
+    ref = oidc_config.get("client_secret_ref", "")
+    if not isinstance(ref, str) or not ref.startswith(ENC_PENDING_PREFIX):
+        return oidc_config
+    plaintext = ref[len(ENC_PENDING_PREFIX) :]
+    if not plaintext:
+        raise HTTPException(
+            status_code=400, detail="enc_pending_empty_plaintext"
+        )
+    try:
+        ciphertext = fc_encrypt(plaintext)
+    except FieldCryptoError as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"field_crypto_unavailable: {exc}",
+        ) from exc
+    return {**oidc_config, "client_secret_ref": f"enc:{ciphertext}"}
+
+
 def _to_response(row: IdpConfig) -> IdpConfigResponse:
     return IdpConfigResponse(
         id=row.id,
@@ -126,13 +157,19 @@ async def create_idp_config(
     if payload.oidc_config is not None:
         await _validate_oidc_discovery(str(payload.oidc_config.issuer_url))
 
+    oidc_dict = (
+        _maybe_encrypt_pending_secret(payload.oidc_config.model_dump(mode="json"))
+        if payload.oidc_config
+        else {}
+    )
+
     row = IdpConfig(
         id=uuid.uuid4(),
         org_id=identity.org_id,
         provider_type=payload.provider_type,
         display_name=payload.display_name,
         status="pending_verification",
-        oidc_config=payload.oidc_config.model_dump(mode="json") if payload.oidc_config else {},
+        oidc_config=oidc_dict,
         saml_config=payload.saml_config.model_dump(mode="json") if payload.saml_config else {},
         scim_config={},
         directory_sync=payload.directory_sync.model_dump(mode="json"),
@@ -167,7 +204,9 @@ async def update_idp_config(
         row.status = payload.status
     if payload.oidc_config is not None:
         await _validate_oidc_discovery(str(payload.oidc_config.issuer_url))
-        row.oidc_config = payload.oidc_config.model_dump(mode="json")
+        row.oidc_config = _maybe_encrypt_pending_secret(
+            payload.oidc_config.model_dump(mode="json")
+        )
     if payload.saml_config is not None:
         row.saml_config = payload.saml_config.model_dump(mode="json")
     if payload.directory_sync is not None:

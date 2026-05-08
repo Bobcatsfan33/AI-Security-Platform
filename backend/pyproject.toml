@@ -34,6 +34,7 @@ dependencies = [
     "python-jose[cryptography]>=3.3",  # JWT
     "passlib[bcrypt]>=1.7.4",          # password / api-key hashing
     "bcrypt<5.0,>=4.0",                # passlib pin
+    "cryptography>=42.0",              # field-level encryption (Fernet)
 
     # Logging
     "structlog>=24.4",
