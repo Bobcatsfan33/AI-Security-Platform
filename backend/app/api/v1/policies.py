@@ -20,6 +20,7 @@ from app.auth.dependencies import require_role
 from app.db.models.policy import Policy
 from app.db.session import get_db
 from app.identity.types import IdentityContext
+from app.security.audit_log import AuditEventType, AuditOutcome, log_event
 from app.services.policy_pubsub import publish_policy_change
 
 router = APIRouter(tags=["policies"])
@@ -191,6 +192,18 @@ async def create_policy(
     await publish_policy_change(
         org_id=row.org_id, policy_id=row.id, version=row.version, event="create"
     )
+    log_event(
+        AuditEventType.POLICY_CREATED,
+        AuditOutcome.SUCCESS,
+        tenant_id=str(row.org_id),
+        subject=str(identity.user_id) if identity.user_id else "system",
+        resource=f"policy:{row.id}",
+        detail={
+            "name": row.name,
+            "enforcement_level": row.enforcement_level,
+            "version": row.version,
+        },
+    )
     return _to_response(row)
 
 
@@ -227,6 +240,17 @@ async def update_policy(
     await publish_policy_change(
         org_id=row.org_id, policy_id=row.id, version=row.version, event="update"
     )
+    log_event(
+        AuditEventType.POLICY_UPDATED,
+        AuditOutcome.SUCCESS,
+        tenant_id=str(row.org_id),
+        subject=str(identity.user_id) if identity.user_id else "system",
+        resource=f"policy:{row.id}",
+        detail={
+            "version": row.version,
+            "fields_changed": sorted(update_dict.keys()),
+        },
+    )
     return _to_response(row)
 
 
@@ -240,10 +264,19 @@ async def delete_policy(
     org_id = row.org_id
     pid = row.id
     version = row.version
+    name = row.name
     await db.delete(row)
     await db.commit()
     await publish_policy_change(
         org_id=org_id, policy_id=pid, version=version, event="delete"
+    )
+    log_event(
+        AuditEventType.POLICY_DELETED,
+        AuditOutcome.SUCCESS,
+        tenant_id=str(org_id),
+        subject=str(identity.user_id) if identity.user_id else "system",
+        resource=f"policy:{pid}",
+        detail={"name": name, "version": version},
     )
 
 

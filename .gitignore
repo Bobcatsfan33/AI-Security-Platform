@@ -65,6 +65,7 @@ logs/
 # Local dev
 local/
 tmp/
+var/
 
 # Build artifacts
 *.onnx

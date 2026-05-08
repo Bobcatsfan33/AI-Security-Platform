@@ -24,6 +24,8 @@ from app.api.v1 import idp_admin as idp_admin_routes
 from app.api.v1 import policies as policies_routes
 from app.core.config import get_settings
 from app.core.logging import configure_logging, get_logger
+from app.security.audit_log import AuditEventType, log_event
+from app.security.secret_gate import assert_production_secrets
 from app.services.redis_client import close_redis, get_redis
 
 
@@ -38,12 +40,22 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         environment=settings.environment,
     )
 
+    # Refuse to serve traffic with a known-weak secret in production.
+    assert_production_secrets()
+
     # Eagerly open the Redis connection so a misconfiguration fails fast at boot.
     await get_redis()
+
+    log_event(
+        AuditEventType.STARTUP,
+        resource="platform",
+        detail={"version": __version__, "environment": settings.environment},
+    )
 
     yield
 
     log.info("platform_stopping")
+    log_event(AuditEventType.SHUTDOWN, resource="platform")
     await close_redis()
 
 

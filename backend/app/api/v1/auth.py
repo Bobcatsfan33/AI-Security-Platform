@@ -28,6 +28,7 @@ from app.db.session import get_db
 from app.identity.adapter import IdentityAuthError
 from app.identity.registry import build_adapter
 from app.identity.types import IdentityContext
+from app.security.audit_log import AuditEventType, AuditOutcome, log_event
 from app.services.redis_client import get_redis
 
 router = APIRouter(tags=["auth"])
@@ -148,6 +149,15 @@ async def oidc_callback(
         )
     except IdentityAuthError as e:
         log.warning("oidc_login_failed", reason=str(e), org_slug=org_slug)
+        log_event(
+            AuditEventType.AUTH_FAILURE,
+            AuditOutcome.FAILURE,
+            tenant_id=str(org.id),
+            subject="anonymous",
+            source_ip=request.client.host if request.client else "0.0.0.0",
+            resource=f"/v1/auth/oidc/{org_slug}/callback",
+            detail={"reason": str(e), "idp_id": str(idp.id)},
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail=str(e)
         ) from e
@@ -169,6 +179,23 @@ async def oidc_callback(
         user_id=str(user.id),
         role=user.role,
     )
+    log_event(
+        AuditEventType.AUTH_SUCCESS,
+        AuditOutcome.SUCCESS,
+        tenant_id=str(org.id),
+        subject=str(user.id),
+        source_ip=request.client.host if request.client else "0.0.0.0",
+        resource=f"/v1/auth/oidc/{org_slug}/callback",
+        detail={"role": user.role, "idp_subject_id": claims.subject_id},
+    )
+    log_event(
+        AuditEventType.AUTH_TOKEN_ISSUED,
+        AuditOutcome.SUCCESS,
+        tenant_id=str(org.id),
+        subject=str(user.id),
+        resource="jwt:access",
+        detail={"jti": pair.jti, "auth_method": "oidc"},
+    )
 
     return TokenPairResponse(
         access_token=pair.access_token,
@@ -189,6 +216,12 @@ async def oidc_callback(
 async def refresh(req: RefreshRequest) -> TokenPairResponse:
     payload = await consume_refresh_token(req.refresh_token)
     if payload is None:
+        log_event(
+            AuditEventType.AUTH_REFRESH_REUSE_DETECTED,
+            AuditOutcome.FAILURE,
+            resource="/v1/auth/refresh",
+            detail={"reason": "invalid_or_replayed_refresh_token"},
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid_refresh_token"
         )
@@ -198,6 +231,14 @@ async def refresh(req: RefreshRequest) -> TokenPairResponse:
         user_id=uuid.UUID(payload["user_id"]),
         role=payload["role"],
         auth_method="refresh",
+    )
+    log_event(
+        AuditEventType.AUTH_TOKEN_REFRESHED,
+        AuditOutcome.SUCCESS,
+        tenant_id=payload["org_id"],
+        subject=payload["user_id"],
+        resource="jwt:access",
+        detail={"jti": pair.jti},
     )
     return TokenPairResponse(
         access_token=pair.access_token,
@@ -219,6 +260,14 @@ async def logout(identity: IdentityContext = Depends(current_identity)) -> None:
         # (rotated on /refresh) so this is sufficient.
         settings = get_settings()
         await revoke_jti(identity.jwt_id, ttl_seconds=settings.jwt_access_ttl_seconds)
+        log_event(
+            AuditEventType.AUTH_TOKEN_REVOKED,
+            AuditOutcome.SUCCESS,
+            tenant_id=str(identity.org_id),
+            subject=str(identity.user_id) if identity.user_id else "system",
+            resource="jwt:access",
+            detail={"jti": identity.jwt_id, "reason": "user_logout"},
+        )
 
 
 @router.get("/me")

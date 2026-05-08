@@ -20,6 +20,7 @@ from app.auth.dependencies import require_role
 from app.db.models.idp_config import IdpConfig
 from app.db.session import get_db
 from app.identity.types import IdentityContext
+from app.security.audit_log import AuditEventType, AuditOutcome, log_event
 
 router = APIRouter(tags=["admin", "idp"])
 
@@ -141,6 +142,14 @@ async def create_idp_config(
     db.add(row)
     await db.commit()
     await db.refresh(row)
+    log_event(
+        AuditEventType.IDP_CONFIG_CREATED,
+        AuditOutcome.SUCCESS,
+        tenant_id=str(identity.org_id),
+        subject=str(identity.user_id) if identity.user_id else "system",
+        resource=f"idp_config:{row.id}",
+        detail={"provider_type": row.provider_type, "display_name": row.display_name},
+    )
     return _to_response(row)
 
 
@@ -165,6 +174,16 @@ async def update_idp_config(
         row.directory_sync = payload.directory_sync.model_dump(mode="json")
     await db.commit()
     await db.refresh(row)
+    log_event(
+        AuditEventType.IDP_CONFIG_UPDATED,
+        AuditOutcome.SUCCESS,
+        tenant_id=str(identity.org_id),
+        subject=str(identity.user_id) if identity.user_id else "system",
+        resource=f"idp_config:{row.id}",
+        detail={
+            "fields_changed": sorted(payload.model_dump(exclude_unset=True).keys()),
+        },
+    )
     return _to_response(row)
 
 
@@ -175,8 +194,18 @@ async def delete_idp_config(
     db: AsyncSession = Depends(get_db),
 ) -> None:
     row = await _load_owned(db, idp_id, identity.org_id)
+    provider_type = row.provider_type
+    display_name = row.display_name
     await db.delete(row)
     await db.commit()
+    log_event(
+        AuditEventType.IDP_CONFIG_DELETED,
+        AuditOutcome.SUCCESS,
+        tenant_id=str(identity.org_id),
+        subject=str(identity.user_id) if identity.user_id else "system",
+        resource=f"idp_config:{idp_id}",
+        detail={"provider_type": provider_type, "display_name": display_name},
+    )
 
 
 async def _load_owned(db: AsyncSession, idp_id: uuid.UUID, org_id: uuid.UUID) -> IdpConfig:
