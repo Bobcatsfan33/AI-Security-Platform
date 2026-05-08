@@ -20,6 +20,7 @@ from app.auth.dependencies import require_role
 from app.db.models.idp_config import IdpConfig
 from app.db.session import get_db
 from app.identity.types import IdentityContext
+from app.scim.auth import generate_scim_token
 from app.security.audit_log import AuditEventType, AuditOutcome, log_event
 from app.security.field_crypto import FieldCryptoError, encrypt as fc_encrypt
 
@@ -55,7 +56,7 @@ class DirectorySyncConfig(BaseModel):
 
 
 class IdpConfigCreate(BaseModel):
-    provider_type: Literal["saml", "oidc"]
+    provider_type: Literal["saml", "oidc", "scim"]
     display_name: str
     oidc_config: OidcConfig | None = None
     saml_config: SamlConfig | None = None
@@ -224,6 +225,52 @@ async def update_idp_config(
         },
     )
     return _to_response(row)
+
+
+@router.post("/{idp_id}/scim-token")
+async def mint_scim_token(
+    idp_id: uuid.UUID,
+    identity: IdentityContext = Depends(require_role("admin")),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Mint a fresh SCIM bearer token for a SCIM-type IDP config.
+
+    The plaintext is returned exactly once; only the bcrypt hash is
+    persisted to ``scim_config.bearer_token_hash``. Calling this endpoint
+    invalidates any previous token for this IdP — the IdP must update its
+    SCIM connection to use the new value.
+    """
+    row = await _load_owned(db, idp_id, identity.org_id)
+    if row.provider_type != "scim":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="not_a_scim_idp_config",
+        )
+
+    plaintext, hashed = generate_scim_token()
+    scim_cfg = dict(row.scim_config or {})
+    scim_cfg["bearer_token_hash"] = hashed
+    scim_cfg.setdefault(
+        "endpoint_url",
+        f"/v1/scim/v2/{identity.org_id}",  # informational; actual route uses slug
+    )
+    row.scim_config = scim_cfg
+    await db.commit()
+    await db.refresh(row)
+
+    log_event(
+        AuditEventType.IDP_CONFIG_UPDATED,
+        AuditOutcome.SUCCESS,
+        tenant_id=str(identity.org_id),
+        subject=str(identity.user_id) if identity.user_id else "system",
+        resource=f"idp_config:{row.id}",
+        detail={"action": "scim_token_minted"},
+    )
+    return {
+        "token": plaintext,
+        "warning": "This token is shown exactly once. Store it securely; "
+        "regenerating produces a new token and invalidates this one.",
+    }
 
 
 @router.delete("/{idp_id}", status_code=status.HTTP_204_NO_CONTENT)
