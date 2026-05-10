@@ -61,4 +61,8 @@ class User(Base):
     updated_at: Mapped[TimestampUtcUpdated]
 
     organization: Mapped["Organization"] = relationship(back_populates="users")
-    idp_config: Mapped[Optional["IdpConfig"]] = relationship()
+    # Two FKs link users ↔ idp_configs (this side: idp_config_id; other side:
+    # idp_configs.created_by). Disambiguate explicitly.
+    idp_config: Mapped[Optional["IdpConfig"]] = relationship(
+        "IdpConfig", foreign_keys="User.idp_config_id"
+    )

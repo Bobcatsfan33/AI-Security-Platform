@@ -84,6 +84,11 @@ target-version = ["py311"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+# Bind the asyncio event loop to the session so SQLAlchemy's async engine
+# AND the singleton redis client (both of which latch to the loop at first
+# connect) don't get torn down between tests with "Event loop is closed".
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
 markers = [
     "unit: Unit tests (no external services)",
     "integration: Integration tests (require postgres/redis)",
