@@ -18,6 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app import __version__
 from app.api.middleware import CorrelationIdMiddleware
+from app.api.v1 import aibom as aibom_routes
 from app.api.v1 import auth as auth_routes
 from app.api.v1 import connectors as connectors_routes
 from app.api.v1 import health as health_routes
@@ -107,6 +108,7 @@ def create_app() -> FastAPI:
     app.include_router(policies_routes.router, prefix=f"{prefix}/policies")
     app.include_router(connectors_routes.router, prefix=f"{prefix}/connectors")
     app.include_router(mcp_routes.router, prefix=f"{prefix}/mcp")
+    app.include_router(aibom_routes.router, prefix=f"{prefix}/aibom")
     app.include_router(scim_routes.router, prefix=f"{prefix}/scim/v2")
 
     return app
