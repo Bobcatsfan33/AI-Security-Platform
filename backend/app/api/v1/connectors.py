@@ -45,7 +45,9 @@ ENC_PENDING_PREFIX = "enc-pending:"
 
 
 class ConnectorConfigCreate(BaseModel):
-    provider: Literal["openai", "anthropic", "ollama", "azure_openai"]
+    provider: Literal[
+        "openai", "anthropic", "ollama", "azure_openai", "bedrock", "custom"
+    ]
     display_name: str = Field(min_length=1, max_length=255)
     model: str = Field(min_length=1, max_length=128)
     api_key_ref: str = Field(default="")
@@ -125,6 +127,13 @@ def _maybe_encrypt_pending_key(api_key_ref: str) -> str:
 
 
 def _provider_requires_key(provider: str) -> bool:
+    """Whether the provider requires a non-empty api_key_ref at create time.
+
+    Bedrock can use the default boto3 credential chain (env / IAM role)
+    when api_key_ref is empty, so we don't enforce it here.
+    The 'custom' provider can be unauthenticated for local vLLM/TGI/
+    LM Studio.
+    """
     return provider in {"openai", "anthropic", "azure_openai"}
 
 

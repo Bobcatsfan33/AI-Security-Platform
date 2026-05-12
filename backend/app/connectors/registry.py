@@ -16,6 +16,8 @@ from typing import Any
 from app.connectors.anthropic_connector import AnthropicConnector
 from app.connectors.azure_openai_connector import AzureOpenAIConnector
 from app.connectors.base import ConnectorConfigError, ModelConnector
+from app.connectors.bedrock_connector import BedrockConnector
+from app.connectors.generic_openai_connector import GenericOpenAIConnector
 from app.connectors.ollama_connector import OllamaConnector
 from app.connectors.openai_connector import OpenAIConnector
 from app.db.models.connector_config import ConnectorConfig
@@ -74,9 +76,36 @@ def build_connector(row: ConnectorConfig) -> ModelConnector:
             max_retries=int(config.get("max_retries", 3)),
         )
 
+    if provider == "bedrock":
+        return BedrockConnector(
+            model=row.model,
+            region=config.get("region", "us-east-1"),
+            api_key_ref=row.api_key_ref,
+            timeout_s=float(config.get("timeout_s", 60.0)),
+            max_retries=int(config.get("max_retries", 3)),
+        )
+
+    if provider == "custom":
+        base_url = config.get("base_url")
+        if not base_url:
+            raise ConnectorConfigError("custom provider requires config.base_url")
+        return GenericOpenAIConnector(
+            api_key_ref=row.api_key_ref,
+            model=row.model,
+            base_url=base_url,
+            cost_input_per_million=float(
+                config.get("cost_input_per_million", 0.0)
+            ),
+            cost_output_per_million=float(
+                config.get("cost_output_per_million", 0.0)
+            ),
+            timeout_s=float(config.get("timeout_s", 60.0)),
+            max_retries=int(config.get("max_retries", 3)),
+        )
+
     raise ConnectorConfigError(
-        f"unsupported provider {provider!r} — "
-        "supported: openai, anthropic, ollama, azure_openai"
+        f"unsupported provider {provider!r} — supported: "
+        "openai, anthropic, ollama, azure_openai, bedrock, custom"
     )
 
 
@@ -85,4 +114,6 @@ SUPPORTED_PROVIDERS: tuple[str, ...] = (
     "anthropic",
     "ollama",
     "azure_openai",
+    "bedrock",
+    "custom",
 )
