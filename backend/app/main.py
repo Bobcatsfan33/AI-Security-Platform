@@ -19,8 +19,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from app import __version__
 from app.api.middleware import CorrelationIdMiddleware
 from app.api.v1 import auth as auth_routes
+from app.api.v1 import connectors as connectors_routes
 from app.api.v1 import health as health_routes
 from app.api.v1 import idp_admin as idp_admin_routes
+from app.api.v1 import mcp as mcp_routes
 from app.api.v1 import policies as policies_routes
 from app.api.v1 import scim as scim_routes
 from app.core.config import get_settings
@@ -103,6 +105,8 @@ def create_app() -> FastAPI:
     app.include_router(auth_routes.router, prefix=f"{prefix}/auth")
     app.include_router(idp_admin_routes.router, prefix=f"{prefix}/admin/idp-configs")
     app.include_router(policies_routes.router, prefix=f"{prefix}/policies")
+    app.include_router(connectors_routes.router, prefix=f"{prefix}/connectors")
+    app.include_router(mcp_routes.router, prefix=f"{prefix}/mcp")
     app.include_router(scim_routes.router, prefix=f"{prefix}/scim/v2")
 
     return app

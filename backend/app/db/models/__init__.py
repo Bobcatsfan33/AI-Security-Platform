@@ -2,9 +2,11 @@
 
 from app.db.models.ai_asset import AIAsset
 from app.db.models.api_key import ApiKey
+from app.db.models.connector_config import ConnectorConfig
 from app.db.models.evaluation import Evaluation
 from app.db.models.finding import Finding
 from app.db.models.idp_config import IdpConfig
+from app.db.models.mcp import McpCall, McpToolProfile, McpViolation
 from app.db.models.organization import Organization
 from app.db.models.policy import Policy
 from app.db.models.test_case import TestCase
@@ -20,4 +22,8 @@ __all__ = [
     "Evaluation",
     "Finding",
     "Policy",
+    "ConnectorConfig",
+    "McpToolProfile",
+    "McpCall",
+    "McpViolation",
 ]
