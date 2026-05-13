@@ -1,0 +1,48 @@
+{
+  "version": "0.1.0",
+  "_meta": {
+    "description": "AI Security Platform — Splunk dashboard. Import into Splunk Enterprise / Cloud as a Classic dashboard XML or via Dashboard Studio (paste into Source).",
+    "platform_version": "0.1.0",
+    "sourcetype": "ai_security"
+  },
+  "title": "AI Security Platform — Runtime Overview",
+  "panels": [
+    {
+      "title": "Total events (24h)",
+      "type": "single_value",
+      "search": "index=main sourcetype=ai_security | stats count"
+    },
+    {
+      "title": "Block rate (24h)",
+      "type": "single_value",
+      "search": "index=main sourcetype=ai_security event_type IN (\"block\", \"kill_switch\") | stats count AS blocked | appendcols [search index=main sourcetype=ai_security | stats count AS total] | eval pct = round((blocked / total) * 100, 2)"
+    },
+    {
+      "title": "Top categories of findings",
+      "type": "bar_chart",
+      "search": "index=main sourcetype=ai_security event_type=finding | stats count BY category | sort -count"
+    },
+    {
+      "title": "Block reasons",
+      "type": "pie_chart",
+      "search": "index=main sourcetype=ai_security action_taken=blocked | stats count BY block_reason | sort -count | head 10"
+    },
+    {
+      "title": "Latency p95 over time",
+      "type": "line_chart",
+      "search": "index=main sourcetype=ai_security | timechart span=15m p95(latency_ms) AS p95_latency_ms"
+    }
+  ],
+  "saved_searches": [
+    {
+      "name": "AI Security — critical findings in last hour",
+      "search": "index=main sourcetype=ai_security event_type=finding severity=critical earliest=-1h",
+      "schedule": "*/5 * * * *",
+      "alert_actions": ["email"]
+    },
+    {
+      "name": "AI Security — anomalous tool usage",
+      "search": "index=main sourcetype=ai_security event_type=runtime_event \"runtime.policy_violation\" | stats count BY asset_id, tool_name | where count > 50"
+    }
+  ]
+}

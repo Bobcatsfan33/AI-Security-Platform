@@ -1,0 +1,45 @@
+{
+  "index_patterns": ["ai-security-*"],
+  "data_stream": {},
+  "template": {
+    "settings": {
+      "index.number_of_shards": 1,
+      "index.number_of_replicas": 1,
+      "index.lifecycle.name": "ai-security-ilm",
+      "index.refresh_interval": "5s"
+    },
+    "mappings": {
+      "properties": {
+        "@timestamp": {"type": "date"},
+        "event": {
+          "properties": {
+            "category": {"type": "keyword"},
+            "kind": {"type": "keyword"},
+            "severity": {"type": "keyword"},
+            "type": {"type": "keyword"},
+            "action": {"type": "keyword"}
+          }
+        },
+        "organization": {
+          "properties": {
+            "id": {"type": "keyword"}
+          }
+        },
+        "message": {"type": "text"},
+        "rule": {
+          "properties": {
+            "ruleset": {"type": "keyword"},
+            "name": {"type": "keyword"}
+          }
+        },
+        "labels": {
+          "properties": {
+            "asset_id": {"type": "keyword"},
+            "correlation_id": {"type": "keyword"}
+          }
+        },
+        "platform": {"type": "object", "enabled": false}
+      }
+    }
+  }
+}

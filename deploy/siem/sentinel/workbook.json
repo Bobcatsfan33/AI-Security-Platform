@@ -1,0 +1,40 @@
+{
+  "version": "Notebook/1.0",
+  "items": [
+    {
+      "type": 1,
+      "content": {
+        "json": "## AI Security Platform — Runtime Overview\n\nThis workbook visualises events forwarded from the AI Security Platform's runtime agent via the legacy HTTP Data Collector. Filter by `OrgId_s` to scope to a tenant."
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "AiSecurity_CL\n| where TimeGenerated > ago(24h)\n| summarize Events = count() by EventType_s\n| order by Events desc",
+        "size": 0,
+        "title": "Events by type (24h)",
+        "visualization": "barchart"
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "AiSecurity_CL\n| where TimeGenerated > ago(24h)\n| where Severity_s in ('high', 'critical')\n| project TimeGenerated, OrgId_s, Severity_s, Title_s, AssetId_s, CorrelationId_s\n| order by TimeGenerated desc",
+        "size": 0,
+        "title": "High-severity findings (24h)"
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "AiSecurity_CL\n| where TimeGenerated > ago(7d)\n| where EventType_s == 'runtime_event'\n| extend Detail = parse_json(Detail_s)\n| where Detail.action_taken == 'blocked'\n| summarize Blocks = count() by AssetId_s\n| top 10 by Blocks desc",
+        "size": 0,
+        "title": "Top 10 assets by blocked traffic (7d)",
+        "visualization": "table"
+      }
+    }
+  ]
+}
