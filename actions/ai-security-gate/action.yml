@@ -1,0 +1,77 @@
+name: 'AI Security Platform — Evaluation Gate'
+description: |
+  Run a security evaluation against the AI asset described in the inputs,
+  then fail the workflow if findings exceed the configured gate policy.
+
+  Posts a Markdown summary as a PR comment (when run on pull_request).
+
+branding:
+  icon: shield
+  color: blue
+
+inputs:
+  platform_url:
+    description: 'AI Security Platform control plane URL.'
+    required: true
+  api_key:
+    description: 'Platform API key with `evaluations:write` scope.'
+    required: true
+  asset_id:
+    description: 'UUID of the AI asset to evaluate.'
+    required: true
+  max_test_cases:
+    description: 'Cap the number of test cases (omit to run the full library).'
+    required: false
+    default: ''
+  gate_max_critical:
+    description: 'Fail the workflow if more than this many critical findings.'
+    required: false
+    default: '0'
+  gate_max_high:
+    description: 'Fail the workflow if more than this many high-severity findings.'
+    required: false
+    default: '5'
+  gate_min_score:
+    description: 'Fail the workflow if the composite score is below this.'
+    required: false
+    default: '60'
+  timeout_seconds:
+    description: 'Maximum time to wait for the evaluation to complete.'
+    required: false
+    default: '600'
+  github_token:
+    description: 'GITHUB_TOKEN for posting the PR comment. Required when run on pull_request.'
+    required: false
+    default: ${{ github.token }}
+
+outputs:
+  evaluation_id:
+    description: 'UUID of the evaluation run.'
+  score:
+    description: 'Composite score (0–100).'
+  findings_count:
+    description: 'Total findings detected.'
+  critical_count:
+    description: 'Critical-severity findings detected.'
+  gate_result:
+    description: 'pass | fail | warn'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Run AI security evaluation
+      id: run
+      shell: bash
+      env:
+        PLATFORM_URL: ${{ inputs.platform_url }}
+        API_KEY: ${{ inputs.api_key }}
+        ASSET_ID: ${{ inputs.asset_id }}
+        MAX_TEST_CASES: ${{ inputs.max_test_cases }}
+        GATE_MAX_CRITICAL: ${{ inputs.gate_max_critical }}
+        GATE_MAX_HIGH: ${{ inputs.gate_max_high }}
+        GATE_MIN_SCORE: ${{ inputs.gate_min_score }}
+        TIMEOUT_SECONDS: ${{ inputs.timeout_seconds }}
+        GH_TOKEN: ${{ inputs.github_token }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        REPO: ${{ github.repository }}
+      run: bash "${{ github.action_path }}/run.sh"
