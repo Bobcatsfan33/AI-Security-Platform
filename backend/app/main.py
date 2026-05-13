@@ -22,6 +22,7 @@ from app.api.v1 import aibom as aibom_routes
 from app.api.v1 import assets as assets_routes
 from app.api.v1 import auth as auth_routes
 from app.api.v1 import connectors as connectors_routes
+from app.api.v1 import dashboards as dashboards_routes
 from app.api.v1 import evaluations as evaluations_routes
 from app.api.v1 import findings as findings_routes
 from app.api.v1 import health as health_routes
@@ -29,8 +30,10 @@ from app.api.v1 import idp_admin as idp_admin_routes
 from app.api.v1 import mcp as mcp_routes
 from app.api.v1 import policies as policies_routes
 from app.api.v1 import redteam as redteam_routes
+from app.api.v1 import reports as reports_routes
 from app.api.v1 import runtime as runtime_routes
 from app.api.v1 import scim as scim_routes
+from app.api.v1 import siem as siem_routes
 from app.api.v1 import test_cases as test_cases_routes
 from app.core.config import get_settings
 from app.core.logging import configure_logging, get_logger
@@ -38,6 +41,7 @@ from app.security.audit_log import AuditEventType, log_event
 from app.security.headers import RequestValidationMiddleware, SecurityHeadersMiddleware
 from app.security.secret_gate import assert_production_secrets
 from app.services.redis_client import close_redis, get_redis
+from app.siem.forwarder import get_forwarder
 from app.telemetry.clickhouse_writer import start_writer, stop_writer
 
 
@@ -61,6 +65,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Background telemetry writer (drains a queue to ClickHouse every 5s).
     await start_writer()
 
+    # SIEM forwarder — fans audit/finding/runtime events to org SIEMs.
+    await get_forwarder().start()
+
     log_event(
         AuditEventType.STARTUP,
         resource="platform",
@@ -71,6 +78,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     log.info("platform_stopping")
     log_event(AuditEventType.SHUTDOWN, resource="platform")
+    await get_forwarder().stop()
     await stop_writer()
     await close_redis()
 
@@ -118,10 +126,13 @@ def create_app() -> FastAPI:
     app.include_router(evaluations_routes.router, prefix=f"{prefix}/evaluations")
     app.include_router(findings_routes.router, prefix=f"{prefix}/findings")
     app.include_router(redteam_routes.router, prefix=f"{prefix}/redteam")
+    app.include_router(reports_routes.router, prefix=f"{prefix}/reports")
     app.include_router(runtime_routes.router, prefix=f"{prefix}/runtime")
     app.include_router(mcp_routes.router, prefix=f"{prefix}/mcp")
     app.include_router(aibom_routes.router, prefix=f"{prefix}/aibom")
     app.include_router(scim_routes.router, prefix=f"{prefix}/scim/v2")
+    app.include_router(siem_routes.router, prefix=f"{prefix}/admin/siem")
+    app.include_router(dashboards_routes.router, prefix=f"{prefix}/dashboards")
 
     return app
 

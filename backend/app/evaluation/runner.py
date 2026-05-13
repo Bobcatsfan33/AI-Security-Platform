@@ -49,6 +49,8 @@ from app.policy.pipeline import PolicyPipeline
 from app.policy.types import Direction, PolicyInput
 from app.redteam.judge import AttackJudge, JudgeVerdict
 from app.security.audit_log import AuditEventType, AuditOutcome, log_event
+from app.siem.exporters import SiemEvent
+from app.siem.forwarder import get_forwarder
 
 logger = logging.getLogger("platform.evaluation.runner")
 
@@ -158,6 +160,27 @@ class EvaluationRunner:
                         tests_failed += 1
                         findings.append(finding)
                         db.add(finding)
+                        get_forwarder().submit(
+                            SiemEvent(
+                                timestamp=datetime.now(timezone.utc),
+                                org_id=str(eval_row.org_id),
+                                event_type="finding",
+                                severity=finding.severity,
+                                source="evaluation",
+                                title=finding.title,
+                                asset_id=str(eval_row.asset_id),
+                                correlation_id=str(eval_row.id),
+                                detail={
+                                    "finding_id": str(finding.id),
+                                    "category": finding.category,
+                                    "sub_category": finding.sub_category or "",
+                                    "risk_score": finding.risk_score,
+                                    "control_mappings": list(
+                                        finding.control_mappings or []
+                                    ),
+                                },
+                            )
+                        )
 
                 # accumulate cost across attempts (each connector call
                 # returns response.cost_usd; we tally via finding evidence)

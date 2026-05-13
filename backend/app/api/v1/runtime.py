@@ -1,30 +1,50 @@
-"""Runtime telemetry ingest — receives event batches from the Go agent.
+"""Runtime ingest + heartbeat + kill-switch control plane.
 
-Wire-compatible with ``runtime-agent/telemetry/event.go``. The agent
-POSTs a JSON body shaped ``{"events": [Event, ...]}``. We validate,
-coerce types, and enqueue to the async ClickHouse writer.
+Three endpoints hit by the Go agent (runtime-agent/cmd/agent):
 
-Authentication is via the agent's API key (X-API-Key header). The key
-must carry the ``runtime:ingest`` scope. Agent provisioning produces
-these keys via the regular ``/v1/admin/...`` flow (Sprint 11 will add
-a dedicated agent-key UI).
+  POST /v1/runtime/events       batch telemetry events → ClickHouse
+  POST /v1/runtime/heartbeat    "I'm alive + my counters"
+  GET  /v1/runtime/control      long-poll for kill-switch commands
+
+All require the agent's API key (X-API-Key header) carrying the
+``runtime:ingest`` scope.
+
+Heartbeat data lives in Redis with a 5-min TTL so the dashboard can
+show "last seen" without a dedicated table. Kill-switch commands also
+live in Redis as a per-agent list — operators push commands via
+``POST /v1/runtime/agents/{agent_id}/control`` (admin role); agents
+consume via long-poll.
 """
 
 from __future__ import annotations
 
+import asyncio
+import json
+import logging
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
-from app.auth.dependencies import require_scope
+from app.auth.dependencies import require_role, require_scope
 from app.identity.types import IdentityContext
+from app.services.redis_client import get_redis
+from app.siem.exporters import SiemEvent
+from app.siem.forwarder import get_forwarder
 from app.telemetry.clickhouse_writer import record_runtime_event
 from app.telemetry.runtime_event import RuntimeEvent
 
+logger = logging.getLogger("platform.runtime")
 router = APIRouter(tags=["runtime"])
+
+HEARTBEAT_KEY_PREFIX = "runtime:heartbeat:"
+HEARTBEAT_TTL_SECONDS = 300
+
+CONTROL_QUEUE_PREFIX = "runtime:control:"
+CONTROL_LONGPOLL_DEFAULT_S = 30
+CONTROL_QUEUE_TTL_SECONDS = 86_400
 
 
 # ─────────────────────────────────────────────── DTOs
@@ -141,11 +161,49 @@ async def ingest_events(
             )
             continue
         accepted += 1
+        # Mirror security-relevant runtime events to the SIEM forwarder.
+        if event.event_type in {
+            "policy_violation", "block", "kill_switch", "alert", "downgrade"
+        }:
+            get_forwarder().submit(
+                SiemEvent(
+                    timestamp=event.timestamp,
+                    org_id=str(event.org_id),
+                    event_type="runtime_event",
+                    severity=_severity_from_event(event),
+                    source="runtime_agent",
+                    title=f"runtime.{event.event_type}",
+                    asset_id=str(event.asset_id),
+                    correlation_id=event.session_id or event.event_id,
+                    detail={
+                        "agent_instance_id": event.agent_instance_id,
+                        "action_taken": event.action_taken,
+                        "pipeline_exit_stage": event.pipeline_exit_stage,
+                        "risk_score": event.risk_score,
+                        "prompt_hash": event.prompt_hash,
+                        "response_hash": event.response_hash,
+                    },
+                )
+            )
     return IngestResult(
         accepted=accepted,
         rejected=len(batch.events) - accepted,
         rejected_reasons=rejected_reasons[:20],  # cap to keep response small
     )
+
+
+def _severity_from_event(event: EventIn) -> str:
+    """Derive a SIEM severity from event type + risk score. The agent
+    doesn't send severity directly — we infer it from the action."""
+    if event.event_type == "kill_switch":
+        return "critical"
+    if event.event_type in {"block", "policy_violation"}:
+        return "high" if event.risk_score >= 0.6 else "medium"
+    if event.event_type == "downgrade":
+        return "medium"
+    if event.event_type == "alert":
+        return "high" if event.risk_score >= 0.8 else "medium"
+    return "low"
 
 
 def _to_runtime_event(e: EventIn) -> RuntimeEvent:
@@ -197,3 +255,202 @@ def _to_runtime_event(e: EventIn) -> RuntimeEvent:
         sdk_version=e.sdk_version,
         agent_version=e.agent_version,
     )
+
+
+# ─────────────────────────────────────────────── Heartbeat
+
+
+class HeartbeatPayload(BaseModel):
+    agent_id: str
+    org_id: uuid.UUID
+    version: str
+    policy_id: uuid.UUID | None = None
+    policy_version: int = 0
+    policy_loaded_at: str | None = None
+    policy_stale: bool = False
+    counters: dict[str, Any] = Field(default_factory=dict)
+    emitted_at: str | None = None
+
+
+@router.post("/heartbeat", status_code=status.HTTP_204_NO_CONTENT)
+async def heartbeat(
+    payload: HeartbeatPayload,
+    identity: IdentityContext = Depends(require_scope("runtime:ingest")),
+) -> None:
+    """Record the agent's heartbeat in Redis with a 5-min TTL.
+
+    The runtime monitoring dashboard reads from this key to show
+    "agents connected" and "policy version per agent" without needing
+    its own table. The TTL handles "agent went away" — keys naturally
+    expire 5 min after the last heartbeat.
+    """
+    if payload.org_id != identity.org_id:
+        raise HTTPException(status_code=403, detail="org_id_mismatch")
+
+    redis = await get_redis()
+    key = HEARTBEAT_KEY_PREFIX + payload.agent_id
+    body = payload.model_dump(mode="json")
+    body["received_at"] = datetime.now(timezone.utc).isoformat()
+    await redis.set(key, json.dumps(body, separators=(",", ":")), ex=HEARTBEAT_TTL_SECONDS)
+
+
+@router.get("/agents", response_model=list[dict[str, Any]])
+async def list_agents(
+    identity: IdentityContext = Depends(require_role("viewer")),
+) -> list[dict[str, Any]]:
+    """List every agent that's emitted a heartbeat in the last 5 min.
+
+    Backed by a Redis SCAN on the heartbeat key prefix — fine for
+    deployments with up to a few thousand agents per org. Larger
+    deployments should swap in a dedicated table (Sprint 11).
+    """
+    redis = await get_redis()
+    pattern = HEARTBEAT_KEY_PREFIX + "*"
+    out: list[dict[str, Any]] = []
+    async for key in redis.scan_iter(match=pattern):
+        raw = await redis.get(key)
+        if not raw:
+            continue
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError:
+            continue
+        if data.get("org_id") != str(identity.org_id):
+            continue
+        out.append(data)
+    return out
+
+
+# ─────────────────────────────────────────────── Kill-switch control
+
+
+class KillSwitchCommandIn(BaseModel):
+    type: Literal[
+        "block_all",
+        "unblock_all",
+        "block_asset",
+        "unblock_asset",
+        "disable_tool",
+        "enable_tool",
+        "downgrade_model",
+    ]
+    asset_id: uuid.UUID | None = None
+    tool_name: str | None = None
+
+
+class KillSwitchCommandOut(BaseModel):
+    command_id: str
+    type: str
+    asset_id: str = ""
+    tool_name: str = ""
+    issued_at: str
+    issued_by: str = ""
+
+
+@router.post(
+    "/agents/{agent_id}/control",
+    response_model=KillSwitchCommandOut,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def enqueue_command(
+    agent_id: str,
+    payload: KillSwitchCommandIn,
+    identity: IdentityContext = Depends(require_role("admin")),
+) -> KillSwitchCommandOut:
+    """Push a kill-switch command onto the agent's queue.
+
+    Admin-only — kill-switch commands are emergency overrides and must
+    not be triggerable by lower-privileged roles. The agent's long-poll
+    consumer (``GET /control``) drains the queue.
+    """
+    cmd = KillSwitchCommandOut(
+        command_id=str(uuid.uuid4()),
+        type=payload.type,
+        asset_id=str(payload.asset_id) if payload.asset_id else "",
+        tool_name=payload.tool_name or "",
+        issued_at=datetime.now(timezone.utc).isoformat(),
+        issued_by=str(identity.user_id) if identity.user_id else "system",
+    )
+    redis = await get_redis()
+    queue_key = CONTROL_QUEUE_PREFIX + agent_id
+    await redis.rpush(queue_key, json.dumps(cmd.model_dump(mode="json"), separators=(",", ":")))
+    await redis.expire(queue_key, CONTROL_QUEUE_TTL_SECONDS)
+
+    logger.info(
+        "killswitch_enqueued",
+        extra={
+            "agent_id": agent_id,
+            "command_id": cmd.command_id,
+            "type": cmd.type,
+            "issued_by": cmd.issued_by,
+        },
+    )
+    return cmd
+
+
+@router.get(
+    "/control",
+    responses={
+        200: {"description": "One or more commands ready"},
+        204: {"description": "No commands within long-poll timeout"},
+    },
+)
+async def long_poll_commands(
+    agent_id: str = Query(...),
+    ack: str | None = Query(None),
+    timeout_seconds: int = Query(CONTROL_LONGPOLL_DEFAULT_S, ge=1, le=120),
+    identity: IdentityContext = Depends(require_scope("runtime:ingest")),
+) -> dict[str, Any]:
+    """Agent long-poll for kill-switch commands.
+
+    Returns 204 if no commands are ready within ``timeout_seconds``.
+    Returns 200 with ``{"commands": [...]}`` when at least one command
+    is queued. The ``ack`` parameter is the last command_id the agent
+    successfully applied — included for visibility in logs; we do NOT
+    require it because each command is queue-popped on first read
+    (LPOP is atomic).
+    """
+    if ack:
+        logger.debug("killswitch_ack", extra={"agent_id": agent_id, "ack": ack})
+
+    redis = await get_redis()
+    queue_key = CONTROL_QUEUE_PREFIX + agent_id
+
+    # Try an immediate non-blocking pop first; otherwise BLPOP for up to
+    # timeout_seconds. asyncio-aware blocking via the asyncio redis
+    # client.
+    raw = await redis.lpop(queue_key)
+    if raw is None:
+        result = await redis.blpop(queue_key, timeout=timeout_seconds)
+        if result is None:
+            return _no_content()
+        # blpop returns (key, value) in async aioredis-compatible client
+        _, raw = result
+
+    commands: list[dict[str, Any]] = []
+    try:
+        commands.append(json.loads(raw))
+    except json.JSONDecodeError:
+        logger.warning("killswitch_bad_payload", extra={"raw": str(raw)[:200]})
+        return _no_content()
+
+    # Drain anything else immediately available so the agent applies a
+    # burst of commands in one poll.
+    for _ in range(99):
+        more = await redis.lpop(queue_key)
+        if not more:
+            break
+        try:
+            commands.append(json.loads(more))
+        except json.JSONDecodeError:
+            continue
+
+    return {"commands": commands}
+
+
+def _no_content() -> dict[str, Any]:
+    # FastAPI doesn't have an easy "return 204 from a non-204 route" path;
+    # we return an empty payload and rely on the agent to treat the empty
+    # commands list as no-op. Keeping the return shape consistent helps
+    # client deserialization.
+    return {"commands": []}
