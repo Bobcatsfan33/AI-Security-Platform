@@ -15,6 +15,7 @@ import (
 
 	"github.com/rs/zerolog"
 
+	"github.com/Bobcatsfan33/ai-security-platform/runtime-agent/management"
 	"github.com/Bobcatsfan33/ai-security-platform/runtime-agent/policy"
 	"github.com/Bobcatsfan33/ai-security-platform/runtime-agent/telemetry"
 )
@@ -28,6 +29,12 @@ type Config struct {
 	OrgID       string
 	AgentID     string
 	Environment string
+
+	// KillSwitch is consulted on the hot path BEFORE the policy
+	// pipeline so emergency commands from the control plane take
+	// effect in microseconds. Optional — when nil, kill-switch checks
+	// are skipped.
+	KillSwitch *management.KillSwitchState
 
 	// PolicyID is the policy this proxy enforces. Operators typically
 	// run one proxy per asset → one policy_id. Sprint 7 follow-on:
@@ -84,6 +91,21 @@ func serveProxy(cfg Config, w http.ResponseWriter, r *http.Request) {
 
 	provider := DetectProvider(upstreamPath)
 	extracted, extractErr := Extract(provider, body)
+
+	// Kill switch — emergency commands from the control plane take
+	// effect BEFORE the policy pipeline so they apply in microseconds
+	// without waiting for cache refresh.
+	if cfg.KillSwitch != nil {
+		// We don't yet have asset_id or tool_name extracted; this
+		// gate is for the global-block scenario. Per-asset and per-
+		// tool blocks are evaluated again after Extract pulls the
+		// tool name (Sprint 7 follow-on).
+		if blocked, reason := cfg.KillSwitch.ShouldBlock("", ""); blocked {
+			writeBlocked(w, reason, policy.SeverityCritical)
+			emitEvent(cfg, &extracted, nil, nil, body, nil, start, "blocked_kill_switch")
+			return
+		}
+	}
 
 	// Look up the active policy. On miss + fail-closed, refuse.
 	compiled := cfg.Cache.Get(cfg.PolicyID)

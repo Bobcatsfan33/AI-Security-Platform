@@ -140,6 +140,40 @@ func main() {
 
 	pipeline := policy.NewDefaultPipeline()
 
+	// Kill switch state — emergency commands from the control plane
+	killSwitch := management.NewKillSwitchState()
+	if cfg.platformAPIKey != "" {
+		poller := management.NewKillSwitchPoller(
+			log, cfg.platformURL, cfg.platformAPIKey, cfg.agentID, killSwitch,
+		)
+		go func() {
+			if err := poller.Run(rootCtx); err != nil &&
+				!errors.Is(err, context.Canceled) {
+				log.Error().Err(err).Msg("killswitch_poller_exited")
+			}
+		}()
+
+		// Heartbeat
+		hb := management.NewHeartbeatRunner(management.HeartbeatConfig{
+			Log:       log,
+			BaseURL:   cfg.platformURL,
+			APIKey:    cfg.platformAPIKey,
+			AgentID:   cfg.agentID,
+			OrgID:     cfg.orgID,
+			Version:   agentVersion,
+			PolicyID:  cfg.policyID,
+			Cache:     cache,
+			Telemetry: buf,
+			Interval:  30 * time.Second,
+		})
+		go func() {
+			if err := hb.Run(rootCtx); err != nil &&
+				!errors.Is(err, context.Canceled) {
+				log.Error().Err(err).Msg("heartbeat_runner_exited")
+			}
+		}()
+	}
+
 	upstreams := map[proxy.Provider]string{
 		proxy.ProviderOpenAI:    cfg.upstreamOpenAI,
 		proxy.ProviderAnthropic: cfg.upstreamAnthropic,
@@ -155,6 +189,7 @@ func main() {
 		OrgID:                      cfg.orgID,
 		AgentID:                    cfg.agentID,
 		Environment:                cfg.environment,
+		KillSwitch:                 killSwitch,
 		PolicyID:                   cfg.policyID,
 		UpstreamMap:                upstreams,
 		PassthroughOnUnknownFormat: true,
