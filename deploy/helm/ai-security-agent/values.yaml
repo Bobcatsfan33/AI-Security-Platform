@@ -1,0 +1,102 @@
+# Default values for the AI Security Platform runtime agent.
+# Override via `helm install ... --values custom.yaml` or `--set` flags.
+
+image:
+  repository: ghcr.io/bobcatsfan33/ai-security-platform-agent
+  tag: ""                       # defaults to .Chart.AppVersion
+  pullPolicy: IfNotPresent
+  pullSecrets: []
+
+# Deployment mode. One of:
+#   sidecar    — chart only emits config + secret; you reference these
+#                from your own application Deployment's sidecar spec.
+#                Use this for per-app deployments (recommended).
+#   deployment — chart creates a Deployment + Service. Apps reach the
+#                agent via the Service DNS. Use for shared-agent fleets.
+#   daemonset  — chart creates a DaemonSet. One agent per node. Use
+#                when egress flows through a node-level proxy.
+mode: deployment
+
+replicaCount: 2
+
+# Required runtime config. Most operators override these per-environment.
+config:
+  # Control plane URL the agent fetches policies + posts telemetry to.
+  platformUrl: "http://api.platform.svc.cluster.local:8000"
+  # The org this agent serves. Multi-tenant deployments run separate
+  # agent fleets per tenant.
+  orgId: ""
+  # The policy this proxy enforces.
+  policyId: ""
+  # Agent identity used in heartbeats. Defaults to the pod name when
+  # empty.
+  agentId: ""
+  environment: "production"
+  # How long the cache continues serving a policy after Redis becomes
+  # unreachable. Stage-1 fail-behavior on the policy decides whether
+  # stale = allow or stale = block.
+  staleGrace: "5m"
+
+# Redis the agent subscribes to for policy invalidations. Must match
+# the control plane's Redis.
+redis:
+  url: "redis://redis.platform.svc.cluster.local:6379/0"
+
+# Upstream LLM providers. The agent never bypasses the proxy; if a
+# customer wants to route through an internal egress, set the
+# corresponding URL here.
+upstream:
+  openai: "https://api.openai.com"
+  anthropic: "https://api.anthropic.com"
+  azure: ""
+  bedrock: "https://bedrock-runtime.us-east-1.amazonaws.com"
+
+# Secret containing the agent's API key for the control plane. Either
+# provide an existing Secret name OR set apiKey directly (NOT
+# recommended for production).
+agentApiKey:
+  existingSecret: ""           # name of a Secret with key "api-key"
+  apiKey: ""                   # literal value (creates a managed Secret)
+
+bind:
+  proxy: ":8400"
+  diagnostic: "127.0.0.1:8401"
+
+service:
+  type: ClusterIP
+  proxyPort: 8400
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 1000m
+    memory: 512Mi
+
+# Pod security context. Distroless-friendly defaults.
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  fsGroup: 65532
+
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop: ["ALL"]
+  readOnlyRootFilesystem: true
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# Diagnostic endpoints (/healthz, /readyz, /metrics) live on the
+# diagnostic port and are bound to 127.0.0.1 by default. Enable to
+# expose for Prometheus scraping (set bind.diagnostic to ``:8401``).
+metrics:
+  enabled: false
+  serviceMonitor:
+    enabled: false
+    namespace: ""
+    labels: {}
+    interval: "30s"

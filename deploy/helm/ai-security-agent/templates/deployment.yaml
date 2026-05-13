@@ -1,0 +1,98 @@
+{{- if eq .Values.mode "deployment" }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "agent.fullname" . }}
+  labels:
+    {{- include "agent.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "agent.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "agent.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.image.pullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: agent
+          image: {{ include "agent.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          ports:
+            - name: proxy
+              containerPort: 8400
+              protocol: TCP
+            {{- if .Values.metrics.enabled }}
+            - name: diag
+              containerPort: 8401
+              protocol: TCP
+            {{- end }}
+          env:
+            - name: AGENT_BIND
+              value: {{ .Values.bind.proxy | quote }}
+            - name: AGENT_DIAG_BIND
+              value: {{ if .Values.metrics.enabled }}":8401"{{ else }}{{ .Values.bind.diagnostic | quote }}{{ end }}
+            - name: PLATFORM_URL
+              value: {{ .Values.config.platformUrl | quote }}
+            - name: REDIS_URL
+              value: {{ .Values.redis.url | quote }}
+            - name: AGENT_ORG_ID
+              value: {{ .Values.config.orgId | quote }}
+            - name: AGENT_POLICY_ID
+              value: {{ .Values.config.policyId | quote }}
+            - name: AGENT_ID
+              value: {{ default "" .Values.config.agentId | quote }}
+            - name: AGENT_ENVIRONMENT
+              value: {{ .Values.config.environment | quote }}
+            - name: AGENT_STALE_GRACE
+              value: {{ .Values.config.staleGrace | quote }}
+            - name: AGENT_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "agent.apiKeySecretName" . }}
+                  key: api-key
+                  optional: true
+            - name: UPSTREAM_OPENAI
+              value: {{ .Values.upstream.openai | quote }}
+            - name: UPSTREAM_ANTHROPIC
+              value: {{ .Values.upstream.anthropic | quote }}
+            - name: UPSTREAM_AZURE
+              value: {{ .Values.upstream.azure | quote }}
+            - name: UPSTREAM_BEDROCK
+              value: {{ .Values.upstream.bedrock | quote }}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8401
+            initialDelaySeconds: 5
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8401
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

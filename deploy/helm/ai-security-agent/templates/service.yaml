@@ -1,0 +1,23 @@
+{{- if eq .Values.mode "deployment" }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "agent.fullname" . }}
+  labels:
+    {{- include "agent.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+    - name: proxy
+      port: {{ .Values.service.proxyPort }}
+      targetPort: proxy
+      protocol: TCP
+    {{- if .Values.metrics.enabled }}
+    - name: diag
+      port: 8401
+      targetPort: diag
+      protocol: TCP
+    {{- end }}
+  selector:
+    {{- include "agent.selectorLabels" . | nindent 4 }}
+{{- end }}

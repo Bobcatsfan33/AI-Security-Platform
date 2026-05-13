@@ -1,0 +1,117 @@
+# Plain Kubernetes manifest for the AI Security Platform runtime agent.
+# Equivalent to ``helm install ai-security-agent ../helm/ai-security-agent``
+# with default values — provided for shops that don't use Helm.
+#
+# Required edits before applying:
+#   1. Set AGENT_ORG_ID + AGENT_POLICY_ID to your org's values.
+#   2. Replace the api-key Secret's stringData.api-key with your real
+#      agent API key, or use ``kubectl create secret generic ...``.
+#   3. Adjust PLATFORM_URL + REDIS_URL to your control plane.
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: ai-security-agent-api-key
+  labels:
+    app.kubernetes.io/name: ai-security-agent
+    app.kubernetes.io/component: ai-security-runtime-agent
+type: Opaque
+stringData:
+  api-key: "REPLACE_WITH_AGENT_API_KEY"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-security-agent
+  labels:
+    app.kubernetes.io/name: ai-security-agent
+    app.kubernetes.io/component: ai-security-runtime-agent
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ai-security-agent
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: ai-security-agent
+        app.kubernetes.io/component: ai-security-runtime-agent
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        fsGroup: 65532
+      containers:
+        - name: agent
+          image: ghcr.io/bobcatsfan33/ai-security-platform-agent:0.1.0
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true
+          ports:
+            - name: proxy
+              containerPort: 8400
+          env:
+            - name: AGENT_BIND
+              value: ":8400"
+            - name: AGENT_DIAG_BIND
+              value: ":8401"
+            - name: PLATFORM_URL
+              value: "http://api.platform.svc.cluster.local:8000"
+            - name: REDIS_URL
+              value: "redis://redis.platform.svc.cluster.local:6379/0"
+            - name: AGENT_ORG_ID
+              value: "REPLACE_WITH_ORG_UUID"
+            - name: AGENT_POLICY_ID
+              value: "REPLACE_WITH_POLICY_UUID"
+            - name: AGENT_ENVIRONMENT
+              value: "production"
+            - name: AGENT_STALE_GRACE
+              value: "5m"
+            - name: AGENT_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: ai-security-agent-api-key
+                  key: api-key
+            - name: UPSTREAM_OPENAI
+              value: "https://api.openai.com"
+            - name: UPSTREAM_ANTHROPIC
+              value: "https://api.anthropic.com"
+            - name: UPSTREAM_BEDROCK
+              value: "https://bedrock-runtime.us-east-1.amazonaws.com"
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8401
+            initialDelaySeconds: 5
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8401
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 1000m
+              memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ai-security-agent
+  labels:
+    app.kubernetes.io/name: ai-security-agent
+spec:
+  type: ClusterIP
+  ports:
+    - name: proxy
+      port: 8400
+      targetPort: proxy
+  selector:
+    app.kubernetes.io/name: ai-security-agent

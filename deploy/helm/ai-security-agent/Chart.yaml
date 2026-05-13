@@ -1,0 +1,23 @@
+apiVersion: v2
+name: ai-security-agent
+description: |
+  Runtime agent for the AI Security Platform. Deploys as a sidecar (default),
+  a standalone Deployment + Service (when configured), or a DaemonSet (for
+  node-level egress proxying).
+
+  Wire-compatible with the Python control plane at
+  github.com/Bobcatsfan33/AI-Security-Platform.
+type: application
+version: 0.1.0
+appVersion: "0.1.0-sprint7-starter"
+keywords:
+  - ai-security
+  - llm-proxy
+  - runtime
+  - policy-enforcement
+home: https://github.com/Bobcatsfan33/AI-Security-Platform
+sources:
+  - https://github.com/Bobcatsfan33/AI-Security-Platform/tree/main/runtime-agent
+maintainers:
+  - name: Bobcatsfan33
+    email: ryanwallac33@gmail.com
