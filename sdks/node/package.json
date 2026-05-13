@@ -1,0 +1,31 @@
+{
+  "name": "@platform/sdk",
+  "version": "0.1.0",
+  "description": "Drop-in SDK wrappers for OpenAI and Anthropic clients — route LLM traffic through the AI Security Platform's runtime agent.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": "./dist/index.js",
+    "./openai": "./dist/openai.js",
+    "./anthropic": "./dist/anthropic.js"
+  },
+  "files": ["dist", "src", "README.md"],
+  "scripts": {
+    "build": "tsc",
+    "test": "node --test dist/*.test.js"
+  },
+  "peerDependencies": {
+    "openai": "^4.0.0 || ^5.0.0",
+    "@anthropic-ai/sdk": "^0.30.0 || ^0.40.0"
+  },
+  "peerDependenciesMeta": {
+    "openai": { "optional": true },
+    "@anthropic-ai/sdk": { "optional": true }
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  }
+}

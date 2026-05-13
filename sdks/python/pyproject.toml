@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "platform-sdk"
+version = "0.1.0"
+description = "Drop-in SDK wrappers for OpenAI and Anthropic clients — route LLM traffic through the AI Security Platform's runtime agent."
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+authors = [{ name = "Ryan Wallace" }]
+dependencies = []
+
+[project.optional-dependencies]
+openai = ["openai>=1.0"]
+anthropic = ["anthropic>=0.40"]
+dev = ["pytest>=8.0", "httpx>=0.27"]
+
+[tool.setuptools.packages.find]
+include = ["platform_sdk*"]
