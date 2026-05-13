@@ -19,13 +19,19 @@ from fastapi.middleware.cors import CORSMiddleware
 from app import __version__
 from app.api.middleware import CorrelationIdMiddleware
 from app.api.v1 import aibom as aibom_routes
+from app.api.v1 import assets as assets_routes
 from app.api.v1 import auth as auth_routes
 from app.api.v1 import connectors as connectors_routes
+from app.api.v1 import evaluations as evaluations_routes
+from app.api.v1 import findings as findings_routes
 from app.api.v1 import health as health_routes
 from app.api.v1 import idp_admin as idp_admin_routes
 from app.api.v1 import mcp as mcp_routes
 from app.api.v1 import policies as policies_routes
+from app.api.v1 import redteam as redteam_routes
+from app.api.v1 import runtime as runtime_routes
 from app.api.v1 import scim as scim_routes
+from app.api.v1 import test_cases as test_cases_routes
 from app.core.config import get_settings
 from app.core.logging import configure_logging, get_logger
 from app.security.audit_log import AuditEventType, log_event
@@ -107,6 +113,12 @@ def create_app() -> FastAPI:
     app.include_router(idp_admin_routes.router, prefix=f"{prefix}/admin/idp-configs")
     app.include_router(policies_routes.router, prefix=f"{prefix}/policies")
     app.include_router(connectors_routes.router, prefix=f"{prefix}/connectors")
+    app.include_router(assets_routes.router, prefix=f"{prefix}/assets")
+    app.include_router(test_cases_routes.router, prefix=f"{prefix}/test-cases")
+    app.include_router(evaluations_routes.router, prefix=f"{prefix}/evaluations")
+    app.include_router(findings_routes.router, prefix=f"{prefix}/findings")
+    app.include_router(redteam_routes.router, prefix=f"{prefix}/redteam")
+    app.include_router(runtime_routes.router, prefix=f"{prefix}/runtime")
     app.include_router(mcp_routes.router, prefix=f"{prefix}/mcp")
     app.include_router(aibom_routes.router, prefix=f"{prefix}/aibom")
     app.include_router(scim_routes.router, prefix=f"{prefix}/scim/v2")
