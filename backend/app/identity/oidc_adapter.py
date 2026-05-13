@@ -16,8 +16,9 @@ import secrets
 from typing import Any
 
 from authlib.integrations.httpx_client import AsyncOAuth2Client
-from authlib.jose import JsonWebToken
-from authlib.jose.errors import JoseError
+from joserfc import jwt
+from joserfc.errors import JoseError
+from joserfc.jwk import KeySet
 
 from app.identity.adapter import IdentityAuthError
 from app.identity.secret_resolver import get_resolver
@@ -148,16 +149,22 @@ class OidcAdapter:
 
     async def _verify_id_token(self, id_token: str) -> dict[str, Any]:
         jwks = await self._get_jwks()
-        claims_options = {
-            "iss": {"essential": True, "value": self._discovery["issuer"]},
-            "aud": {"essential": True, "value": self.audience or self.client_id},
-            "exp": {"essential": True},
-        }
-        # authlib infers algorithm from JWK kid
-        jwt = JsonWebToken(["RS256", "RS384", "RS512", "ES256", "ES384", "ES512"])
-        claims = jwt.decode(id_token, key=jwks, claims_options=claims_options)
-        claims.validate()
-        return dict(claims)
+        key_set = KeySet.import_key_set(jwks)
+        # joserfc requires algorithms to be specified up-front; we accept the
+        # OIDC-typical set. The library picks the right key by ``kid``.
+        token = jwt.decode(
+            id_token,
+            key=key_set,
+            algorithms=["RS256", "RS384", "RS512", "ES256", "ES384", "ES512"],
+        )
+        expected_iss = (self._discovery or {}).get("issuer") or self.issuer_url
+        claims_registry = jwt.JWTClaimsRegistry(
+            iss={"essential": True, "value": expected_iss},
+            aud={"essential": True, "value": self.audience or self.client_id},
+            exp={"essential": True},
+        )
+        claims_registry.validate(token.claims)
+        return dict(token.claims)
 
     def _claims_to_identity(self, claims: dict[str, Any]) -> IdentityClaims:
         m = self.claim_mappings
