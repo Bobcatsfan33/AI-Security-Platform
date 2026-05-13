@@ -1,110 +1,70 @@
 # AI Security Platform
 
 The control plane for enterprise AI security — evaluation, runtime protection,
-governance, and threat intelligence. Per the engineering blueprint, this is a
-hybrid SaaS + on-prem product: this repository will hold the multi-tenant
-control plane (Python / FastAPI), the customer-deployed runtime agent
-(Go, Sprint 7), the ML classifier (Sprint 3), and the dashboard (Next.js,
-Sprint 11).
+governance, and threat intelligence. Hybrid SaaS + on-prem product: this
+repository holds the multi-tenant control plane (Python / FastAPI), the
+customer-deployed runtime agent (Go), pluggable ONNX classifiers, a Next.js
+admin UI, and supporting SDKs for OpenAI / Anthropic.
 
-> Status: **Sprint 1 — Core Infrastructure & Identity Federation, scaffold + core path.**
-> See "What's in this commit" and "What's deferred" below.
->
-> **Roadmap revised 2026-05-07** after surveying [TokenDNA](https://github.com/Bobcatsfan33/TokenDNA),
-> which already implements most blueprint capabilities. The two repos
-> evolve in parallel; this repo selectively ports TokenDNA modules into
-> the blueprint-aligned architecture. See [`docs/ROADMAP.md`](docs/ROADMAP.md)
-> for the revised sprint sequence.
+> **Status:** Tier 1 → Tier 3 engineering complete. Tier 4 (legal / marketing
+> / sales artefacts) and a production hardening pass remain. See
+> [`docs/ROADMAP.md`](docs/ROADMAP.md) for the original sprint sequence and
+> [`docs/OPERATOR-RUNBOOK.md`](docs/OPERATOR-RUNBOOK.md) for day-2 ops.
+
+---
+
+## Capabilities (what ships today)
+
+| Surface | What it does |
+| --- | --- |
+| **Evaluations** | 50-case OWASP LLM Top 10 library + per-org cases; six model connectors (OpenAI, Anthropic, Ollama, Azure OpenAI, Bedrock, OpenAI-compat); LLM-judge + pattern verdicts |
+| **Findings** | Hash-chained audit trail through the open → in_progress → remediated → verified pipeline |
+| **Red team** | Generative campaigns with strategy library + judge; auto-promotion of successful attacks into the regression suite |
+| **AI-BOM** | Asset bill of materials, supply-chain risk scoring, model drift detection |
+| **Runtime agent** (Go) | Inline reverse proxy with three-stage policy pipeline (regex → ONNX → LLM judge), kill switch, telemetry to ClickHouse |
+| **SDKs** | Python + Node OpenAI/Anthropic wrappers that route through the local agent |
+| **Reports** | Markdown + PDF rendering of six templates (exec summary, technical detail, OWASP LLM Top 10, NIST AI RMF, SOC 2 AI, EU AI Act) |
+| **CI/CD gate** | Composite GitHub Action that triggers an evaluation, blocks the build on threshold breach, comments on PR |
+| **SIEM forwarders** | Splunk HEC, Elastic bulk, Sentinel HTTP Data Collector, Datadog Logs, Chronicle UDM, generic webhook |
+| **Dashboards** | `/v1/dashboards/{runtime,traffic,policy-effectiveness}` aggregations + Next.js executive view |
+| **Anomaly detection** | Per-asset attack graph + statistical detector (volume spike / novel transition / risk inflation) |
+| **Threat intel** | Opt-in cross-tenant clustering; STIX 2.1 export |
+| **SOAR** | PagerDuty / Opsgenie / generic-webhook incident sinks |
+| **Compliance** | Evidence-pack ZIP for SOC 2, ISO 27001, FedRAMP Moderate |
 
 ---
 
 ## Architecture (binding decisions)
 
-| Concern | Decision | Sprint |
-|---|---|---|
-| Operational data | PostgreSQL 16 + pgvector | 1 |
-| Telemetry | ClickHouse (append-only, never on hot path) | 1 schema, follow-on for client |
-| Cache + pub/sub | Redis 7 | 1 |
-| Event streaming | Redpanda (Kafka-compatible) | 7 |
-| Control plane API | FastAPI (Python 3.12) | 1 |
-| Identity federation | IDP-agnostic adapter interface; OIDC via `authlib`, SAML via `python3-saml` | 1 (OIDC), follow-on (SAML), 5 (SCIM) |
-| Runtime agent | Go 1.22+ reverse proxy | 7 |
-| ML classifier | Rust ONNX library called via CGo | 3 |
-| Policy enforcement | Three-stage pipeline (regex → ML → LLM judge), per-policy enforcement level | 2 / 3 / 7 |
-
-The full blueprint lives at `~/.openclaw/agents/sapor/memory/AI-SECURITY-PLATFORM-BLUEPRINT.md`.
-
----
-
-## What's in this commit (Sprint 1)
-
-- **PostgreSQL schema** for the full Sprint 1 surface: `organizations`, `users`,
-  `api_keys`, `idp_configs`, `ai_assets`, `test_cases`, `evaluations`,
-  `findings`, `policies`. Single Alembic migration.
-- **FastAPI app** with `/v1` versioning, structured logging (structlog JSON),
-  request correlation IDs, CORS, OpenAPI docs at `/v1/docs`.
-- **Identity federation layer** — pluggable adapter interface, OIDC adapter
-  built on `authlib` (auth-code-with-PKCE, JWKS validation, configurable claim
-  mapping). SAML adapter is a stub deferred to follow-on.
-- **JWT session management** — 15-min access tokens, 7-day refresh tokens with
-  rotation, revocation list in Redis.
-- **API key auth** — bcrypt-hashed, prefix-indexed, scope-checked.
-- **RBAC** — five roles (`owner`, `admin`, `analyst`, `viewer`, `api_only`)
-  with hierarchy enforcement, IDP group → role mapping driven by per-org
-  `directory_sync.group_to_role_mapping`.
-- **Multi-tenant isolation** — every authenticated request resolves to an
-  `IdentityContext` with `org_id`; repositories filter by org. Integration
-  test (`tests/integration/test_tenant_isolation.py`) verifies Org A cannot
-  read Org B's policies.
-- **Policy CRUD with Redis pub/sub** — every write publishes a JSON
-  invalidation message on `policy:invalidation:{org_id}`. A subscriber stub
-  (`scripts/policy_subscriber.py`) demonstrates end-to-end wiring; the real
-  consumer is the Go runtime agent in Sprint 7.
-- **IDP config admin API** — admins can register OIDC providers; create-time
-  OIDC discovery validation via `.well-known/openid-configuration` so a
-  misconfigured IDP fails fast.
-- **`docker-compose.yml`** for the full local stack: postgres+pgvector,
-  redis, clickhouse, redpanda, app.
-- **ClickHouse schema** for `telemetry.runtime_events`, partitioned by month,
-  90-day TTL.
-- **Tests** — pytest unit tests for RBAC, JWT, OIDC claim mapping, group
-  mapping, secret resolver, API key format, pub/sub channel naming. One
-  integration test for tenant isolation.
-
-## What's deferred (per the agreed Sprint 1 scope)
-
-- **SAML adapter implementation** — schema and stub are in; wire `python3-saml`
-  in a follow-on session.
-- **ClickHouse Python client** — schema is initialized via `clickhouse/init/`,
-  but the Python writer service is wired in a follow-on session.
-- **SCIM 2.0 endpoint** — Sprint 5.
-- **Frontend** — Sprint 11.
-- **Runtime agent (Go)** — Sprint 7.
-- **Evaluation engine, model connectors, policy enforcement** — Sprint 2+.
+| Concern | Decision |
+| --- | --- |
+| Operational data | PostgreSQL 16 + pgvector |
+| Telemetry | ClickHouse (append-only) |
+| Cache + pub/sub | Redis 7 |
+| Event streaming | Redpanda (Kafka-compatible) |
+| Control plane API | FastAPI (Python 3.12+) |
+| Identity federation | IDP-agnostic adapter; OIDC via `authlib` + `joserfc`, SAML via `python3-saml`, SCIM 2.0 |
+| Runtime agent | Go 1.26 reverse proxy with `httputil` |
+| ML classifier | ONNX models; Go-side runtime selected per-deployment |
+| Policy enforcement | Three-stage pipeline (regex / ML / LLM judge) per policy + per-org enforcement level |
+| Frontend | Next.js 16.2 App Router + Tailwind 4 + TypeScript |
 
 ---
 
 ## Running locally
 
-### Prerequisites
-
-- Docker + Docker Compose
-- Python 3.12 (for running tests / Alembic outside the container)
-
-### Start the stack
-
 ```bash
-# Generate a JWT secret and put it in your shell env (or .env)
+# Generate a JWT secret
 export JWT_SECRET=$(python -c "import secrets; print(secrets.token_urlsafe(64))")
 
-# Bring everything up
+# Bring up the stack
 docker compose up -d postgres redis clickhouse redpanda
 docker compose up app
 ```
 
-The API is now at <http://localhost:8000/v1/docs>.
+API: <http://localhost:8000/v1/docs>. Frontend (in `frontend/`): `npm run dev`.
 
-### Apply database migrations
+### Apply migrations
 
 ```bash
 cd backend
@@ -118,35 +78,20 @@ alembic upgrade head
 
 ```bash
 cd backend
-pytest -m unit                    # no infrastructure required
-pytest -m integration             # requires postgres + redis up
+pytest                              # full unit suite
+pytest -m integration               # postgres + redis must be up
 pytest --cov=app --cov-report=term-missing
 ```
 
-### Verify policy pub/sub
+499 unit tests pass on the current `main`.
 
-In one terminal:
+### Load test
+
 ```bash
-python -m scripts.policy_subscriber <your-org-id>
+pip install locust
+locust -f backend/loadtest/locustfile.py --host http://localhost:8000 \
+       -u 50 -r 5 --run-time 2m --csv loadtest_results
 ```
-
-Create or update a policy via the API in another terminal — you'll see the
-invalidation message logged immediately.
-
----
-
-## Environment variables
-
-See `backend/.env.example` for the full list. The most important:
-
-| Var | Purpose |
-|---|---|
-| `JWT_SECRET` | HMAC key for access tokens. Min 32 chars. **Required.** |
-| `DATABASE_URL` | `postgresql+asyncpg://...` |
-| `REDIS_URL` | Used for cache, pub/sub, JWT revocation |
-| `CLICKHOUSE_URL` | Telemetry DB (writer wired in follow-on) |
-| `REDPANDA_BROKERS` | Streaming brokers (consumer wired in Sprint 7) |
-| `JWT_ACCESS_TTL_SECONDS` / `JWT_REFRESH_TTL_SECONDS` | Token lifetimes |
 
 ---
 
@@ -156,58 +101,44 @@ See `backend/.env.example` for the full list. The most important:
 ai-security-platform/
 ├── backend/
 │   ├── app/
-│   │   ├── api/                  # FastAPI routers
-│   │   │   ├── middleware.py     # correlation IDs
-│   │   │   └── v1/               # /v1 routes (auth, idp_admin, policies, health)
-│   │   ├── auth/                 # JWT, API keys, RBAC, dependencies, provisioning
-│   │   ├── core/                 # config, logging
-│   │   ├── db/
-│   │   │   ├── base.py           # Declarative Base + shared column types
-│   │   │   ├── session.py        # async engine + session factory
-│   │   │   └── models/           # one file per model
-│   │   ├── identity/             # IDP adapters (OIDC live, SAML stub)
-│   │   ├── services/             # Redis client, pub/sub publisher
-│   │   └── main.py               # FastAPI app factory
-│   ├── alembic/                  # migrations
-│   ├── scripts/policy_subscriber.py
-│   ├── tests/
-│   │   ├── unit/                 # no live infra
-│   │   └── integration/          # postgres + redis required
-│   ├── pyproject.toml
-│   ├── alembic.ini
-│   └── Dockerfile
-├── clickhouse/init/              # bootstrap schema
-├── docker-compose.yml
-├── LICENSE                       # MIT
-└── README.md
+│   │   ├── anomaly/              # Attack graph + detector
+│   │   ├── api/v1/               # FastAPI routers
+│   │   ├── auth/                 # JWT, API keys, RBAC
+│   │   ├── compliance/           # Evidence-pack builder
+│   │   ├── connectors/           # OpenAI/Anthropic/Bedrock/...
+│   │   ├── db/                   # Models + Alembic
+│   │   ├── evaluation/           # Runner
+│   │   ├── identity/             # OIDC/SAML adapters
+│   │   ├── policy/               # Three-stage pipeline
+│   │   ├── redteam/              # Generative campaign engine
+│   │   ├── reports/              # Markdown/PDF templates
+│   │   ├── siem/                 # 6 export backends + forwarder
+│   │   ├── soar/                 # 3 incident sinks
+│   │   ├── telemetry/            # ClickHouse writer + dashboard queries
+│   │   ├── threat_intel/         # Clustering + STIX export
+│   │   └── main.py
+│   ├── alembic/
+│   ├── loadtest/locustfile.py
+│   └── tests/{unit,integration}/
+├── runtime-agent/                # Go 1.26 agent
+├── frontend/                     # Next.js 16.2
+├── sdks/{python,node}/           # Drop-in OpenAI/Anthropic wrappers
+├── deploy/
+│   ├── helm/ai-security-agent/
+│   ├── k8s/agent.yaml
+│   └── siem/{splunk,elastic,sentinel}/
+├── actions/ai-security-gate/     # Composite GitHub Action
+├── .github/workflows/ci.yml
+└── docs/
 ```
-
----
-
-## Sprint 1 Definition of Done — status
-
-| DoD item | Status |
-|---|---|
-| All existing endpoints work with PostgreSQL instead of SQLite | ✅ Greenfield on PG |
-| Multi-tenant isolation: Org A cannot see Org B's resources | ✅ enforced + integration-tested |
-| OIDC login flow works end-to-end | ✅ implemented; needs a real IDP to verify in your env |
-| SAML login flow works end-to-end | ⏸️ deferred (stub returns clear error) |
-| API key auth works for machine-to-machine access | ✅ |
-| RBAC prevents viewer from creating/modifying resources | ✅ via `require_role` |
-| IDP group-to-role mapping correctly assigns roles on login | ✅ unit-tested |
-| ClickHouse accepts and stores test events | ⏸️ schema only; client wired in follow-on |
-| Redis pub/sub channel created; policy writes publish invalidation | ✅ |
-| Docker Compose brings up full stack with one command | ✅ |
-| Alembic migrations run cleanly on fresh database | ✅ (run `alembic upgrade head`) |
 
 ---
 
 ## License
 
-**BUSL-1.1** (Business Source License 1.1) — see `LICENSE`. Source-available;
-production use is permitted unless you are offering the work to third parties
-on a hosted or embedded basis to compete with the Licensor. Converts to
-Apache 2.0 four years after each version's publish date. The license matches
-TokenDNA's commercial-protection model.
+**BUSL-1.1** — Business Source License 1.1. Source-available; production
+use is permitted unless you are offering the work to third parties on a
+hosted or embedded basis to compete with the Licensor. Converts to
+Apache 2.0 four years after each version's publish date.
 
 For alternative licensing, contact ryanwallac33@gmail.com.
