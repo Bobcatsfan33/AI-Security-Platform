@@ -49,8 +49,8 @@ services:
       timeout: 5s
       retries: 10
 
-  # Redpanda — wired in Sprint 7 (runtime agent telemetry stream). Single-node
-  # dev mode here. API-compatible with Kafka clients.
+  # Redpanda — active in v2.0 as the asset event bus + runtime telemetry stream.
+  # Single-node dev mode here; API-compatible with Kafka clients.
   redpanda:
     image: redpandadata/redpanda:v24.2.7
     command:
@@ -69,6 +69,12 @@ services:
       - "9644:9644"
     volumes:
       - redpanda-data:/var/lib/redpanda/data
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster health --exit-when-healthy"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 30s
 
   app:
     build:
@@ -76,6 +82,7 @@ services:
     depends_on:
       postgres: { condition: service_healthy }
       redis:    { condition: service_healthy }
+      redpanda: { condition: service_healthy }
     environment:
       ENVIRONMENT: development
       LOG_LEVEL: INFO
