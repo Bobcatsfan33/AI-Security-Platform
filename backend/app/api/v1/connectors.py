@@ -1,337 +1,239 @@
-"""Connector configuration CRUD + /test endpoint.
+"""Connector CRUD + test-connection + manual-sync routes (v2).
 
-Admins register model providers via this surface. Like the IDP admin
-routes, plaintext credentials passed as ``api_key_ref="enc-pending:..."``
-are auto-encrypted at storage with the field_crypto key, so the DB
-never holds plaintext keys even in dev.
+Replaces the v1 connector-config CRUD. A v2 connector is an *ingest
+endpoint* — it has a connector_type that maps to a registered class in
+``app.connectors.discovery`` and a (currently opaque) ``config`` blob.
 
-The ``/test`` endpoint runs the connector's ``health_check`` and records
-the outcome to ``verification_status``. The dashboard reads this field
-to show connection health without needing to re-call the provider on
-every render.
+POST /v1/connectors            — register
+GET  /v1/connectors            — list with last-sync status
+GET  /v1/connectors/available  — catalog of registered connector types
+GET  /v1/connectors/{id}       — detail
+POST /v1/connectors/{id}/test  — call test_connection()
+POST /v1/connectors/{id}/sync  — run SyncService
+DELETE /v1/connectors/{id}     — soft delete (sets is_enabled=false)
 """
 
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
-from typing import Any, Literal
+from datetime import datetime
+from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import require_role
-from app.connectors.base import (
-    ConnectorAuthError,
-    ConnectorConfigError,
-    ConnectorError,
+from app.connectors.discovery import (
+    ConnectionStatus,
+    ConnectorMetadata,
+    UnknownConnectorTypeError,
+    get as get_connector_class,
+    list_available,
 )
-from app.connectors.registry import SUPPORTED_PROVIDERS, build_connector
-from app.db.models.connector_config import ConnectorConfig
+from app.db.models.connector import Connector
 from app.db.session import get_db
 from app.identity.types import IdentityContext
-from app.security.audit_log import AuditEventType, AuditOutcome, log_event
-from app.security.field_crypto import FieldCryptoError, encrypt as fc_encrypt
+from app.services.sync_service import SyncResult, SyncService
 
 router = APIRouter(tags=["connectors"])
-
-
-ENC_PENDING_PREFIX = "enc-pending:"
 
 
 # ─────────────────────────────────────────────── DTOs
 
 
-class ConnectorConfigCreate(BaseModel):
-    provider: Literal[
-        "openai", "anthropic", "ollama", "azure_openai", "bedrock", "custom"
-    ]
-    display_name: str = Field(min_length=1, max_length=255)
-    model: str = Field(min_length=1, max_length=128)
-    api_key_ref: str = Field(default="")
+class ConnectorCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1, max_length=255)
+    connector_type: str = Field(min_length=1, max_length=64)
     config: dict[str, Any] = Field(default_factory=dict)
-    notes: str | None = None
+    schedule: Optional[str] = None
+    is_enabled: bool = True
 
 
-class ConnectorConfigUpdate(BaseModel):
-    display_name: str | None = None
-    model: str | None = None
-    api_key_ref: str | None = None
-    config: dict[str, Any] | None = None
-    is_active: bool | None = None
-    notes: str | None = None
-
-
-class ConnectorConfigResponse(BaseModel):
+class ConnectorRead(BaseModel):
     id: uuid.UUID
-    org_id: uuid.UUID
-    provider: str
-    display_name: str
-    model: str
-    api_key_ref_present: bool  # never return the ref itself
-    config: dict[str, Any]
-    verification_status: dict[str, Any]
-    is_active: bool
-    notes: str | None
+    name: str
+    connector_type: str
+    schedule: Optional[str]
+    is_enabled: bool
+    last_sync_at: Optional[datetime]
+    last_sync_status: Optional[str]
     created_at: datetime
     updated_at: datetime
 
 
-class TestResult(BaseModel):
-    ok: bool
-    tested_at: datetime
-    error: str | None = None
-    latency_ms: int | None = None
+class ConnectionTestResponse(BaseModel):
+    connected: bool
+    message: str
+    latency_ms: Optional[float] = None
 
 
-def _to_response(row: ConnectorConfig) -> ConnectorConfigResponse:
-    return ConnectorConfigResponse(
-        id=row.id,
-        org_id=row.org_id,
-        provider=row.provider,
-        display_name=row.display_name,
-        model=row.model,
-        # Surface only whether a ref is set, not its value
-        api_key_ref_present=bool(row.api_key_ref),
-        config=row.config or {},
-        verification_status=row.verification_status or {},
-        is_active=row.is_active,
-        notes=row.notes,
-        created_at=row.created_at,
-        updated_at=row.updated_at,
-    )
+class SyncTriggerResponse(BaseModel):
+    sync_job_id: uuid.UUID
+    status: str
+    assets_discovered: int
+    assets_updated: int
+    assets_removed: int
+    error_message: Optional[str] = None
+    started_at: datetime
+    completed_at: Optional[datetime]
 
 
 # ─────────────────────────────────────────────── helpers
 
 
-def _maybe_encrypt_pending_key(api_key_ref: str) -> str:
-    """If api_key_ref starts with ``enc-pending:<plaintext>``, encrypt and
-    return the resulting ``enc:vN:<ciphertext>`` reference."""
-    if not api_key_ref.startswith(ENC_PENDING_PREFIX):
-        return api_key_ref
-    plaintext = api_key_ref[len(ENC_PENDING_PREFIX) :]
-    if not plaintext:
-        raise HTTPException(
-            status_code=400, detail="enc_pending_empty_plaintext"
-        )
-    try:
-        ciphertext = fc_encrypt(plaintext)
-    except FieldCryptoError as exc:
-        raise HTTPException(
-            status_code=500, detail=f"field_crypto_unavailable: {exc}"
-        ) from exc
-    return f"enc:{ciphertext}"
+def _to_read(row: Connector) -> ConnectorRead:
+    return ConnectorRead(
+        id=row.id,
+        name=row.name,
+        connector_type=row.connector_type,
+        schedule=row.schedule,
+        is_enabled=row.is_enabled,
+        last_sync_at=row.last_sync_at,
+        last_sync_status=row.last_sync_status,
+        created_at=row.created_at,
+        updated_at=row.updated_at,
+    )
 
 
-def _provider_requires_key(provider: str) -> bool:
-    """Whether the provider requires a non-empty api_key_ref at create time.
-
-    Bedrock can use the default boto3 credential chain (env / IAM role)
-    when api_key_ref is empty, so we don't enforce it here.
-    The 'custom' provider can be unauthenticated for local vLLM/TGI/
-    LM Studio.
-    """
-    return provider in {"openai", "anthropic", "azure_openai"}
-
-
-async def _load_owned(
-    db: AsyncSession, connector_id: uuid.UUID, org_id: uuid.UUID
-) -> ConnectorConfig:
+async def _load_connector(
+    db: AsyncSession, connector_id: uuid.UUID
+) -> Connector:
     row = (
-        await db.execute(
-            select(ConnectorConfig).where(
-                ConnectorConfig.id == connector_id,
-                ConnectorConfig.org_id == org_id,
-            )
-        )
+        await db.execute(select(Connector).where(Connector.id == connector_id))
     ).scalar_one_or_none()
     if row is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="connector_not_found"
+        )
     return row
 
 
 # ─────────────────────────────────────────────── routes
 
 
-@router.get("", response_model=list[ConnectorConfigResponse])
-async def list_connectors(
+@router.get("/available", response_model=list[ConnectorMetadata])
+async def list_available_types(
     identity: IdentityContext = Depends(require_role("viewer")),
-    db: AsyncSession = Depends(get_db),
-) -> list[ConnectorConfigResponse]:
-    rows = (
-        await db.execute(
-            select(ConnectorConfig).where(ConnectorConfig.org_id == identity.org_id)
-        )
-    ).scalars().all()
-    return [_to_response(r) for r in rows]
+) -> list[ConnectorMetadata]:
+    """Catalog of registered connector types + their JSON-Schema configs."""
+    return list_available()
 
 
 @router.post(
     "",
-    response_model=ConnectorConfigResponse,
+    response_model=ConnectorRead,
     status_code=status.HTTP_201_CREATED,
 )
 async def create_connector(
-    payload: ConnectorConfigCreate,
+    payload: ConnectorCreate,
     identity: IdentityContext = Depends(require_role("admin")),
     db: AsyncSession = Depends(get_db),
-) -> ConnectorConfigResponse:
-    if payload.provider not in SUPPORTED_PROVIDERS:
-        raise HTTPException(status_code=400, detail="unsupported_provider")
-    if _provider_requires_key(payload.provider) and not payload.api_key_ref:
+) -> ConnectorRead:
+    try:
+        get_connector_class(payload.connector_type)
+    except UnknownConnectorTypeError:
         raise HTTPException(
-            status_code=400,
-            detail=f"api_key_ref_required_for_{payload.provider}",
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"unknown connector_type: {payload.connector_type}",
         )
-
-    api_key_ref = _maybe_encrypt_pending_key(payload.api_key_ref)
-
-    row = ConnectorConfig(
-        id=uuid.uuid4(),
-        org_id=identity.org_id,
-        provider=payload.provider,
-        display_name=payload.display_name,
-        model=payload.model,
-        api_key_ref=api_key_ref,
-        config=payload.config,
-        verification_status={},
-        is_active=True,
-        notes=payload.notes,
-        created_by=identity.user_id,
+    row = Connector(
+        name=payload.name,
+        connector_type=payload.connector_type,
+        config_encrypted=payload.config,
+        schedule=payload.schedule,
+        is_enabled=payload.is_enabled,
     )
     db.add(row)
     await db.commit()
     await db.refresh(row)
-
-    log_event(
-        AuditEventType.CONFIG_CHANGED,
-        AuditOutcome.SUCCESS,
-        tenant_id=str(identity.org_id),
-        subject=str(identity.user_id) if identity.user_id else "system",
-        resource=f"connector_config:{row.id}",
-        detail={
-            "action": "created",
-            "provider": row.provider,
-            "model": row.model,
-        },
-    )
-    return _to_response(row)
+    return _to_read(row)
 
 
-@router.get("/{connector_id}", response_model=ConnectorConfigResponse)
+@router.get("", response_model=list[ConnectorRead])
+async def list_connectors(
+    identity: IdentityContext = Depends(require_role("viewer")),
+    db: AsyncSession = Depends(get_db),
+) -> list[ConnectorRead]:
+    rows = (
+        await db.execute(
+            select(Connector).order_by(Connector.created_at.desc())
+        )
+    ).scalars().all()
+    return [_to_read(r) for r in rows]
+
+
+@router.get("/{connector_id}", response_model=ConnectorRead)
 async def get_connector(
     connector_id: uuid.UUID,
     identity: IdentityContext = Depends(require_role("viewer")),
     db: AsyncSession = Depends(get_db),
-) -> ConnectorConfigResponse:
-    row = await _load_owned(db, connector_id, identity.org_id)
-    return _to_response(row)
+) -> ConnectorRead:
+    return _to_read(await _load_connector(db, connector_id))
 
 
-@router.patch("/{connector_id}", response_model=ConnectorConfigResponse)
-async def update_connector(
-    connector_id: uuid.UUID,
-    payload: ConnectorConfigUpdate,
-    identity: IdentityContext = Depends(require_role("admin")),
-    db: AsyncSession = Depends(get_db),
-) -> ConnectorConfigResponse:
-    row = await _load_owned(db, connector_id, identity.org_id)
-    updates = payload.model_dump(exclude_unset=True)
-    if "api_key_ref" in updates and isinstance(updates["api_key_ref"], str):
-        updates["api_key_ref"] = _maybe_encrypt_pending_key(updates["api_key_ref"])
-    for field, value in updates.items():
-        setattr(row, field, value)
-    await db.commit()
-    await db.refresh(row)
-
-    log_event(
-        AuditEventType.CONFIG_CHANGED,
-        AuditOutcome.SUCCESS,
-        tenant_id=str(identity.org_id),
-        subject=str(identity.user_id) if identity.user_id else "system",
-        resource=f"connector_config:{row.id}",
-        detail={"action": "updated", "fields_changed": sorted(updates.keys())},
-    )
-    return _to_response(row)
-
-
-@router.delete("/{connector_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_connector(
-    connector_id: uuid.UUID,
-    identity: IdentityContext = Depends(require_role("admin")),
-    db: AsyncSession = Depends(get_db),
-) -> None:
-    row = await _load_owned(db, connector_id, identity.org_id)
-    provider = row.provider
-    model = row.model
-    await db.delete(row)
-    await db.commit()
-    log_event(
-        AuditEventType.CONFIG_CHANGED,
-        AuditOutcome.SUCCESS,
-        tenant_id=str(identity.org_id),
-        subject=str(identity.user_id) if identity.user_id else "system",
-        resource=f"connector_config:{connector_id}",
-        detail={"action": "deleted", "provider": provider, "model": model},
-    )
-
-
-@router.post("/{connector_id}/test", response_model=TestResult)
+@router.post(
+    "/{connector_id}/test", response_model=ConnectionTestResponse
+)
 async def test_connector(
     connector_id: uuid.UUID,
     identity: IdentityContext = Depends(require_role("admin")),
     db: AsyncSession = Depends(get_db),
-) -> TestResult:
-    """Run the connector's health_check and persist the outcome to
-    ``verification_status``. Returns the result for immediate display."""
-    import time
-
-    row = await _load_owned(db, connector_id, identity.org_id)
+) -> ConnectionTestResponse:
+    row = await _load_connector(db, connector_id)
     try:
-        connector = build_connector(row)
-    except (ConnectorConfigError, ConnectorError) as exc:
-        result = TestResult(
-            ok=False, tested_at=datetime.now(timezone.utc), error=str(exc)
+        cls = get_connector_class(row.connector_type)
+    except UnknownConnectorTypeError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"connector_type {row.connector_type!r} not registered",
         )
-        row.verification_status = result.model_dump(mode="json")
-        await db.commit()
-        return result
-
-    start = time.perf_counter()
-    try:
-        await connector.health_check()
-        latency_ms = int((time.perf_counter() - start) * 1000)
-        result = TestResult(
-            ok=True,
-            tested_at=datetime.now(timezone.utc),
-            latency_ms=latency_ms,
-        )
-    except ConnectorAuthError as exc:
-        result = TestResult(
-            ok=False, tested_at=datetime.now(timezone.utc), error=f"auth: {exc}"
-        )
-    except ConnectorError as exc:
-        result = TestResult(
-            ok=False, tested_at=datetime.now(timezone.utc), error=str(exc)
-        )
-
-    row.verification_status = result.model_dump(mode="json")
-    await db.commit()
-
-    log_event(
-        AuditEventType.CONFIG_CHANGED,
-        AuditOutcome.SUCCESS if result.ok else AuditOutcome.FAILURE,
-        tenant_id=str(identity.org_id),
-        subject=str(identity.user_id) if identity.user_id else "system",
-        resource=f"connector_config:{connector_id}",
-        detail={
-            "action": "health_check",
-            "ok": result.ok,
-            "error": result.error,
-            "latency_ms": result.latency_ms,
-        },
+    instance = cls(config=row.config_encrypted or {})
+    result: ConnectionStatus = await instance.test_connection()
+    return ConnectionTestResponse(
+        connected=result.connected,
+        message=result.message,
+        latency_ms=result.latency_ms,
     )
-    return result
+
+
+@router.post("/{connector_id}/sync", response_model=SyncTriggerResponse)
+async def trigger_sync(
+    connector_id: uuid.UUID,
+    identity: IdentityContext = Depends(require_role("admin")),
+    db: AsyncSession = Depends(get_db),
+) -> SyncTriggerResponse:
+    await _load_connector(db, connector_id)
+    service = SyncService()
+    try:
+        result: SyncResult = await service.run(db, connector_id)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
+        )
+    return SyncTriggerResponse(
+        sync_job_id=result.sync_job_id,
+        status=result.status,
+        assets_discovered=result.assets_discovered,
+        assets_updated=result.assets_updated,
+        assets_removed=result.assets_removed,
+        error_message=result.error_message,
+        started_at=result.started_at,
+        completed_at=result.completed_at,
+    )
+
+
+@router.delete(
+    "/{connector_id}", status_code=status.HTTP_204_NO_CONTENT
+)
+async def soft_delete(
+    connector_id: uuid.UUID,
+    identity: IdentityContext = Depends(require_role("admin")),
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    row = await _load_connector(db, connector_id)
+    row.is_enabled = False
+    await db.commit()

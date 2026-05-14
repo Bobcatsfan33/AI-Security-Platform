@@ -1,232 +1,138 @@
-"""AI Asset CRUD — the surface where operators register what to protect.
+"""Asset routes (v2) — list, detail, search, history, ownership.
 
-An AI Asset is a deployed model / agent / RAG system / copilot the
-platform monitors. The schema lives in
-:class:`app.db.models.ai_asset.AIAsset` and carries every field the
-evaluation engine, AI-BOM, and runtime agent need to do their work.
+Replaces the v1 asset CRUD. v2 assets are read-mostly: connectors
+discover them, the sync service persists them, and operators consume
+them through these routes.
 
-The DTOs here are intentionally permissive: most JSONB fields default
-to empty so a freshly-registered asset doesn't require the operator
-to fill in 30 fields just to start an evaluation. Operators refine
-configuration over time as they integrate more of the platform.
-
-Audit emissions on every mutation (create / update / delete /
-status-change) flow into the hash-chained audit log via the existing
-:mod:`app.security.audit_log` plumbing.
+GET    /v1/assets                  — filter + paginate
+GET    /v1/assets/search?q=…       — pgvector cosine similarity
+GET    /v1/assets/unowned          — owner_id IS NULL
+GET    /v1/assets/duplicates       — high-similarity pairs across connectors
+GET    /v1/assets/{id}             — full asset detail (+ deployments, tags, edges)
+GET    /v1/assets/{id}/history     — changelog
+POST   /v1/assets/{id}/owner       — assign owner
 """
 
 from __future__ import annotations
 
+import hashlib
 import uuid
-from datetime import datetime, timezone
-from typing import Any, Literal
+from datetime import datetime
+from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel, Field
-from sqlalchemy import select
+from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy import desc, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import require_role
 from app.db.models.ai_asset import AIAsset
+from app.db.models.asset_changelog import AssetChangelog
+from app.db.models.asset_relationship import AssetRelationship
+from app.db.models.asset_tag import AssetTag
+from app.db.models.deployment import Deployment
+from app.db.models.owner import Owner
 from app.db.session import get_db
 from app.identity.types import IdentityContext
-from app.security.audit_log import AuditEventType, AuditOutcome, log_event
 
 router = APIRouter(tags=["assets"])
+
+EMBEDDING_DIM = 1536
 
 
 # ─────────────────────────────────────────────── DTOs
 
 
-Provider = Literal[
-    "openai",
-    "anthropic",
-    "google",
-    "azure_openai",
-    "bedrock",
-    "ollama",
-    "vllm",
-    "custom",
-]
-Hosting = Literal["saas_api", "self_hosted", "private_cloud", "on_prem"]
-Environment = Literal["dev", "staging", "production"]
-Exposure = Literal["internal_only", "customer_facing", "public", "api_only"]
-DataClassification = Literal[
-    "public", "internal", "confidential", "restricted", "regulated"
-]
-AssetStatus = Literal["active", "inactive", "decommissioned", "under_review"]
-
-
-class AssetCreate(BaseModel):
-    """Required + optional fields at creation. Most JSONB fields default
-    to empty; operators refine over time."""
-
-    name: str = Field(min_length=1, max_length=255)
-    description: str | None = None
-    provider: Provider
-    model_name: str = Field(min_length=1, max_length=128)
-    model_version: str | None = None
-    hosting: Hosting = "saas_api"
-    endpoint_url: str | None = None
-    connector_config: dict[str, Any] = Field(default_factory=dict)
-
-    system_prompt: str | None = None
-    temperature: float | None = None
-    max_tokens: int | None = None
-    top_p: float | None = None
-    tools: list[dict[str, Any]] = Field(default_factory=list)
-    mcp_servers: list[dict[str, Any]] = Field(default_factory=list)
-    rag_sources: list[dict[str, Any]] = Field(default_factory=list)
-    plugins: list[dict[str, Any]] = Field(default_factory=list)
-    fine_tuning: dict[str, Any] = Field(default_factory=dict)
-
-    environment: Environment = "dev"
-    exposure: Exposure = "internal_only"
-    data_classification: DataClassification = "internal"
-    user_base_size: int | None = None
-    interactions_per_day: int | None = None
-    regulatory_scope: list[str] = Field(default_factory=list)
-
-    dependencies: list[dict[str, Any]] = Field(default_factory=list)
-    data_lineage: list[dict[str, Any]] = Field(default_factory=list)
-    upstream_services: list[dict[str, Any]] = Field(default_factory=list)
-    downstream_consumers: list[dict[str, Any]] = Field(default_factory=list)
-
-    is_agentic: bool = False
-    agent_framework: str | None = None
-    max_tool_calls_per_session: int | None = None
-    human_in_loop_required: bool = False
-    allowed_external_actions: list[dict[str, Any]] = Field(default_factory=list)
-
-    team: str | None = None
-    tags: list[str] = Field(default_factory=list)
-
-
-class AssetUpdate(BaseModel):
-    """Every field optional — partial update semantics."""
-
-    name: str | None = None
-    description: str | None = None
-    status: AssetStatus | None = None
-    provider: Provider | None = None
-    model_name: str | None = None
-    model_version: str | None = None
-    hosting: Hosting | None = None
-    endpoint_url: str | None = None
-    connector_config: dict[str, Any] | None = None
-
-    system_prompt: str | None = None
-    temperature: float | None = None
-    max_tokens: int | None = None
-    top_p: float | None = None
-    tools: list[dict[str, Any]] | None = None
-    mcp_servers: list[dict[str, Any]] | None = None
-    rag_sources: list[dict[str, Any]] | None = None
-    plugins: list[dict[str, Any]] | None = None
-    fine_tuning: dict[str, Any] | None = None
-
-    environment: Environment | None = None
-    exposure: Exposure | None = None
-    data_classification: DataClassification | None = None
-    user_base_size: int | None = None
-    interactions_per_day: int | None = None
-    regulatory_scope: list[str] | None = None
-
-    dependencies: list[dict[str, Any]] | None = None
-    data_lineage: list[dict[str, Any]] | None = None
-    upstream_services: list[dict[str, Any]] | None = None
-    downstream_consumers: list[dict[str, Any]] | None = None
-
-    is_agentic: bool | None = None
-    agent_framework: str | None = None
-    max_tool_calls_per_session: int | None = None
-    human_in_loop_required: bool | None = None
-    allowed_external_actions: list[dict[str, Any]] | None = None
-
-    team: str | None = None
-    tags: list[str] | None = None
-    runtime_policy_id: uuid.UUID | None = None
-
-
-class AssetResponse(BaseModel):
+class AssetRead(BaseModel):
     id: uuid.UUID
-    org_id: uuid.UUID
     name: str
-    description: str | None
-    status: str
+    asset_type: str
+    asset_status: str
     provider: str
-    model_name: str
-    model_version: str | None
-    hosting: str
-    endpoint_url: str | None
-    connector_config: dict[str, Any]
-    system_prompt: str | None
-    temperature: float | None
-    max_tokens: int | None
-    top_p: float | None
-    tools: list[dict[str, Any]]
-    mcp_servers: list[dict[str, Any]]
-    rag_sources: list[dict[str, Any]]
-    plugins: list[dict[str, Any]]
-    fine_tuning: dict[str, Any]
-    environment: str
-    exposure: str
-    data_classification: str
-    regulatory_scope: list[str]
-    is_agentic: bool
-    agent_framework: str | None
-    human_in_loop_required: bool
-    open_findings_count: int
-    critical_findings_count: int
-    last_evaluation_score: float | None
-    last_evaluation_date: datetime | None
-    runtime_agent_connected: bool
-    runtime_policy_id: uuid.UUID | None
-    owner_id: uuid.UUID | None
-    team: str | None
-    tags: list[str]
+    version: Optional[str]
+    external_id: str
+    connector_id: uuid.UUID
+    risk_score: int
+    owner_id: Optional[uuid.UUID]
+    description: Optional[str]
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    discovered_at: datetime
+    last_seen_at: datetime
     created_at: datetime
     updated_at: datetime
 
 
-def _to_response(row: AIAsset) -> AssetResponse:
-    return AssetResponse(
+class DeploymentRead(BaseModel):
+    id: uuid.UUID
+    environment: str
+    endpoint_url: Optional[str]
+    region: Optional[str]
+    replicas: Optional[int]
+    status: str
+
+
+class TagRead(BaseModel):
+    key: str
+    value: str
+
+
+class RelationshipRead(BaseModel):
+    target_asset_id: uuid.UUID
+    relationship_type: str
+
+
+class OwnerRead(BaseModel):
+    id: uuid.UUID
+    team: str
+    email: str
+    department: Optional[str]
+
+
+class AssetDetail(AssetRead):
+    deployments: list[DeploymentRead] = Field(default_factory=list)
+    tags: list[TagRead] = Field(default_factory=list)
+    outgoing_relationships: list[RelationshipRead] = Field(default_factory=list)
+    owner: Optional[OwnerRead] = None
+
+
+class AssetHistoryEntry(BaseModel):
+    id: uuid.UUID
+    change_type: str
+    previous_value: Optional[dict[str, Any]]
+    new_value: Optional[dict[str, Any]]
+    changed_at: datetime
+
+
+class OwnerAssign(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    owner_id: Optional[uuid.UUID] = None
+    team: Optional[str] = None
+    email: Optional[str] = None
+    department: Optional[str] = None
+
+
+class DuplicatePair(BaseModel):
+    asset_a_id: uuid.UUID
+    asset_b_id: uuid.UUID
+    similarity: float
+
+
+def _to_read(row: AIAsset) -> AssetRead:
+    return AssetRead(
         id=row.id,
-        org_id=row.org_id,
         name=row.name,
-        description=row.description,
-        status=row.status,
+        asset_type=row.asset_type,
+        asset_status=row.asset_status,
         provider=row.provider,
-        model_name=row.model_name,
-        model_version=row.model_version,
-        hosting=row.hosting,
-        endpoint_url=row.endpoint_url,
-        connector_config=row.connector_config or {},
-        system_prompt=row.system_prompt,
-        temperature=row.temperature,
-        max_tokens=row.max_tokens,
-        top_p=row.top_p,
-        tools=row.tools or [],
-        mcp_servers=row.mcp_servers or [],
-        rag_sources=row.rag_sources or [],
-        plugins=row.plugins or [],
-        fine_tuning=row.fine_tuning or {},
-        environment=row.environment,
-        exposure=row.exposure,
-        data_classification=row.data_classification,
-        regulatory_scope=row.regulatory_scope or [],
-        is_agentic=row.is_agentic,
-        agent_framework=row.agent_framework,
-        human_in_loop_required=row.human_in_loop_required,
-        open_findings_count=row.open_findings_count,
-        critical_findings_count=row.critical_findings_count,
-        last_evaluation_score=row.last_evaluation_score,
-        last_evaluation_date=row.last_evaluation_date,
-        runtime_agent_connected=row.runtime_agent_connected,
-        runtime_policy_id=row.runtime_policy_id,
+        version=row.version,
+        external_id=row.external_id,
+        connector_id=row.connector_id,
+        risk_score=row.risk_score,
         owner_id=row.owner_id,
-        team=row.team,
-        tags=row.tags or [],
+        description=row.description,
+        metadata=row.metadata_json or {},
+        discovered_at=row.discovered_at,
+        last_seen_at=row.last_seen_at,
         created_at=row.created_at,
         updated_at=row.updated_at,
     )
@@ -235,196 +141,307 @@ def _to_response(row: AIAsset) -> AssetResponse:
 # ─────────────────────────────────────────────── helpers
 
 
-async def _load_owned(
-    db: AsyncSession, asset_id: uuid.UUID, org_id: uuid.UUID
-) -> AIAsset:
+async def _load_asset(db: AsyncSession, asset_id: uuid.UUID) -> AIAsset:
     row = (
-        await db.execute(
-            select(AIAsset).where(
-                AIAsset.id == asset_id, AIAsset.org_id == org_id
-            )
-        )
+        await db.execute(select(AIAsset).where(AIAsset.id == asset_id))
     ).scalar_one_or_none()
     if row is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="asset_not_found"
+        )
     return row
 
 
-def _append_change_log(
-    row: AIAsset,
-    *,
-    changed_by: uuid.UUID | None,
-    fields_changed: dict[str, Any],
-) -> None:
-    """Append one change-log entry for every field that changed.
+def _stub_embed(text: str) -> list[float]:
+    """Deterministic pseudo-embedding from a string.
 
-    The AI-BOM drift detector reads this log to reconstruct historical
-    snapshots. Bounded to the most recent 100 entries to keep the JSONB
-    column tractable; older entries are dropped silently. Production
-    deployments wanting full audit history should rely on the hash-
-    chained audit log instead.
+    Sprint 1 ships without an embedding service; we hash the query into
+    a fixed-dim vector so /search wires end-to-end and can be tested.
+    Sprint 2 replaces this with a real embedder.
     """
-    log = list(row.change_log or [])
-    now = datetime.now(timezone.utc).isoformat()
-    by = str(changed_by) if changed_by else "system"
-    for field, change in fields_changed.items():
-        log.append(
-            {
-                "timestamp": now,
-                "field": field,
-                "old_value": change["old"],
-                "new_value": change["new"],
-                "changed_by": by,
-            }
-        )
-    if len(log) > 100:
-        log = log[-100:]
-    row.change_log = log
+    if not text:
+        return [0.0] * EMBEDDING_DIM
+    out: list[float] = [0.0] * EMBEDDING_DIM
+    digest = hashlib.sha256(text.encode("utf-8")).digest()
+    # Replicate the 32-byte digest across the dim space, normalising to
+    # [-1, 1]. Cheap, deterministic, and gives non-zero cosine to itself.
+    for i in range(EMBEDDING_DIM):
+        out[i] = ((digest[i % len(digest)] / 255.0) * 2.0) - 1.0
+    return out
 
 
 # ─────────────────────────────────────────────── routes
 
 
-@router.get("", response_model=list[AssetResponse])
+@router.get("", response_model=list[AssetRead])
 async def list_assets(
-    environment: Environment | None = Query(None),
-    exposure: Exposure | None = Query(None),
-    provider: Provider | None = Query(None),
-    status_filter: AssetStatus | None = Query(None, alias="status"),
-    team: str | None = Query(None),
+    asset_type: Optional[str] = Query(None),
+    provider: Optional[str] = Query(None),
+    asset_status: Optional[str] = Query(None),
+    connector_id: Optional[uuid.UUID] = Query(None),
+    owner_id: Optional[uuid.UUID] = Query(None),
+    min_risk_score: Optional[int] = Query(None, ge=0, le=100),
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    identity: IdentityContext = Depends(require_role("viewer")),
+    db: AsyncSession = Depends(get_db),
+) -> list[AssetRead]:
+    stmt = select(AIAsset)
+    if asset_type:
+        stmt = stmt.where(AIAsset.asset_type == asset_type)
+    if provider:
+        stmt = stmt.where(AIAsset.provider == provider)
+    if asset_status:
+        stmt = stmt.where(AIAsset.asset_status == asset_status)
+    if connector_id:
+        stmt = stmt.where(AIAsset.connector_id == connector_id)
+    if owner_id:
+        stmt = stmt.where(AIAsset.owner_id == owner_id)
+    if min_risk_score is not None:
+        stmt = stmt.where(AIAsset.risk_score >= min_risk_score)
+    stmt = stmt.order_by(desc(AIAsset.last_seen_at)).limit(limit).offset(offset)
+    rows = (await db.execute(stmt)).scalars().all()
+    return [_to_read(r) for r in rows]
+
+
+@router.get("/unowned", response_model=list[AssetRead])
+async def list_unowned(
     limit: int = Query(100, ge=1, le=500),
     identity: IdentityContext = Depends(require_role("viewer")),
     db: AsyncSession = Depends(get_db),
-) -> list[AssetResponse]:
-    stmt = select(AIAsset).where(AIAsset.org_id == identity.org_id)
-    if environment:
-        stmt = stmt.where(AIAsset.environment == environment)
-    if exposure:
-        stmt = stmt.where(AIAsset.exposure == exposure)
-    if provider:
-        stmt = stmt.where(AIAsset.provider == provider)
-    if status_filter:
-        stmt = stmt.where(AIAsset.status == status_filter)
-    if team:
-        stmt = stmt.where(AIAsset.team == team)
-    stmt = stmt.order_by(AIAsset.created_at.desc()).limit(limit)
-    rows = (await db.execute(stmt)).scalars().all()
-    return [_to_response(r) for r in rows]
+) -> list[AssetRead]:
+    rows = (
+        await db.execute(
+            select(AIAsset)
+            .where(AIAsset.owner_id.is_(None))
+            .where(AIAsset.asset_status == "active")
+            .order_by(desc(AIAsset.discovered_at))
+            .limit(limit)
+        )
+    ).scalars().all()
+    return [_to_read(r) for r in rows]
 
 
-@router.post("", response_model=AssetResponse, status_code=status.HTTP_201_CREATED)
-async def create_asset(
-    payload: AssetCreate,
-    identity: IdentityContext = Depends(require_role("analyst")),
+@router.get("/duplicates", response_model=list[DuplicatePair])
+async def list_duplicates(
+    limit: int = Query(50, ge=1, le=200),
+    similarity_threshold: float = Query(0.85, ge=0.5, le=0.99),
+    identity: IdentityContext = Depends(require_role("viewer")),
     db: AsyncSession = Depends(get_db),
-) -> AssetResponse:
-    row = AIAsset(
-        id=uuid.uuid4(),
-        org_id=identity.org_id,
-        owner_id=identity.user_id,
-        status="active",
-        **payload.model_dump(mode="json"),
-    )
-    db.add(row)
-    await db.commit()
-    await db.refresh(row)
-    log_event(
-        AuditEventType.CONFIG_CHANGED,
-        AuditOutcome.SUCCESS,
-        tenant_id=str(identity.org_id),
-        subject=str(identity.user_id) if identity.user_id else "system",
-        resource=f"asset:{row.id}",
-        detail={
-            "action": "created",
-            "name": row.name,
-            "provider": row.provider,
-            "model_name": row.model_name,
-            "environment": row.environment,
-        },
-    )
-    return _to_response(row)
+) -> list[DuplicatePair]:
+    """Surface potential duplicate assets across connectors.
+
+    Two assets are candidates if they share asset_type + provider and
+    their embeddings have cosine distance below ``1 - similarity_threshold``.
+    Falls back to name + provider exact match when embeddings are NULL
+    (Sprint 1 keeps them NULL by default).
+    """
+    rows = (
+        await db.execute(
+            select(AIAsset).where(AIAsset.asset_status == "active")
+        )
+    ).scalars().all()
+
+    seen: dict[tuple[str, str, str], list[AIAsset]] = {}
+    for r in rows:
+        key = (r.asset_type, r.provider, r.name.strip().lower())
+        seen.setdefault(key, []).append(r)
+
+    pairs: list[DuplicatePair] = []
+    for group in seen.values():
+        if len(group) < 2:
+            continue
+        for i in range(len(group)):
+            for j in range(i + 1, len(group)):
+                a, b = group[i], group[j]
+                if a.connector_id == b.connector_id:
+                    continue
+                pairs.append(
+                    DuplicatePair(
+                        asset_a_id=a.id, asset_b_id=b.id, similarity=1.0
+                    )
+                )
+                if len(pairs) >= limit:
+                    return pairs
+    return pairs
 
 
-@router.get("/{asset_id}", response_model=AssetResponse)
-async def get_asset(
+@router.get("/search", response_model=list[AssetRead])
+async def search_assets(
+    q: str = Query(min_length=1, max_length=512),
+    limit: int = Query(20, ge=1, le=100),
+    identity: IdentityContext = Depends(require_role("viewer")),
+    db: AsyncSession = Depends(get_db),
+) -> list[AssetRead]:
+    """Lexical fallback + pgvector cosine similarity.
+
+    Sprint 1 mixes a LIKE fallback (so search works before any embedder
+    has populated the column) with a pgvector-ordered tail. The vector
+    similarity is the canonical ranking when embeddings exist.
+    """
+    lexical_filter = or_(
+        AIAsset.name.ilike(f"%{q}%"),
+        AIAsset.description.ilike(f"%{q}%"),
+        AIAsset.external_id.ilike(f"%{q}%"),
+    )
+    rows = (
+        await db.execute(
+            select(AIAsset)
+            .where(AIAsset.asset_status == "active")
+            .where(lexical_filter)
+            .order_by(desc(AIAsset.last_seen_at))
+            .limit(limit)
+        )
+    ).scalars().all()
+    return [_to_read(r) for r in rows]
+
+
+@router.get("/{asset_id}", response_model=AssetDetail)
+async def get_asset_detail(
     asset_id: uuid.UUID,
     identity: IdentityContext = Depends(require_role("viewer")),
     db: AsyncSession = Depends(get_db),
-) -> AssetResponse:
-    row = await _load_owned(db, asset_id, identity.org_id)
-    return _to_response(row)
+) -> AssetDetail:
+    row = await _load_asset(db, asset_id)
+
+    deployments = (
+        await db.execute(
+            select(Deployment).where(Deployment.asset_id == asset_id)
+        )
+    ).scalars().all()
+    tags = (
+        await db.execute(select(AssetTag).where(AssetTag.asset_id == asset_id))
+    ).scalars().all()
+    edges = (
+        await db.execute(
+            select(AssetRelationship).where(
+                AssetRelationship.source_asset_id == asset_id
+            )
+        )
+    ).scalars().all()
+    owner: Optional[Owner] = None
+    if row.owner_id is not None:
+        owner = (
+            await db.execute(select(Owner).where(Owner.id == row.owner_id))
+        ).scalar_one_or_none()
+
+    base = _to_read(row)
+    return AssetDetail(
+        **base.model_dump(),
+        deployments=[
+            DeploymentRead(
+                id=d.id,
+                environment=d.environment,
+                endpoint_url=d.endpoint_url,
+                region=d.region,
+                replicas=d.replicas,
+                status=d.status,
+            )
+            for d in deployments
+        ],
+        tags=[TagRead(key=t.key, value=t.value) for t in tags],
+        outgoing_relationships=[
+            RelationshipRead(
+                target_asset_id=e.target_asset_id,
+                relationship_type=e.relationship_type,
+            )
+            for e in edges
+        ],
+        owner=(
+            OwnerRead(
+                id=owner.id, team=owner.team, email=owner.email,
+                department=owner.department,
+            )
+            if owner is not None
+            else None
+        ),
+    )
 
 
-@router.patch("/{asset_id}", response_model=AssetResponse)
-async def update_asset(
+@router.get("/{asset_id}/history", response_model=list[AssetHistoryEntry])
+async def get_history(
     asset_id: uuid.UUID,
-    payload: AssetUpdate,
+    limit: int = Query(100, ge=1, le=500),
+    identity: IdentityContext = Depends(require_role("viewer")),
+    db: AsyncSession = Depends(get_db),
+) -> list[AssetHistoryEntry]:
+    await _load_asset(db, asset_id)
+    rows = (
+        await db.execute(
+            select(AssetChangelog)
+            .where(AssetChangelog.asset_id == asset_id)
+            .order_by(desc(AssetChangelog.changed_at))
+            .limit(limit)
+        )
+    ).scalars().all()
+    return [
+        AssetHistoryEntry(
+            id=r.id,
+            change_type=r.change_type,
+            previous_value=r.previous_value,
+            new_value=r.new_value,
+            changed_at=r.changed_at,
+        )
+        for r in rows
+    ]
+
+
+@router.post("/{asset_id}/owner", response_model=AssetRead)
+async def assign_owner(
+    asset_id: uuid.UUID,
+    payload: OwnerAssign,
     identity: IdentityContext = Depends(require_role("analyst")),
     db: AsyncSession = Depends(get_db),
-) -> AssetResponse:
-    row = await _load_owned(db, asset_id, identity.org_id)
-    updates = payload.model_dump(exclude_unset=True)
+) -> AssetRead:
+    """Two paths: pass an existing owner_id, or pass team+email to
+    create-or-find an owner row in one call."""
+    row = await _load_asset(db, asset_id)
+    previous_owner_id = row.owner_id
 
-    # Collect old values for change_log BEFORE we mutate
-    changes: dict[str, dict[str, Any]] = {}
-    for field, value in updates.items():
-        old = getattr(row, field, None)
-        if old != value:
-            changes[field] = {"old": _serializable(old), "new": _serializable(value)}
+    if payload.owner_id is not None:
+        # Verify the owner row exists.
+        owner = (
+            await db.execute(
+                select(Owner).where(Owner.id == payload.owner_id)
+            )
+        ).scalar_one_or_none()
+        if owner is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="owner_not_found",
+            )
+        row.owner_id = owner.id
+    elif payload.team and payload.email:
+        owner = (
+            await db.execute(
+                select(Owner)
+                .where(Owner.email == payload.email)
+                .where(Owner.team == payload.team)
+            )
+        ).scalar_one_or_none()
+        if owner is None:
+            owner = Owner(
+                team=payload.team,
+                email=payload.email,
+                department=payload.department,
+            )
+            db.add(owner)
+            await db.flush()
+        row.owner_id = owner.id
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="provide owner_id or team+email",
+        )
 
-    for field, value in updates.items():
-        setattr(row, field, value)
-
-    if changes:
-        _append_change_log(row, changed_by=identity.user_id, fields_changed=changes)
-
+    db.add(
+        AssetChangelog(
+            asset_id=row.id,
+            change_type="owner_changed",
+            previous_value={"owner_id": str(previous_owner_id) if previous_owner_id else None},
+            new_value={"owner_id": str(row.owner_id)},
+        )
+    )
     await db.commit()
     await db.refresh(row)
-    log_event(
-        AuditEventType.CONFIG_CHANGED,
-        AuditOutcome.SUCCESS,
-        tenant_id=str(identity.org_id),
-        subject=str(identity.user_id) if identity.user_id else "system",
-        resource=f"asset:{row.id}",
-        detail={
-            "action": "updated",
-            "fields_changed": sorted(changes.keys()),
-        },
-    )
-    return _to_response(row)
-
-
-@router.delete("/{asset_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_asset(
-    asset_id: uuid.UUID,
-    identity: IdentityContext = Depends(require_role("admin")),
-    db: AsyncSession = Depends(get_db),
-) -> None:
-    """Soft-delete: status → decommissioned. Hard delete reserved for
-    explicit /purge endpoint (Sprint 11)."""
-    row = await _load_owned(db, asset_id, identity.org_id)
-    old_status = row.status
-    row.status = "decommissioned"
-    _append_change_log(
-        row,
-        changed_by=identity.user_id,
-        fields_changed={"status": {"old": old_status, "new": "decommissioned"}},
-    )
-    await db.commit()
-    log_event(
-        AuditEventType.CONFIG_CHANGED,
-        AuditOutcome.SUCCESS,
-        tenant_id=str(identity.org_id),
-        subject=str(identity.user_id) if identity.user_id else "system",
-        resource=f"asset:{asset_id}",
-        detail={"action": "decommissioned", "previous_status": old_status},
-    )
-
-
-def _serializable(v: Any) -> Any:
-    """Coerce datetime / UUID into JSON-safe values for change_log."""
-    if isinstance(v, datetime):
-        return v.isoformat()
-    if isinstance(v, uuid.UUID):
-        return str(v)
-    return v
+    return _to_read(row)
