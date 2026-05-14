@@ -1,119 +1,118 @@
-"""AI Asset model — full Sprint 1 schema per blueprint.
+"""AI asset — the v2 node in the asset graph.
 
-An AI asset represents a deployed model / agent / RAG system / copilot that
-the platform monitors and protects. Most fields are JSONB blobs for things
-that don't need indexed querying (system_prompt, tools, mcp_servers, etc.).
-The flat fields are those we filter or aggregate on (provider, environment,
-exposure, owner, status).
+An asset is anything we discovered via a connector: a model, an
+endpoint, a dataset, a pipeline, an agent, or a tool. Identity in the
+source system is preserved as ``external_id`` and unique within a
+connector. Semantic search runs over ``embedding`` via pgvector.
 """
 
 from __future__ import annotations
 
 import uuid
-from typing import TYPE_CHECKING, Optional
+from datetime import datetime, timezone
+from typing import Any, Optional
 
-from sqlalchemy import Float, ForeignKey, Integer, String, Text
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+from pgvector.sqlalchemy import Vector
+from sqlalchemy import (
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Integer,
+    Text,
+    UniqueConstraint,
+)
+from sqlalchemy.dialects.postgresql import ENUM
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import (
     Base,
     JsonbDict,
-    JsonbList,
     TimestampUtc,
     TimestampUtcUpdated,
-    UUIDFk,
     UUIDPk,
 )
 
-if TYPE_CHECKING:
-    from app.db.models.organization import Organization
+ASSET_TYPE_ENUM = ENUM(
+    "model",
+    "endpoint",
+    "dataset",
+    "pipeline",
+    "agent",
+    "tool",
+    name="asset_type_enum",
+    create_type=False,
+)
+
+ASSET_STATUS_ENUM = ENUM(
+    "active",
+    "inactive",
+    "deprecated",
+    "unknown",
+    name="asset_status_enum",
+    create_type=False,
+)
 
 
 class AIAsset(Base):
     __tablename__ = "ai_assets"
+    __table_args__ = (
+        UniqueConstraint(
+            "connector_id", "external_id", name="uq_ai_assets_connector_external"
+        ),
+        CheckConstraint(
+            "risk_score BETWEEN 0 AND 100", name="ck_ai_assets_risk_score_range"
+        ),
+    )
 
     id: Mapped[UUIDPk]
-    org_id: Mapped[UUIDFk] = mapped_column(
-        ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    asset_type: Mapped[str] = mapped_column(ASSET_TYPE_ENUM, nullable=False, index=True)
+    asset_status: Mapped[str] = mapped_column(
+        ASSET_STATUS_ENUM, nullable=False, default="active"
     )
-
-    name: Mapped[str] = mapped_column(String(255), nullable=False)
-    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    status: Mapped[str] = mapped_column(
-        String(32), nullable=False, default="active"
-    )  # active | inactive | decommissioned | under_review
-
-    # --- Model identity ---
-    provider: Mapped[str] = mapped_column(
-        String(32), nullable=False, index=True
-    )  # openai | anthropic | google | azure_openai | bedrock | ollama | vllm | custom
-    model_name: Mapped[str] = mapped_column(String(128), nullable=False)
-    model_version: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
-    hosting: Mapped[str] = mapped_column(
-        String(32), nullable=False, default="saas_api"
-    )  # saas_api | self_hosted | private_cloud | on_prem
-    endpoint_url: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
-    connector_config: Mapped[JsonbDict]
-
-    # --- System configuration ---
-    system_prompt: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    temperature: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    max_tokens: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    top_p: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    tools: Mapped[JsonbList]
-    mcp_servers: Mapped[JsonbList]
-    rag_sources: Mapped[JsonbList]
-    plugins: Mapped[JsonbList]
-    fine_tuning: Mapped[JsonbDict]
-
-    # --- Exposure & classification ---
-    environment: Mapped[str] = mapped_column(
-        String(32), nullable=False, default="dev", index=True
-    )  # dev | staging | production
-    exposure: Mapped[str] = mapped_column(
-        String(32), nullable=False, default="internal_only"
-    )  # internal_only | customer_facing | public | api_only
-    data_classification: Mapped[str] = mapped_column(
-        String(32), nullable=False, default="internal"
-    )  # public | internal | confidential | restricted | regulated
-    user_base_size: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    interactions_per_day: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    regulatory_scope: Mapped[JsonbList]
-
-    # --- Supply chain (AI-BOM) — populated by Sprint 6 ---
-    dependencies: Mapped[JsonbList]
-    data_lineage: Mapped[JsonbList]
-    upstream_services: Mapped[JsonbList]
-    downstream_consumers: Mapped[JsonbList]
-    supply_chain_risk_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-
-    # --- Agent configuration (for agentic systems) ---
-    is_agentic: Mapped[bool] = mapped_column(default=False, nullable=False)
-    agent_framework: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
-    max_tool_calls_per_session: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    human_in_loop_required: Mapped[bool] = mapped_column(default=False, nullable=False)
-    allowed_external_actions: Mapped[JsonbList]
-    blast_radius_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-
-    # --- Security posture (cached, refreshed by evaluation runner) ---
-    last_evaluation_id: Mapped[Optional[uuid.UUID]] = mapped_column(nullable=True)
-    last_evaluation_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    last_evaluation_date: Mapped[Optional[TimestampUtc]] = mapped_column(nullable=True)
-    open_findings_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    critical_findings_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    runtime_agent_connected: Mapped[bool] = mapped_column(default=False, nullable=False)
-    runtime_agent_version: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
-    runtime_policy_id: Mapped[Optional[uuid.UUID]] = mapped_column(nullable=True)
-
-    # --- Metadata ---
+    provider: Mapped[str] = mapped_column(Text, nullable=False, index=True)
+    version: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    external_id: Mapped[str] = mapped_column(Text, nullable=False, index=True)
+    connector_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("connectors.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    risk_score: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, index=True
+    )
     owner_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+        ForeignKey("owners.id", ondelete="SET NULL"), nullable=True, index=True
     )
-    team: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
-    tags: Mapped[JsonbList]
-    change_log: Mapped[JsonbList]
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    metadata_json: Mapped[JsonbDict]
 
+    # pgvector. Nullable — we backfill embeddings lazily.
+    embedding: Mapped[Optional[Any]] = mapped_column(Vector(1536), nullable=True)
+
+    discovered_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+    last_seen_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow,
+        index=True,
+    )
     created_at: Mapped[TimestampUtc]
     updated_at: Mapped[TimestampUtcUpdated]
 
-    organization: Mapped["Organization"] = relationship()
+    connector: Mapped["Connector"] = relationship(  # noqa: F821
+        "Connector", lazy="joined"
+    )
+    owner: Mapped[Optional["Owner"]] = relationship(  # noqa: F821
+        "Owner", lazy="joined"
+    )
+    deployments: Mapped[list["Deployment"]] = relationship(  # noqa: F821
+        "Deployment", cascade="all, delete-orphan"
+    )
+    tags: Mapped[list["AssetTag"]] = relationship(  # noqa: F821
+        "AssetTag", cascade="all, delete-orphan"
+    )
