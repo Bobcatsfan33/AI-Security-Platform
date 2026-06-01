@@ -22,6 +22,12 @@ share/python-wheels/
 *.egg
 MANIFEST
 
+# The Python "lib/" ignore above is unanchored and would otherwise swallow
+# the frontend's source directory frontend/src/lib/ (the API client, etc.).
+# Re-include it explicitly — it is source, not a build artifact.
+!frontend/src/lib/
+!frontend/src/lib/**
+
 # Virtual envs
 .venv/
 venv/
