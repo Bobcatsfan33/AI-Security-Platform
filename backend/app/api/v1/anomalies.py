@@ -9,7 +9,7 @@ from typing import Any, Literal
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 
-from app.anomaly.attack_graph import build_attack_graph
+from app.anomaly.attack_graph import build_attack_graph, fetch_causal_subtree
 from app.anomaly.detector import Anomaly, detect_for_asset
 from app.auth.dependencies import require_role
 from app.identity.types import IdentityContext
@@ -26,8 +26,18 @@ class AttackGraphResponse(BaseModel):
     window: str
     total_events: int
     session_count: int
+    causal_edge_count: int = 0
+    concurrent_group_count: int = 0
     nodes: list[dict[str, Any]] = Field(default_factory=list)
     edges: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class CausalSubtreeResponse(BaseModel):
+    root_event_id: str
+    asset_id: str
+    window: str
+    event_count: int
+    events: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class AnomalyResponse(BaseModel):
@@ -80,3 +90,28 @@ async def detect(
         baseline_window=baseline_window,
     )
     return [_serialise(a) for a in anomalies]
+
+
+@router.get("/causal-subtree", response_model=CausalSubtreeResponse)
+async def get_causal_subtree(
+    asset_id: uuid.UUID = Query(...),
+    root_event_id: str = Query(..., description="Event id to reconstruct the causal chain from"),
+    window: Window = Query("24h"),
+    identity: IdentityContext = Depends(require_role("analyst")),
+) -> CausalSubtreeResponse:
+    """Reconstruct the causal subtree rooted at ``root_event_id`` — that event
+    plus every event it transitively caused. This is the analyst's incident
+    timeline: pivot from any event to the complete chain it set off."""
+    events = fetch_causal_subtree(
+        org_id=identity.org_id,
+        asset_id=asset_id,
+        root_event_id=root_event_id,
+        window=window,
+    )
+    return CausalSubtreeResponse(
+        root_event_id=root_event_id,
+        asset_id=str(asset_id),
+        window=window,
+        event_count=len(events),
+        events=events,
+    )
