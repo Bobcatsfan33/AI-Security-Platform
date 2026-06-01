@@ -111,6 +111,13 @@ class EventIn(BaseModel):
     sdk_version: str = ""
     agent_version: str = ""
 
+    # Causal lineage (poset spine). Optional so older agents that don't
+    # emit lineage still ingest cleanly; absent => fresh root downstream.
+    parent_event_id: uuid.UUID | None = None
+    root_event_id: uuid.UUID | None = None
+    causal_depth: int = 0
+    correlation_key: str = ""
+
 
 class EventBatch(BaseModel):
     events: list[EventIn] = Field(..., min_length=1, max_length=500)
@@ -254,6 +261,10 @@ def _to_runtime_event(e: EventIn) -> RuntimeEvent:
         user_identifier_hash=e.user_identifier_hash,
         sdk_version=e.sdk_version,
         agent_version=e.agent_version,
+        parent_event_id=e.parent_event_id,
+        root_event_id=e.root_event_id,
+        causal_depth=e.causal_depth,
+        correlation_key=e.correlation_key,
     )
 
 
