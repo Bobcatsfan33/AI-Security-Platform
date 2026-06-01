@@ -10,7 +10,7 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
 
 EventType = Literal[
     "request",
@@ -64,6 +64,24 @@ class RuntimeEvent:
     tool_name: Optional[str] = None
     tool_args_hash: Optional[str] = None
 
+    # ── Causal lineage (poset spine) ──────────────────────────────────
+    # These fields turn the flat event stream into a partially-ordered set
+    # (poset): each event records which event caused it (``parent_event_id``)
+    # and which originating request it descends from (``root_event_id``).
+    # ``causal_depth`` is the hop count from the root — the primitive that
+    # multi-hop propagation detection keys off. ``correlation_key`` spans
+    # agent instances (a shared task / message / trace id) so the attack
+    # graph can be threaded ACROSS agents, not just within one session.
+    #
+    # A root event (a fresh inbound request with no upstream cause) leaves
+    # ``parent_event_id`` None; ``__post_init__`` then sets ``root_event_id``
+    # to its own ``event_id`` and ``causal_depth`` to 0. Downstream events
+    # are constructed with :meth:`child`, which threads the lineage forward.
+    parent_event_id: Optional[uuid.UUID] = None
+    root_event_id: Optional[uuid.UUID] = None
+    causal_depth: int = 0
+    correlation_key: str = ""
+
     policies_checked: int = 0
     policies_failed: int = 0
     policy_results: str = "[]"  # JSON string
@@ -88,6 +106,41 @@ class RuntimeEvent:
     user_identifier_hash: str = ""
     sdk_version: str = ""
     agent_version: str = ""
+
+    def __post_init__(self) -> None:
+        # Resolve the poset root. A root event (no upstream cause) is its
+        # own root at depth 0. Frozen dataclass → mutate via object.__setattr__.
+        if self.root_event_id is None and self.parent_event_id is None:
+            object.__setattr__(self, "root_event_id", self.event_id)
+        # Default the correlation key to the root so single-agent chains
+        # still thread; cross-agent flows override it explicitly upstream.
+        if not self.correlation_key and self.root_event_id is not None:
+            object.__setattr__(self, "correlation_key", str(self.root_event_id))
+
+    def child(self, **overrides: Any) -> "RuntimeEvent":
+        """Construct a downstream event caused by this one.
+
+        Threads the poset lineage forward: the new event's parent is this
+        event, it shares this event's ``root_event_id`` and
+        ``correlation_key``, and its ``causal_depth`` is one greater. Any
+        field can be overridden via kwargs (event_type, tool_name, etc.).
+        """
+        lineage: dict[str, Any] = {
+            "org_id": self.org_id,
+            "asset_id": self.asset_id,
+            "agent_instance_id": self.agent_instance_id,
+            "session_id": self.session_id,
+            "direction": self.direction,
+            "enforcement_level": self.enforcement_level,
+            "pipeline_exit_stage": self.pipeline_exit_stage,
+            "action_taken": self.action_taken,
+            "parent_event_id": self.event_id,
+            "root_event_id": self.root_event_id,
+            "causal_depth": self.causal_depth + 1,
+            "correlation_key": self.correlation_key,
+        }
+        lineage.update(overrides)
+        return RuntimeEvent(**lineage)
 
     def to_row(self) -> tuple:
         """Return a positional tuple matching the column order of the
@@ -131,6 +184,12 @@ class RuntimeEvent:
             self.user_identifier_hash,
             self.sdk_version,
             self.agent_version,
+            # Causal lineage (poset spine) — appended; keep last to match
+            # the ALTER in clickhouse/init/02-add-causal-columns.sql.
+            self.parent_event_id,
+            self.root_event_id,
+            self.causal_depth,
+            self.correlation_key,
         )
 
 
@@ -175,4 +234,8 @@ RUNTIME_EVENTS_COLUMNS: tuple[str, ...] = (
     "user_identifier_hash",
     "sdk_version",
     "agent_version",
+    "parent_event_id",
+    "root_event_id",
+    "causal_depth",
+    "correlation_key",
 )

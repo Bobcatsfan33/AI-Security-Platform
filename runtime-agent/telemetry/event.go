@@ -15,14 +15,14 @@ import (
 // Field names use snake_case to match the wire format the control plane
 // expects on POST /v1/runtime/events.
 type Event struct {
-	EventID           string    `json:"event_id"`
-	OrgID             string    `json:"org_id"`
-	AssetID           string    `json:"asset_id"`
-	AgentInstanceID   string    `json:"agent_instance_id"`
-	SessionID         string    `json:"session_id"`
-	Timestamp         time.Time `json:"timestamp"`
-	EventType         string    `json:"event_type"`
-	Direction         string    `json:"direction"`
+	EventID         string    `json:"event_id"`
+	OrgID           string    `json:"org_id"`
+	AssetID         string    `json:"asset_id"`
+	AgentInstanceID string    `json:"agent_instance_id"`
+	SessionID       string    `json:"session_id"`
+	Timestamp       time.Time `json:"timestamp"`
+	EventType       string    `json:"event_type"`
+	Direction       string    `json:"direction"`
 
 	PromptHash      string `json:"prompt_hash"`
 	PromptSnippet   string `json:"prompt_snippet"`
@@ -31,13 +31,13 @@ type Event struct {
 	ToolName        string `json:"tool_name,omitempty"`
 	ToolArgsHash    string `json:"tool_args_hash,omitempty"`
 
-	PoliciesChecked   int                  `json:"policies_checked"`
-	PoliciesFailed    int                  `json:"policies_failed"`
-	PolicyResults     string               `json:"policy_results"` // JSON string
+	PoliciesChecked   int                      `json:"policies_checked"`
+	PoliciesFailed    int                      `json:"policies_failed"`
+	PolicyResults     string                   `json:"policy_results"` // JSON string
 	EnforcementLevel  policy.EnforcementLevel  `json:"enforcement_level"`
 	PipelineExitStage policy.PipelineExitStage `json:"pipeline_exit_stage"`
 	ActionTaken       policy.Action            `json:"action_taken"`
-	BlockReason       string               `json:"block_reason,omitempty"`
+	BlockReason       string                   `json:"block_reason,omitempty"`
 
 	RiskScore        float32 `json:"risk_score"`
 	LatencyMS        uint32  `json:"latency_ms"`
@@ -53,6 +53,17 @@ type Event struct {
 	UserIdentifierHash string `json:"user_identifier_hash"`
 	SDKVersion         string `json:"sdk_version"`
 	AgentVersion       string `json:"agent_version"`
+
+	// Causal lineage (poset spine). Mirrors the Python RuntimeEvent.
+	// ParentEventID is the event that caused this one; RootEventID is the
+	// originating request; CausalDepth is the hop count from the root;
+	// CorrelationKey threads a flow across agent instances. Populated from
+	// inbound propagation headers (see proxy/causal.go); empty/zero for a
+	// fresh root event.
+	ParentEventID  string `json:"parent_event_id,omitempty"`
+	RootEventID    string `json:"root_event_id,omitempty"`
+	CausalDepth    uint16 `json:"causal_depth"`
+	CorrelationKey string `json:"correlation_key,omitempty"`
 }
 
 // NewEvent constructs a fresh event with auto-generated event_id and
