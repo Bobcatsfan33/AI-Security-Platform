@@ -53,7 +53,16 @@ CREATE TABLE IF NOT EXISTS telemetry.runtime_events (
     source_ip String,
     user_identifier_hash String,
     sdk_version String,
-    agent_version String
+    agent_version String,
+
+    -- Causal lineage (poset spine). parent_event_id is the event that
+    -- caused this one; root_event_id is the originating request; causal_depth
+    -- is the hop count from root; correlation_key threads a flow across
+    -- agent instances. See backend/app/telemetry/runtime_event.py.
+    parent_event_id Nullable(UUID),
+    root_event_id Nullable(UUID),
+    causal_depth UInt16 DEFAULT 0,
+    correlation_key String DEFAULT ''
 )
 ENGINE = MergeTree()
 PARTITION BY toYYYYMM(timestamp)

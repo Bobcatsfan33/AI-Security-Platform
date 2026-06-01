@@ -63,13 +63,13 @@ func Handler(cfg Config) http.Handler {
 }
 
 // serveProxy is the hot path. Steps:
-//   1. Read + buffer the request body (size-bounded)
-//   2. Detect the provider from URL path
-//   3. Extract prompt for policy inspection
-//   4. Run the policy pipeline against the cached CompiledPolicy
-//   5. On block: respond 451 with the structured violation
-//   6. On allow: forward to upstream via httputil.ReverseProxy
-//   7. Emit telemetry event regardless of outcome
+//  1. Read + buffer the request body (size-bounded)
+//  2. Detect the provider from URL path
+//  3. Extract prompt for policy inspection
+//  4. Run the policy pipeline against the cached CompiledPolicy
+//  5. On block: respond 451 with the structured violation
+//  6. On allow: forward to upstream via httputil.ReverseProxy
+//  7. Emit telemetry event regardless of outcome
 func serveProxy(cfg Config, w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 	ctx := r.Context()
@@ -102,7 +102,7 @@ func serveProxy(cfg Config, w http.ResponseWriter, r *http.Request) {
 		// tool name (Sprint 7 follow-on).
 		if blocked, reason := cfg.KillSwitch.ShouldBlock("", ""); blocked {
 			writeBlocked(w, reason, policy.SeverityCritical)
-			emitEvent(cfg, &extracted, nil, nil, body, nil, start, "blocked_kill_switch")
+			emitEvent(cfg, &extracted, nil, nil, body, nil, start, "blocked_kill_switch", r.Header)
 			return
 		}
 	}
@@ -120,14 +120,14 @@ func serveProxy(cfg Config, w http.ResponseWriter, r *http.Request) {
 		// No policy available. Per blueprint: fail-open by default for
 		// dev. Production deployments configure fail-closed.
 		cfg.Log.Warn().Str("policy_id", cfg.PolicyID).Msg("proxy_no_policy_cached")
-		emitEvent(cfg, &extracted, nil, nil, body, nil, start, "passthrough_no_policy")
+		emitEvent(cfg, &extracted, nil, nil, body, nil, start, "passthrough_no_policy", r.Header)
 		forward(cfg, w, r, provider, upstreamPath, body)
 		return
 	}
 
 	if cfg.Cache.IsStale(cfg.PolicyID) && compiled.FailBehavior == policy.FailClosed {
 		writeBlocked(w, "policy_cache_stale_fail_closed", policy.SeverityCritical)
-		emitEvent(cfg, &extracted, compiled, nil, body, nil, start, "blocked_stale_cache")
+		emitEvent(cfg, &extracted, compiled, nil, body, nil, start, "blocked_stale_cache", r.Header)
 		return
 	}
 
@@ -147,7 +147,7 @@ func serveProxy(cfg Config, w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		cfg.Log.Info().Str("path", upstreamPath).Msg("proxy_unknown_format_passthrough")
-		emitEvent(cfg, &extracted, compiled, nil, body, nil, start, "passthrough_unknown_format")
+		emitEvent(cfg, &extracted, compiled, nil, body, nil, start, "passthrough_unknown_format", r.Header)
 		forward(cfg, w, r, provider, upstreamPath, body)
 		return
 	}
@@ -156,12 +156,12 @@ func serveProxy(cfg Config, w http.ResponseWriter, r *http.Request) {
 
 	if decision.Blocked() {
 		writeBlocked(w, decision.BlockReason, decision.Severity)
-		emitEvent(cfg, &extracted, compiled, &decision, body, nil, start, "blocked")
+		emitEvent(cfg, &extracted, compiled, &decision, body, nil, start, "blocked", r.Header)
 		return
 	}
 
 	forward(cfg, w, r, provider, upstreamPath, body)
-	emitEvent(cfg, &extracted, compiled, &decision, body, nil, start, "allowed")
+	emitEvent(cfg, &extracted, compiled, &decision, body, nil, start, "allowed", r.Header)
 }
 
 func writeBlocked(w http.ResponseWriter, reason string, severity policy.Severity) {
@@ -218,10 +218,26 @@ func emitEvent(
 	_ []byte, // response body — populated by streaming interception (follow-on)
 	start time.Time,
 	action string,
+	reqHeaders http.Header,
 ) {
 	event := telemetry.NewEvent(cfg.OrgID, cfg.PolicyID, cfg.AgentID, "")
 	event.EventType = "request"
 	event.Direction = "inbound"
+
+	// Poset spine: if this request arrived carrying causal-lineage headers
+	// (i.e. it was triggered by an upstream agent's action routed through
+	// the proxy), thread that lineage onto the emitted event so the control
+	// plane can reconstruct the cross-agent causal chain. Absent headers →
+	// the event stays a fresh root (empty lineage, the control plane then
+	// treats its event_id as the poset root).
+	if causal, ok := CausalFromHeaders(reqHeaders); ok {
+		root, parent, corr, depth := ApplyCausalToEventFields(causal, true)
+		event.RootEventID = root
+		event.ParentEventID = parent
+		event.CorrelationKey = corr
+		event.CausalDepth = depth
+	}
+
 	event.PromptSnippet = snippet(extracted.UserText, 500)
 	event.PromptHash = sha256Hex(extracted.UserText)
 	event.LatencyMS = uint32(time.Since(start).Milliseconds())
