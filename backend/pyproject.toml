@@ -26,6 +26,9 @@ dependencies = [
     # Cache / pub-sub
     "redis[hiredis]>=5.2",
 
+    # Event streaming — Redpanda (Kafka-compatible) telemetry spine
+    "aiokafka>=0.11",
+
     # Telemetry — ClickHouse (sync HTTP client; we wrap async via run_in_executor
     # to avoid pulling in an experimental async fork).
     "clickhouse-connect>=0.8",

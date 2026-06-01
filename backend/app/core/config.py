@@ -39,8 +39,12 @@ class Settings(BaseSettings):
     # Redis — cache, policy pub/sub, JWT revocation list
     redis_url: str = "redis://localhost:6379/0"
 
-    # Redpanda — telemetry streaming (Sprint 7)
+    # Redpanda — telemetry streaming spine (Kafka-compatible)
     redpanda_brokers: str = "localhost:9092"
+    # When false, the ingest dual-write skips the broker entirely (ClickHouse
+    # only). Lets dev / CI run without Redpanda; production sets it true.
+    streaming_enabled: bool = False
+    runtime_events_topic: str = "runtime.events"
 
     # JWT signing
     jwt_secret: str = Field(min_length=32)

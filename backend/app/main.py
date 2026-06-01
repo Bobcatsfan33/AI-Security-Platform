@@ -35,6 +35,7 @@ from app.security.headers import RequestValidationMiddleware, SecurityHeadersMid
 from app.security.secret_gate import assert_production_secrets
 from app.services.redis_client import close_redis, get_redis
 from app.telemetry.clickhouse_writer import start_writer, stop_writer
+from app.streaming.events import set_producer
 
 
 @asynccontextmanager
@@ -52,6 +53,20 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     await get_redis()
     await start_writer()
 
+    # Streaming spine — start the Redpanda producer when enabled. Best-effort:
+    # a broker that's down must not block startup (telemetry is best-effort;
+    # ClickHouse is the durable store).
+    if settings.streaming_enabled:
+        from app.streaming.kafka_backend import build_producer
+
+        producer = build_producer(
+            brokers=settings.redpanda_brokers,
+            topic=settings.runtime_events_topic,
+        )
+        await producer.start()
+        set_producer(producer)
+        log.info("streaming_producer_enabled", topic=settings.runtime_events_topic)
+
     log_event(
         AuditEventType.STARTUP,
         resource="platform",
@@ -63,6 +78,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     log.info("platform_stopping")
     log_event(AuditEventType.SHUTDOWN, resource="platform")
     await stop_writer()
+
+    from app.streaming.events import get_producer
+
+    producer = get_producer()
+    if producer is not None:
+        await producer.stop()
+        set_producer(None)
     await close_redis()
 
 

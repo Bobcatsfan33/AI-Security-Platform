@@ -33,6 +33,7 @@ from app.identity.types import IdentityContext
 from app.services.redis_client import get_redis
 from app.siem.exporters import SiemEvent
 from app.siem.forwarder import get_forwarder
+from app.streaming.events import get_producer
 from app.telemetry.clickhouse_writer import record_runtime_event
 from app.telemetry.runtime_event import RuntimeEvent
 
@@ -168,6 +169,18 @@ async def ingest_events(
             )
             continue
         accepted += 1
+        # Dual-write to the streaming spine so the EPA fleet sees events live.
+        # ClickHouse is the durable store; the broker is best-effort — a
+        # publish failure must never fail an already-accepted ingest.
+        producer = get_producer()
+        if producer is not None:
+            try:
+                await producer.publish(ev)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "runtime_event_stream_publish_failed",
+                    extra={"event_id": event.event_id, "error": str(exc)},
+                )
         # Mirror security-relevant runtime events to the SIEM forwarder.
         if event.event_type in {
             "policy_violation", "block", "kill_switch", "alert", "downgrade"
