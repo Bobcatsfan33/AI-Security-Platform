@@ -25,6 +25,8 @@ from dataclasses import dataclass
 
 from app.policy.compiled import CompiledPolicy
 from app.policy.stage1 import Stage1RegexEngine
+from app.policy.stage2_heuristic import HeuristicStage2
+from app.policy.stage3_judge import LlmJudgeStage3
 from app.policy.types import (
     Direction,
     PolicyDecision,
@@ -74,17 +76,19 @@ class PolicyPipeline:
 
     @classmethod
     def default(cls) -> "PolicyPipeline":
-        """Default wiring: real Stage 1 + no-op Stage 2 + no-op Stage 3.
+        """Default wiring: real Stage 1 + functional Stage 2 + Stage 3 judge.
 
-        Sprint 3 will replace ``stage2`` with the ONNX engine; Sprint 7
-        will replace ``stage3`` with the LLM judge. Construct via this
-        factory in app code; tests can construct PolicyPipeline directly
-        with custom stages.
+        Stage 2 is the zero-config :class:`HeuristicStage2` — swap in
+        ``OnnxClassifierStage2`` (built from a policy's classifier specs)
+        when a trained model is provisioned. Stage 3 is :class:`LlmJudgeStage3`
+        with the deterministic default judge — pass ``make_connector_judge``
+        to back it with a real model. Tests construct PolicyPipeline directly
+        with custom stages (e.g. _NoopStage2 for Stage-1-only behaviour).
         """
         return cls(
             stage1=Stage1RegexEngine(),
-            stage2=_NoopStage2(),
-            stage3=_NoopStage3(),
+            stage2=HeuristicStage2(),
+            stage3=LlmJudgeStage3(),
         )
 
     async def evaluate(
