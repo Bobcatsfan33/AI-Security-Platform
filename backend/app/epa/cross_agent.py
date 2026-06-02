@@ -241,4 +241,5 @@ class CrossAgentEPA:
             title=title,
             confidence=confidence,
             detail=detail,
+            correlation_key=state.correlation_key,
         )
