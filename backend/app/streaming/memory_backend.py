@@ -43,8 +43,17 @@ class InMemoryEventBus:
             return False
 
     async def consume(self) -> AsyncIterator[dict]:
-        while not self._closed:
-            yield await self._queue.get()
+        # Yields until the bus is closed AND drained. While open and empty it
+        # waits (polling so a concurrent stop() is noticed); after stop() it
+        # drains any remaining items then terminates — so EpaFleet.run() over
+        # this bus completes cleanly in tests.
+        while True:
+            if self._closed and self._queue.empty():
+                return
+            try:
+                yield await asyncio.wait_for(self._queue.get(), timeout=0.05)
+            except asyncio.TimeoutError:
+                continue
 
     def qsize(self) -> int:
         return self._queue.qsize()
