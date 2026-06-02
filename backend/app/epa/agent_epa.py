@@ -32,6 +32,9 @@ SignalKind = Literal[
     "behavioral_drift",
     "resource_acceleration",
     "agent_silent",
+    # Cross-agent (Sprint 7) — emitted by the correlation EPA, not per-agent.
+    "propagation_chain",
+    "coordinated_exfiltration",
 ]
 Severity = Literal["info", "low", "medium", "high", "critical"]
 

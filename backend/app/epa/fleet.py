@@ -32,11 +32,16 @@ class EpaFleet:
         store: EnvelopeStore,
         sink: Optional[SignalSink] = None,
         cache_size: int = 1024,
+        cross_agent: "Optional[Any]" = None,
     ) -> None:
         self._store = store
         self._sink = sink
         self._cache: dict[str, AgentEPA] = {}
         self._cache_size = cache_size
+        # Optional CrossAgentEPA — the per-flow correlation layer. When set,
+        # every event is fed to it after per-agent processing, so one stream
+        # drives both the per-agent and cross-agent detection layers.
+        self._cross_agent = cross_agent
         self.events_processed = 0
         self.signals_emitted = 0
 
@@ -59,6 +64,8 @@ class EpaFleet:
         epa = await self._get_epa(instance_id)
         signals = epa.process(event)
         await self._store.save(epa.env)
+        if self._cross_agent is not None:
+            signals = signals + await self._cross_agent.process(event)
         self.events_processed += 1
         await self._emit(signals)
         return signals
