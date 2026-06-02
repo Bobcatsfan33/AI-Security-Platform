@@ -7,7 +7,7 @@ monitoring" capability (brief §3.4) — the streaming successor to the batch
 anomaly detector.
 """
 
-from app.epa.agent_epa import AgentEPA, EpaSignal
+from app.epa.agent_epa import AgentEPA, EpaSignal, absence_signal
 from app.epa.envelope import BehavioralEnvelope
 from app.epa.fleet import EpaFleet
 from app.epa.store import (
@@ -19,6 +19,7 @@ from app.epa.store import (
 __all__ = [
     "AgentEPA",
     "EpaSignal",
+    "absence_signal",
     "BehavioralEnvelope",
     "EpaFleet",
     "EnvelopeStore",

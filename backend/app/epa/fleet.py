@@ -15,7 +15,7 @@ from __future__ import annotations
 import logging
 from typing import Any, AsyncIterator, Awaitable, Callable, Optional
 
-from app.epa.agent_epa import AgentEPA, EpaSignal
+from app.epa.agent_epa import AgentEPA, EpaSignal, absence_signal
 from app.epa.envelope import BehavioralEnvelope
 from app.epa.store import EnvelopeStore
 from app.anomaly.attack_graph import _norm
@@ -60,11 +60,41 @@ class EpaFleet:
         signals = epa.process(event)
         await self._store.save(epa.env)
         self.events_processed += 1
+        await self._emit(signals)
+        return signals
+
+    async def _emit(self, signals: list[EpaSignal]) -> None:
         for sig in signals:
             self.signals_emitted += 1
             if self._sink is not None:
                 await self._sink(sig)
-        return signals
+
+    async def sweep_absences(self, *, now: float, factor: float = 4.0) -> list[EpaSignal]:
+        """Supervisory sweep: emit agent_silent signals for cached mature
+        agents that have gone quiet past ``factor`` × their normal interval.
+        Absence is the LACK of an event, so it can't be event-driven — the
+        fleet runs this on a timer.
+
+        Note: sweeps the live EPA cache. A full sweep over all persisted
+        envelopes (Redis SCAN) is a production follow-on for cold agents not
+        currently cached."""
+        emitted: list[EpaSignal] = []
+        for epa in list(self._cache.values()):
+            sig = absence_signal(epa.env, now=now, factor=factor)
+            if sig is not None:
+                emitted.append(sig)
+        await self._emit(emitted)
+        return emitted
+
+    def stats(self) -> dict[str, Any]:
+        """Health snapshot for the supervisor / metrics endpoint."""
+        cached = list(self._cache.values())
+        return {
+            "events_processed": self.events_processed,
+            "signals_emitted": self.signals_emitted,
+            "agents_cached": len(cached),
+            "agents_mature": sum(1 for e in cached if e.env.mature),
+        }
 
     async def run(self, consumer: "AsyncIterator[dict] | Any") -> None:
         """Drain a consumer until it stops. Accepts either an EventConsumer

@@ -31,6 +31,7 @@ MATURITY_MIN = 50  # events before an envelope baselines and may alert
 NOVELTY_WINDOW = 50  # recent events tracked for drift
 RECENT_NODE_CACHE = 256  # bounded event_id→node map for causal-parent lookup
 VOLUME_WINDOW = 30  # recent node-id window for rate-based volume spikes
+ACCEL_WINDOW = 6  # recent inter-arrival intervals tracked for acceleration
 
 
 @dataclass
@@ -64,6 +65,16 @@ class BehavioralEnvelope:
     # recent traffic vs its lifetime share, not a cumulative count (cumulative
     # counts only grow, and a z-score that includes the spike is bounded).
     _recent_nodes: deque[str] = field(default_factory=lambda: deque(maxlen=VOLUME_WINDOW))
+
+    # Timing — for absence (agent went silent) and acceleration (API/token
+    # rate ramping toward exhaustion) detection. mean_interval is an EWMA of
+    # inter-arrival gaps; _recent_intervals feeds acceleration's monotonic-
+    # shrink check. tokens_total accumulates token spend for the report.
+    last_event_ts: float = 0.0
+    mean_interval: float = 0.0
+    _interval_alpha: float = 0.3
+    _recent_intervals: deque[float] = field(default_factory=lambda: deque(maxlen=ACCEL_WINDOW))
+    tokens_total: int = 0
 
     # Per-session previous node + bounded recent event→node map (causal lookup).
     _prev_node_by_session: dict[str, str] = field(default_factory=dict)
@@ -158,6 +169,34 @@ class BehavioralEnvelope:
         if event_id:
             self._recent_event_node.append((event_id, node_id))
 
+    def record_timing(self, now: float, tokens: int = 0) -> None:
+        """Record event arrival time + token spend. Updates the inter-arrival
+        EWMA and the recent-interval window used by acceleration detection."""
+        self.tokens_total += max(0, tokens)
+        if self.last_event_ts > 0.0:
+            dt = now - self.last_event_ts
+            if dt >= 0.0:
+                self._recent_intervals.append(dt)
+                if self.mean_interval == 0.0:
+                    self.mean_interval = dt
+                else:
+                    a = self._interval_alpha
+                    self.mean_interval = a * dt + (1 - a) * self.mean_interval
+        self.last_event_ts = now
+
+    def silent_for(self, now: float) -> float:
+        """Seconds since the last event (0 if never seen)."""
+        return now - self.last_event_ts if self.last_event_ts > 0.0 else 0.0
+
+    def is_accelerating(self) -> bool:
+        """True when recent inter-arrival intervals are strictly shrinking
+        across the whole window — API/token rate ramping (RAPIDE §4.4). Caught
+        as the curve, before any single rate threshold is breached."""
+        iv = list(self._recent_intervals)
+        if len(iv) < self._recent_intervals.maxlen:
+            return False
+        return all(iv[i] < iv[i - 1] for i in range(1, len(iv)))
+
     def maybe_freeze_baseline(self) -> None:
         """Freeze the reference snapshot exactly once, at maturity."""
         if self.baseline_risk_mean is None and self.mature:
@@ -182,6 +221,10 @@ class BehavioralEnvelope:
             "novelty_recent": list(self._novelty_recent),
             "lifetime_novel_edges": self.lifetime_novel_edges,
             "recent_nodes": list(self._recent_nodes),
+            "last_event_ts": self.last_event_ts,
+            "mean_interval": self.mean_interval,
+            "recent_intervals": list(self._recent_intervals),
+            "tokens_total": self.tokens_total,
             "prev_node_by_session": self._prev_node_by_session,
             "recent_event_node": [list(x) for x in self._recent_event_node],
         }
@@ -203,6 +246,10 @@ class BehavioralEnvelope:
         env._novelty_recent = deque(d.get("novelty_recent", []), maxlen=NOVELTY_WINDOW)
         env.lifetime_novel_edges = d.get("lifetime_novel_edges", 0)
         env._recent_nodes = deque(d.get("recent_nodes", []), maxlen=VOLUME_WINDOW)
+        env.last_event_ts = d.get("last_event_ts", 0.0)
+        env.mean_interval = d.get("mean_interval", 0.0)
+        env._recent_intervals = deque(d.get("recent_intervals", []), maxlen=ACCEL_WINDOW)
+        env.tokens_total = d.get("tokens_total", 0)
         env._prev_node_by_session = dict(d.get("prev_node_by_session", {}))
         env._recent_event_node = deque(
             (tuple(x) for x in d.get("recent_event_node", [])),
