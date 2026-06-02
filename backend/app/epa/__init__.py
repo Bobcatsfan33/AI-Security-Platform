@@ -8,6 +8,13 @@ anomaly detector.
 """
 
 from app.epa.agent_epa import AgentEPA, EpaSignal, absence_signal
+from app.epa.cross_agent import (
+    CorrelationState,
+    CorrelationStore,
+    CrossAgentEPA,
+    InMemoryCorrelationStore,
+    RedisCorrelationStore,
+)
 from app.epa.envelope import BehavioralEnvelope
 from app.epa.fleet import EpaFleet
 from app.epa.store import (
@@ -22,6 +29,11 @@ __all__ = [
     "absence_signal",
     "BehavioralEnvelope",
     "EpaFleet",
+    "CrossAgentEPA",
+    "CorrelationState",
+    "CorrelationStore",
+    "InMemoryCorrelationStore",
+    "RedisCorrelationStore",
     "EnvelopeStore",
     "InMemoryEnvelopeStore",
     "RedisEnvelopeStore",
