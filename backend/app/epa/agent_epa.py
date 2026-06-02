@@ -18,7 +18,7 @@ the envelope matures.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 from typing import Any, Literal
 
@@ -58,6 +58,9 @@ class EpaSignal:
     title: str
     confidence: float = 0.5
     detail: dict[str, Any] = field(default_factory=dict)
+    # The poset flow this signal belongs to — lets the Tier-3 narrative
+    # builder group per-agent and cross-agent signals of one incident together.
+    correlation_key: str = ""
 
 
 class AgentEPA:
@@ -222,6 +225,11 @@ class AgentEPA:
 
         # Freeze the baseline the moment we cross maturity.
         env.maybe_freeze_baseline()
+
+        # Tag every signal with the flow it belongs to (for Tier-3 grouping).
+        corr = _norm(event.get("correlation_key"))
+        if corr and signals:
+            signals = [replace(s, correlation_key=corr) for s in signals]
         return signals
 
 
