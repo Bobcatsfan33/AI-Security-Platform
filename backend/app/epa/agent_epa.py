@@ -19,12 +19,20 @@ the envelope matures.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any, Literal
 
 from app.anomaly.attack_graph import _classify, _norm
 from app.epa.envelope import BehavioralEnvelope
 
-SignalKind = Literal["novel_transition", "volume_spike", "risk_inflation", "behavioral_drift"]
+SignalKind = Literal[
+    "novel_transition",
+    "volume_spike",
+    "risk_inflation",
+    "behavioral_drift",
+    "resource_acceleration",
+    "agent_silent",
+]
 Severity = Literal["info", "low", "medium", "high", "critical"]
 
 # Thresholds (mirror app.anomaly.detector where applicable).
@@ -57,7 +65,9 @@ class AgentEPA:
     def __init__(self, envelope: BehavioralEnvelope) -> None:
         self.env = envelope
 
-    def process(self, event: dict[str, Any]) -> list[EpaSignal]:
+    def process(self, event: dict[str, Any], *, now: float | None = None) -> list[EpaSignal]:
+        if now is None:
+            now = _event_epoch(event)
         env = self.env
         org = env.org_id or _norm(event.get("org_id"))
         asset = env.asset_id or _norm(event.get("asset_id"))
@@ -132,6 +142,29 @@ class AgentEPA:
             env.record_edge(edge, novel=is_novel_edge)
         env.remember_event(event_id, node_id)
         env._prev_node_by_session[session] = node_id
+        tokens = int(event.get("token_count_input") or 0) + int(
+            event.get("token_count_output") or 0
+        )
+        if now is not None:
+            env.record_timing(now, tokens=tokens)
+
+        # ── resource acceleration (API/token rate ramping) ──────────
+        if mature and env.is_accelerating():
+            signals.append(
+                EpaSignal(
+                    agent_instance_id=env.agent_instance_id,
+                    org_id=org,
+                    asset_id=asset,
+                    kind="resource_acceleration",
+                    severity="high",
+                    title=f"Accelerating request rate on {env.agent_instance_id}",
+                    confidence=0.6,
+                    detail={
+                        "mean_interval_s": round(env.mean_interval, 4),
+                        "tokens_total": env.tokens_total,
+                    },
+                )
+            )
 
         # ── volume spike (rate, not cumulative count) ────────────────
         # A node dominating recent traffic far beyond its lifetime share =
@@ -187,3 +220,40 @@ class AgentEPA:
         # Freeze the baseline the moment we cross maturity.
         env.maybe_freeze_baseline()
         return signals
+
+
+def _event_epoch(event: dict[str, Any]) -> float | None:
+    """Best-effort epoch seconds from a wire event's ISO timestamp. Returns
+    None when absent/unparseable so timing-based detection is simply skipped
+    rather than guessing (callers pass an explicit ``now`` in tests)."""
+    raw = event.get("timestamp")
+    if not raw:
+        return None
+    try:
+        return datetime.fromisoformat(str(raw).replace("Z", "+00:00")).timestamp()
+    except (ValueError, TypeError):
+        return None
+
+
+def absence_signal(env: BehavioralEnvelope, *, now: float, factor: float) -> EpaSignal | None:
+    """Negative/absence detection (RAPIDE §3.4): a mature agent that has gone
+    silent for ``factor`` × its normal inter-event interval. Evaluated by the
+    fleet's sweep, not per-event (absence is the LACK of an event)."""
+    if not env.mature or env.mean_interval <= 0.0:
+        return None
+    silent = env.silent_for(now)
+    if silent > factor * env.mean_interval:
+        return EpaSignal(
+            agent_instance_id=env.agent_instance_id,
+            org_id=env.org_id,
+            asset_id=env.asset_id,
+            kind="agent_silent",
+            severity="medium",
+            title=f"Agent {env.agent_instance_id} went silent",
+            confidence=0.55,
+            detail={
+                "silent_seconds": round(silent, 2),
+                "expected_interval_s": round(env.mean_interval, 4),
+            },
+        )
+    return None

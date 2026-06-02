@@ -52,10 +52,10 @@ class Anomaly:
 # ─────────────────────────────────────────── thresholds
 
 
-VOLUME_SPIKE_SIGMA = 3.0          # at least 3 stddev above baseline mean
-VOLUME_SPIKE_MIN_COUNT = 10       # ignore noise below this absolute floor
-RISK_INFLATION_DELTA = 0.20       # avg risk must climb at least 20 pts
-RISK_INFLATION_MIN_AVG = 0.50     # current avg must be >= 0.5 to flag
+VOLUME_SPIKE_SIGMA = 3.0  # at least 3 stddev above baseline mean
+VOLUME_SPIKE_MIN_COUNT = 10  # ignore noise below this absolute floor
+RISK_INFLATION_DELTA = 0.20  # avg risk must climb at least 20 pts
+RISK_INFLATION_MIN_AVG = 0.50  # current avg must be >= 0.5 to flag
 
 
 # ─────────────────────────────────────────── core detector
@@ -158,8 +158,7 @@ def detect_anomalies(
                     kind="risk_inflation",
                     severity="high" if cur_stats.avg_risk >= 0.8 else "medium",
                     title=(
-                        f"Risk score climbing on {cur_stats.node.kind}:"
-                        f"{cur_stats.node.key}"
+                        f"Risk score climbing on {cur_stats.node.kind}:" f"{cur_stats.node.key}"
                     ),
                     detail={
                         "node": node_id,
@@ -193,18 +192,21 @@ def detect_for_asset(
 ) -> list[Anomaly]:
     """Build both graphs from ClickHouse and run detection.
 
+    .. deprecated:: Sprint 6
+        Pull-based, batch, per-asset detection. The streaming EPA fleet
+        (``app.epa``) supersedes it: continuous per-agent envelopes instead of
+        recomputing two windows on every call, plus absence and acceleration
+        detection the batch path can't express. This remains for the legacy
+        ``GET /v1/anomalies`` endpoint and as a backfill/replay tool over
+        historical ClickHouse data; new detection should consume EPA signals.
+
     Returns an empty list if ClickHouse is unavailable or there's no
     baseline yet — the caller should not interpret "no anomalies" as
     "system healthy", only as "no signal".
     """
-    current = build_attack_graph(
-        org_id=org_id, asset_id=asset_id, window=current_window
-    )
-    baseline = build_attack_graph(
-        org_id=org_id, asset_id=asset_id, window=baseline_window
-    )
+    logger.info("detect_for_asset_called_deprecated_prefer_epa_fleet")
+    current = build_attack_graph(org_id=org_id, asset_id=asset_id, window=current_window)
+    baseline = build_attack_graph(org_id=org_id, asset_id=asset_id, window=baseline_window)
     if baseline.total_events == 0:
         return []
-    return detect_anomalies(
-        org_id=org_id, asset_id=asset_id, current=current, baseline=baseline
-    )
+    return detect_anomalies(org_id=org_id, asset_id=asset_id, current=current, baseline=baseline)
