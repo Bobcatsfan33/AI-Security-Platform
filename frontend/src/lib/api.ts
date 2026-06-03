@@ -266,3 +266,47 @@ export type ComplianceFramework = {
   control_count: number;
   controls: Array<{ id: string; title: string }>;
 };
+
+export type NarrativeStatus =
+  | "open"
+  | "confirmed"
+  | "false_positive"
+  | "suppressed"
+  | "resolved";
+
+export type ThreatNarrative = {
+  id: string;
+  correlation_id: string;
+  title: string;
+  severity: "info" | "low" | "medium" | "high" | "critical";
+  kind: string;
+  confidence: number;
+  agents: string[];
+  asset_id: string;
+  signal_count: number;
+  status: NarrativeStatus;
+  assignee: string;
+  rationale: string;
+  created_at: string;
+  disposition_at: string | null;
+  contributing: Array<Record<string, unknown>>;
+  causal_timeline: Array<Record<string, unknown>>;
+};
+
+export type DispositionInput = {
+  status: NarrativeStatus;
+  rationale?: string;
+  assignee?: string;
+};
+
+export const narratives = {
+  list: (params: { status?: string; severity?: string } = {}) => {
+    const qs = new URLSearchParams(
+      Object.entries(params).filter(([, v]) => Boolean(v)) as [string, string][],
+    ).toString();
+    return api.get<ThreatNarrative[]>(`/v1/narratives${qs ? `?${qs}` : ""}`);
+  },
+  get: (id: string) => api.get<ThreatNarrative>(`/v1/narratives/${id}`),
+  disposition: (id: string, body: DispositionInput) =>
+    api.patch<ThreatNarrative>(`/v1/narratives/${id}/disposition`, body),
+};

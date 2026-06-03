@@ -41,7 +41,66 @@ class ThreatNarrative:
     contributing: tuple[dict[str, Any], ...] = field(default_factory=tuple)
     causal_timeline: tuple[dict[str, Any], ...] = field(default_factory=tuple)
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
-    status: Literal["open", "confirmed", "false_positive", "suppressed", "resolved"] = "open"
+    status: "DispositionStatus" = "open"
+    # Triage (Phase E). Set when an analyst dispositions the narrative.
+    assignee: str = ""
+    rationale: str = ""
+    disposition_at: datetime | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "id": str(self.id),
+            "org_id": self.org_id,
+            "correlation_id": self.correlation_id,
+            "title": self.title,
+            "severity": self.severity,
+            "kind": self.kind,
+            "confidence": self.confidence,
+            "agents": list(self.agents),
+            "asset_id": self.asset_id,
+            "signal_count": self.signal_count,
+            "contributing": list(self.contributing),
+            "causal_timeline": list(self.causal_timeline),
+            "created_at": self.created_at.isoformat(),
+            "status": self.status,
+            "assignee": self.assignee,
+            "rationale": self.rationale,
+            "disposition_at": self.disposition_at.isoformat() if self.disposition_at else None,
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> "ThreatNarrative":
+        return cls(
+            id=uuid.UUID(d["id"]),
+            org_id=d.get("org_id", ""),
+            correlation_id=d.get("correlation_id", ""),
+            title=d.get("title", ""),
+            severity=d.get("severity", "medium"),
+            kind=d.get("kind", ""),
+            confidence=d.get("confidence", 0.0),
+            agents=tuple(d.get("agents", [])),
+            asset_id=d.get("asset_id", ""),
+            signal_count=d.get("signal_count", 0),
+            contributing=tuple(d.get("contributing", [])),
+            causal_timeline=tuple(d.get("causal_timeline", [])),
+            created_at=_parse_dt(d.get("created_at")) or datetime.now(timezone.utc),
+            status=d.get("status", "open"),
+            assignee=d.get("assignee", ""),
+            rationale=d.get("rationale", ""),
+            disposition_at=_parse_dt(d.get("disposition_at")),
+        )
+
+
+DispositionStatus = Literal["open", "confirmed", "false_positive", "suppressed", "resolved"]
+
+
+def _parse_dt(raw: Any) -> datetime | None:
+    if not raw:
+        return None
+    try:
+        return datetime.fromisoformat(str(raw))
+    except (ValueError, TypeError):
+        return None
 
 
 def severity_rank(sev: str) -> int:
