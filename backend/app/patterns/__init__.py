@@ -13,6 +13,8 @@ from app.patterns.compiled import (
     compile_pattern,
 )
 from app.patterns.evaluator import PatternMatch, evaluate
+from app.patterns.library import library_by_name, library_specs, load_library
+from app.patterns.promotion import pattern_match_to_testcase
 from app.patterns.registry import (
     PATTERN_RELOAD_CHANNEL,
     PatternRegistry,
@@ -32,4 +34,8 @@ __all__ = [
     "get_registry",
     "publish_pattern_reload",
     "reset_for_tests",
+    "library_specs",
+    "load_library",
+    "library_by_name",
+    "pattern_match_to_testcase",
 ]
