@@ -134,3 +134,23 @@ class RuntimeAgentUser(HttpUser):
             json=batch,
             name="/v1/runtime/events",
         )
+
+    # ── RAPIDE detection-stack endpoints (Sprint 14 scale-test scaffolding) ──
+    # NOTE: scaffolding. Meaningful numbers require a populated narrative store
+    # and a running EPA consumer fleet under load — wire those before trusting
+    # throughput figures here.
+    @task(2)
+    def list_narratives(self) -> None:
+        self.client.get(
+            "/v1/narratives?status=open",
+            headers=self.headers,
+            name="/v1/narratives",
+        )
+
+    @task(1)
+    def efficacy(self) -> None:
+        self.client.get(
+            "/v1/validation/efficacy",
+            headers=self.headers,
+            name="/v1/validation/efficacy",
+        )

@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends
 
 from app.auth.dependencies import require_role
 from app.identity.types import IdentityContext
+from app.reports.efficacy import build_efficacy_report
 from app.validation.harness import run_suite
 
 router = APIRouter(tags=["validation"])
@@ -25,3 +26,13 @@ async def efficacy(
 ) -> dict[str, Any]:
     suite = await run_suite()
     return suite.summary()
+
+
+@router.get("/efficacy/report")
+async def efficacy_report(
+    identity: IdentityContext = Depends(require_role("admin")),
+) -> dict[str, str]:
+    """Run the suite and render a Markdown detection-efficacy report."""
+    suite = await run_suite()
+    markdown = build_efficacy_report(suite.summary())
+    return {"markdown": markdown}
