@@ -1,0 +1,57 @@
+# EPA consumer Deployment — the long-running detection service.
+#
+# Consumes the Redpanda runtime-event stream, drives the EPA fleet + cross-agent
+# correlation, and persists Tier-3 narratives for the analyst workbench. This is
+# a SEPARATE workload from the control-plane API: it scales horizontally with
+# the runtime.events topic's partition count (each replica joins the "epa-fleet"
+# consumer group; partitions rebalance across replicas).
+#
+# Required edits before applying:
+#   1. Point REDPANDA_BROKERS / REDIS_URL / CLICKHOUSE_URL at your infra.
+#   2. Provide JWT_SECRET via a real Secret (shown inline for clarity only).
+#   3. Set the image to your built control-plane image.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: epa-consumer
+  labels:
+    app.kubernetes.io/name: ai-security-platform
+    app.kubernetes.io/component: epa-consumer
+spec:
+  # Scale up to (but not beyond) the runtime.events partition count.
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: epa-consumer
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: ai-security-platform
+        app.kubernetes.io/component: epa-consumer
+    spec:
+      containers:
+        - name: epa-consumer
+          image: ghcr.io/REPLACE_ME/ai-security-platform:latest
+          command: ["python", "-m", "scripts.epa_consumer"]
+          env:
+            - name: ENVIRONMENT
+              value: "production"
+            - name: REDPANDA_BROKERS
+              value: "redpanda:9092"
+            - name: REDIS_URL
+              value: "redis://redis:6379/0"
+            - name: CLICKHOUSE_URL
+              value: "http://clickhouse:8123"
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: ai-security-platform-secrets
+                  key: jwt-secret
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "256Mi"
+            limits:
+              cpu: "1"
+              memory: "512Mi"

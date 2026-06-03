@@ -17,6 +17,11 @@ from app.epa.cross_agent import (
 )
 from app.epa.envelope import BehavioralEnvelope
 from app.epa.fleet import EpaFleet
+
+# NOTE: EpaConsumerService is intentionally NOT eagerly imported here. It pulls
+# in app.narratives, which imports app.epa.agent_epa — eager import would create
+# an app.epa ↔ app.narratives cycle. Import it directly:
+#   from app.epa.service import EpaConsumerService
 from app.epa.store import (
     EnvelopeStore,
     InMemoryEnvelopeStore,
