@@ -90,6 +90,7 @@ services:
       REDIS_URL: redis://redis:6379/0
       CLICKHOUSE_URL: http://clickhouse:8123
       REDPANDA_BROKERS: redpanda:9092
+      STREAMING_ENABLED: "true"  # dual-write ingested events to the EPA stream
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set in your shell or .env}
       CORS_ORIGINS: http://localhost:3000
     ports:
@@ -97,6 +98,29 @@ services:
     volumes:
       - ./backend:/app
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+
+  # EPA consumer — the long-running detection service. Consumes the Redpanda
+  # runtime-event stream, drives the EPA fleet + cross-agent correlation, and
+  # persists Tier-3 narratives for the workbench. Scale by Redpanda partition
+  # count. STREAMING_ENABLED is implicit (it consumes directly, not via the API
+  # dual-write toggle); it needs the broker + Redis.
+  epa-consumer:
+    build:
+      context: ./backend
+    depends_on:
+      redis:    { condition: service_healthy }
+      redpanda: { condition: service_healthy }
+    environment:
+      ENVIRONMENT: development
+      LOG_LEVEL: INFO
+      DATABASE_URL: postgresql+asyncpg://platform:platform@postgres:5432/platform
+      REDIS_URL: redis://redis:6379/0
+      CLICKHOUSE_URL: http://clickhouse:8123
+      REDPANDA_BROKERS: redpanda:9092
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set in your shell or .env}
+    volumes:
+      - ./backend:/app
+    command: ["python", "-m", "scripts.epa_consumer"]
 
 volumes:
   postgres-data:
