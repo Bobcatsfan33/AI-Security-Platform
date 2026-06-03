@@ -29,6 +29,7 @@ from app.api.v1 import discovery as discovery_routes
 from app.api.v1 import health as health_routes
 from app.api.v1 import narratives as narratives_routes
 from app.api.v1 import runtime as runtime_routes
+from app.api.v1 import suppressions as suppressions_routes
 from app.core.config import get_settings
 from app.core.logging import configure_logging, get_logger
 from app.security.audit_log import AuditEventType, log_event
@@ -126,6 +127,7 @@ def create_app() -> FastAPI:
     app.include_router(dashboard_routes.router, prefix=f"{prefix}/dashboard")
     app.include_router(runtime_routes.router, prefix=f"{prefix}/runtime")
     app.include_router(narratives_routes.router, prefix=f"{prefix}/narratives")
+    app.include_router(suppressions_routes.router, prefix=f"{prefix}/suppressions")
 
     return app
 

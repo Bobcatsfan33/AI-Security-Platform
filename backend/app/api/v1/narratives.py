@@ -108,15 +108,35 @@ async def disposition_narrative(
         detail={"status": body.status, "rationale": body.rationale, "assignee": assignee},
     )
 
-    # A confirmed narrative becomes a SOAR incident carrying the causal chain.
-    if body.status == "confirmed":
+    # Feedback loop: false positives learn into a SUGGESTED suppression rule
+    # (human-approved before it takes effect); confirmed narratives promote to
+    # SOAR + a regression test case.
+    if body.status == "false_positive":
         try:
+            from app.feedback.service import on_false_positive
+            from app.feedback.store import RedisSuppressionStore
+
+            rule = on_false_positive(updated, reason=body.rationale, created_by=identity.email)
+            await RedisSuppressionStore(await get_redis()).save(rule)
+        except Exception:  # noqa: BLE001 - feedback is best-effort
+            pass
+    elif body.status == "confirmed":
+        try:
+            from app.feedback.service import narrative_to_testcase
             from app.soar.incidents import build_adapters
 
+            log_event(
+                "narrative.promoted",
+                tenant_id=str(identity.org_id),
+                subject=identity.email,
+                resource=f"narrative/{narrative_id}",
+                correlation_id=updated.correlation_id,
+                detail={"testcase": narrative_to_testcase(updated)},
+            )
             incident = narrative_to_incident(updated)
             for sink in build_adapters([]):  # org SOAR config wired in prod
                 await sink.open(incident)
-        except Exception:  # noqa: BLE001 - SOAR is fail-open
+        except Exception:  # noqa: BLE001 - SOAR/promotion is fail-open
             pass
 
     return _serialise(updated)
