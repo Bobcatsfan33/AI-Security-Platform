@@ -1,0 +1,133 @@
+[
+  {
+    "name": "cross-workspace-read-then-egress",
+    "version": 1,
+    "severity": "critical",
+    "category": "data_exfiltration",
+    "description": "A memory read from another agent's workspace, with no active task requiring cross-agent context, followed by an outbound call to an endpoint outside the approved tool manifest within 60s.",
+    "atlas_techniques": ["AML.T0057", "AML.T0024"],
+    "references": ["https://atlas.mitre.org/techniques/AML.T0057"],
+    "all_of": [
+      {"event": "memory_access", "where": {"workspace": {"ne": {"$ctx": "home_workspace"}}}},
+      {"absent": {"event": "task_assignment"}},
+      {"event": "external_api_call", "within": 60, "causally_after": "memory_access", "where": {"endpoint": {"not_in": {"$ctx": "tool_manifest"}}}}
+    ]
+  },
+  {
+    "name": "credential-access-then-egress",
+    "version": 1,
+    "severity": "critical",
+    "category": "credential_leakage",
+    "description": "Access to a secrets/credential resource followed by an outbound API call within 120s — credential harvest then exfiltration.",
+    "atlas_techniques": ["AML.T0055", "AML.T0024"],
+    "references": ["https://atlas.mitre.org/techniques/AML.T0055"],
+    "all_of": [
+      {"event": "file_access", "where": {"resource": {"contains": "secret"}}},
+      {"event": "external_api_call", "within": 120, "causally_after": "file_access"}
+    ]
+  },
+  {
+    "name": "injection-then-tool-escalation",
+    "version": 1,
+    "severity": "high",
+    "category": "prompt_injection",
+    "description": "A policy violation (injection detected) causally followed by a tool invocation within 60s — the injection drove a tool action.",
+    "atlas_techniques": ["AML.T0051"],
+    "references": ["https://atlas.mitre.org/techniques/AML.T0051"],
+    "all_of": [
+      {"event": "policy_violation"},
+      {"event": "tool_call", "within": 60, "causally_after": "policy_violation"}
+    ]
+  },
+  {
+    "name": "jailbreak-then-unsafe-tool",
+    "version": 1,
+    "severity": "critical",
+    "category": "jailbreak",
+    "description": "A jailbreak alert followed within 60s by invocation of a high-risk tool (shell/code/file execution).",
+    "atlas_techniques": ["AML.T0054"],
+    "references": ["https://atlas.mitre.org/techniques/AML.T0054"],
+    "all_of": [
+      {"event": "alert", "where": {"category": {"eq": "jailbreak"}}},
+      {"event": "tool_call", "within": 60, "causally_after": "alert", "where": {"tool_name": {"in": ["shell_exec", "code_exec", "file_write", "eval"]}}}
+    ]
+  },
+  {
+    "name": "indirect-injection-via-rag",
+    "version": 1,
+    "severity": "high",
+    "category": "indirect_injection",
+    "description": "An untrusted RAG retrieval causally followed by an outbound call within 60s — indirect prompt injection driving egress.",
+    "atlas_techniques": ["AML.T0051"],
+    "references": ["https://atlas.mitre.org/techniques/AML.T0051"],
+    "all_of": [
+      {"event": "rag_retrieval", "where": {"trusted": {"eq": false}}},
+      {"event": "external_api_call", "within": 60, "causally_after": "rag_retrieval"}
+    ]
+  },
+  {
+    "name": "multi-hop-instruction-propagation",
+    "version": 1,
+    "severity": "critical",
+    "category": "prompt_injection",
+    "description": "Injection detected, then a downstream tool call, then a further-downstream outbound call — a multi-hop propagation chain across causal depth.",
+    "atlas_techniques": ["AML.T0051", "AML.T0024"],
+    "references": ["https://atlas.mitre.org/techniques/AML.T0051"],
+    "all_of": [
+      {"event": "policy_violation"},
+      {"event": "tool_call", "causally_after": "policy_violation"},
+      {"event": "external_api_call", "causally_after": "tool_call"}
+    ]
+  },
+  {
+    "name": "unapproved-tool-invocation",
+    "version": 1,
+    "severity": "high",
+    "category": "unsafe_tool_use",
+    "description": "A tool invocation whose name is not in the agent's approved tool manifest — tool-firewall bypass / plugin compromise.",
+    "atlas_techniques": ["AML.T0053"],
+    "references": ["https://atlas.mitre.org/techniques/AML.T0053"],
+    "all_of": [
+      {"event": "tool_call", "where": {"tool_name": {"not_in": {"$ctx": "tool_manifest"}}}}
+    ]
+  },
+  {
+    "name": "model-downgrade-then-sensitive-action",
+    "version": 1,
+    "severity": "medium",
+    "category": "evasion",
+    "description": "A model downgrade followed within 120s by a tool invocation — downgrading to a weaker/unguarded model to slip a sensitive action through.",
+    "atlas_techniques": ["AML.T0054"],
+    "references": ["https://atlas.mitre.org/techniques/AML.T0054"],
+    "all_of": [
+      {"event": "downgrade"},
+      {"event": "tool_call", "within": 120, "causally_after": "downgrade"}
+    ]
+  },
+  {
+    "name": "blocked-then-retry-egress",
+    "version": 1,
+    "severity": "high",
+    "category": "data_exfiltration",
+    "description": "A blocked action followed within 30s by an outbound API call — the agent retried egress through a different path after a block.",
+    "atlas_techniques": ["AML.T0024"],
+    "references": ["https://atlas.mitre.org/techniques/AML.T0024"],
+    "all_of": [
+      {"event": "block"},
+      {"event": "external_api_call", "within": 30, "causally_after": "block"}
+    ]
+  },
+  {
+    "name": "staged-exfil-large-response",
+    "version": 1,
+    "severity": "high",
+    "category": "data_exfiltration",
+    "description": "A retrieval of a large volume of records causally followed by an outbound call — staged bulk exfiltration.",
+    "atlas_techniques": ["AML.T0057", "AML.T0024"],
+    "references": ["https://atlas.mitre.org/techniques/AML.T0024"],
+    "all_of": [
+      {"event": "rag_retrieval", "where": {"rag_documents_retrieved": {"gte": 50}}},
+      {"event": "external_api_call", "within": 120, "causally_after": "rag_retrieval"}
+    ]
+  }
+]

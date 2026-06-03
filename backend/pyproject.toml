@@ -78,6 +78,11 @@ dev = [
 [tool.setuptools.packages.find]
 include = ["app*"]
 
+[tool.setuptools.package-data]
+# Ship the JSON pattern library (data, not code) inside wheels so non-editable
+# installs can load it via importlib/Path.
+"app.patterns.library" = ["*.json"]
+
 [tool.ruff]
 line-length = 100
 target-version = "py311"

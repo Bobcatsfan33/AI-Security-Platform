@@ -96,6 +96,14 @@ class CompiledPattern:
     severity: Severity
     signal_kind: str
     conditions: tuple[CompiledCondition, ...]
+    # Library/content metadata. atlas_techniques maps the pattern to MITRE
+    # ATLAS (the AI-native analog to OWASP/NIST); version + references make
+    # patterns shippable, citable content.
+    version: int = 1
+    description: str = ""
+    atlas_techniques: tuple[str, ...] = field(default_factory=tuple)
+    references: tuple[str, ...] = field(default_factory=tuple)
+    category: str = ""
 
 
 def compile_pattern(spec: dict[str, Any]) -> CompiledPattern:
@@ -146,6 +154,11 @@ def compile_pattern(spec: dict[str, Any]) -> CompiledPattern:
         severity=str(spec.get("severity") or "medium"),
         signal_kind=str(spec.get("signal_kind") or "pattern_match"),
         conditions=tuple(conditions),
+        version=int(spec.get("version", 1)),
+        description=str(spec.get("description") or ""),
+        atlas_techniques=tuple(spec.get("atlas_techniques") or ()),
+        references=tuple(spec.get("references") or ()),
+        category=str(spec.get("category") or ""),
     )
 
 
