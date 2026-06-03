@@ -27,6 +27,7 @@ from app.api.v1 import connectors as connectors_routes
 from app.api.v1 import dashboard as dashboard_routes
 from app.api.v1 import discovery as discovery_routes
 from app.api.v1 import health as health_routes
+from app.api.v1 import narratives as narratives_routes
 from app.api.v1 import runtime as runtime_routes
 from app.core.config import get_settings
 from app.core.logging import configure_logging, get_logger
@@ -124,6 +125,7 @@ def create_app() -> FastAPI:
     app.include_router(discovery_routes.router, prefix=f"{prefix}/discovery")
     app.include_router(dashboard_routes.router, prefix=f"{prefix}/dashboard")
     app.include_router(runtime_routes.router, prefix=f"{prefix}/runtime")
+    app.include_router(narratives_routes.router, prefix=f"{prefix}/narratives")
 
     return app
 

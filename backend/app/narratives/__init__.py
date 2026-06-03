@@ -10,5 +10,19 @@ alert-fatigue payoff (brief §3.2, §6).
 
 from app.narratives.builder import NarrativeBuilder
 from app.narratives.narrative import ThreatNarrative, narrative_to_incident
+from app.narratives.store import (
+    InMemoryNarrativeStore,
+    NarrativeStore,
+    RedisNarrativeStore,
+    apply_disposition,
+)
 
-__all__ = ["NarrativeBuilder", "ThreatNarrative", "narrative_to_incident"]
+__all__ = [
+    "NarrativeBuilder",
+    "ThreatNarrative",
+    "narrative_to_incident",
+    "NarrativeStore",
+    "InMemoryNarrativeStore",
+    "RedisNarrativeStore",
+    "apply_disposition",
+]
