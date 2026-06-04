@@ -40,6 +40,13 @@ type config struct {
 	upstreamAnthropic string
 	upstreamAzure     string
 	upstreamBedrock   string
+
+	// Inline Stage 2/3 backends. Empty → zero-config heuristic / deterministic
+	// engine; set an endpoint to use the ONNX inference sidecar / LLM judge.
+	stage2Endpoint string
+	stage2Timeout  time.Duration
+	stage3Endpoint string
+	stage3Timeout  time.Duration
 }
 
 func loadConfig() config {
@@ -58,6 +65,10 @@ func loadConfig() config {
 		upstreamAnthropic: envOr("UPSTREAM_ANTHROPIC", "https://api.anthropic.com"),
 		upstreamAzure:     os.Getenv("UPSTREAM_AZURE"),
 		upstreamBedrock:   envOr("UPSTREAM_BEDROCK", "https://bedrock-runtime.us-east-1.amazonaws.com"),
+		stage2Endpoint:    os.Getenv("STAGE2_ONNX_ENDPOINT"),
+		stage2Timeout:     parseDuration(envOr("STAGE2_TIMEOUT", "150ms")),
+		stage3Endpoint:    os.Getenv("STAGE3_JUDGE_ENDPOINT"),
+		stage3Timeout:     parseDuration(envOr("STAGE3_TIMEOUT", "3s")),
 	}
 }
 
@@ -138,7 +149,16 @@ func main() {
 		log.Warn().Err(err).Msg("policy_initial_load_failed")
 	}
 
-	pipeline := policy.NewDefaultPipeline()
+	pipeline := policy.NewPipeline(policy.StageConfig{
+		Stage2Endpoint: cfg.stage2Endpoint,
+		Stage2Timeout:  cfg.stage2Timeout,
+		Stage3Endpoint: cfg.stage3Endpoint,
+		Stage3Timeout:  cfg.stage3Timeout,
+	})
+	log.Info().
+		Bool("stage2_onnx", cfg.stage2Endpoint != "").
+		Bool("stage3_judge", cfg.stage3Endpoint != "").
+		Msg("inline_pipeline_wired")
 
 	// Kill switch state — emergency commands from the control plane
 	killSwitch := management.NewKillSwitchState()
