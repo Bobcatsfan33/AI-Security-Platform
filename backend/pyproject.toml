@@ -123,8 +123,11 @@ omit = ["app/**/migrations/*", "app/main.py"]
 # So this floor is pinned just below current actual coverage and is meant
 # to be RATCHETED UP as the testing workstream adds tests — never lowered.
 # Raise it whenever a sprint pushes measured coverage past the next rung.
-# Current full-suite coverage (PG+redis in CI) is ~25%; floor set just below
-# with margin so a skipped integration test can't flip CI red spuriously.
-fail_under = 24
+# Ratchet rungs toward the 80% target: 24 → 40 → 60 → 80.
+# A2 added contract tests for siem (6 forwarders), soar, threat_intel, and
+# connector base — unit-only coverage is now ~36%; CI's full suite (PG+redis
+# integration) clears 40. Next rung (60) needs scim filters + connector
+# generate() paths + api routers covered.
+fail_under = 40
 show_missing = true
 skip_covered = false
