@@ -21,7 +21,7 @@ admin UI, and supporting SDKs for OpenAI / Anthropic.
 | **Findings** | Hash-chained audit trail through the open → in_progress → remediated → verified pipeline |
 | **Red team** | Generative campaigns with strategy library + judge; auto-promotion of successful attacks into the regression suite |
 | **AI-BOM** | Asset bill of materials, supply-chain risk scoring, model drift detection |
-| **Runtime agent** (Go) | Inline reverse proxy with three-stage policy pipeline (regex → ONNX → LLM judge), kill switch, telemetry to ClickHouse |
+| **Runtime agent** (Go) | Inline reverse proxy running all three policy stages live: Stage 1 regex/PII, Stage 2 ML (zero-config heuristic inline; ONNX inference sidecar via `STAGE2_ONNX_ENDPOINT`), Stage 3 LLM judge (deterministic default; configured judge via `STAGE3_JUDGE_ENDPOINT`, fail-open/closed per policy). Confidence-band routing, kill switch, telemetry to ClickHouse |
 | **SDKs** | Python + Node OpenAI/Anthropic wrappers that route through the local agent |
 | **Reports** | Markdown + PDF rendering of six templates (exec summary, technical detail, OWASP LLM Top 10, NIST AI RMF, SOC 2 AI, EU AI Act) |
 | **CI/CD gate** | Composite GitHub Action that triggers an evaluation, blocks the build on threshold breach, comments on PR |

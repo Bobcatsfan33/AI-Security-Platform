@@ -5,18 +5,20 @@ import (
 	"time"
 )
 
-// Stage2Engine runs the ONNX classifier. Sprint 7 follow-on; currently
-// a no-op stub.
+// Stage2Engine runs the inline ML classifier (heuristic by default; ONNX
+// sidecar when provisioned — see stage2_heuristic.go / stage2_http.go).
 type Stage2Engine interface {
 	Classify(ctx context.Context, in *Input, p *CompiledPolicy) StageResult
 }
 
-// Stage3Engine calls the customer's LLM judge endpoint. Sprint 7
-// follow-on; currently a no-op stub.
+// Stage3Engine is the LLM judge for uncertain Stage 2 results (deterministic
+// by default; HTTP LLM-judge when configured — see stage3_judge.go).
 type Stage3Engine interface {
 	Judge(ctx context.Context, in *Input, p *CompiledPolicy) StageResult
 }
 
+// noopStage2 / noopStage3 — explicit "off" engines, kept for fast-only
+// deployments and tests that want Stage-1-only behaviour.
 type noopStage2 struct{}
 
 func (noopStage2) Classify(_ context.Context, _ *Input, _ *CompiledPolicy) StageResult {
@@ -29,6 +31,16 @@ func (noopStage3) Judge(_ context.Context, _ *Input, _ *CompiledPolicy) StageRes
 	return StageResult{Stage: ExitStage3Judge, Matched: false, Action: ActionAllowed}
 }
 
+// StageConfig configures the inline Stage 2/3 backends. When an endpoint is
+// set the HTTP-backed engine (ONNX sidecar / LLM judge) is used; otherwise the
+// zero-config heuristic / deterministic engine runs inline.
+type StageConfig struct {
+	Stage2Endpoint string // ONNX inference sidecar URL ("" → heuristic)
+	Stage2Timeout  time.Duration
+	Stage3Endpoint string // LLM-judge URL ("" → deterministic)
+	Stage3Timeout  time.Duration
+}
+
 // Pipeline orchestrates Stage 1 → 2 → 3 based on enforcement_level
 // and confidence routing. Constructed once at agent startup; safe for
 // concurrent use.
@@ -38,14 +50,30 @@ type Pipeline struct {
 	Stage3 Stage3Engine
 }
 
-// NewDefaultPipeline wires Stage 1 (real) + no-op Stages 2/3. Sprint 7
-// follow-on will swap in the real Stage 2 + 3.
+// NewDefaultPipeline wires all three stages live with the zero-config inline
+// engines: Stage 1 (regex/PII), Stage 2 (heuristic), Stage 3 (deterministic
+// judge). Functional out of the box with no model weights or external calls.
 func NewDefaultPipeline() *Pipeline {
 	return &Pipeline{
 		Stage1: NewStage1Engine(),
-		Stage2: noopStage2{},
-		Stage3: noopStage3{},
+		Stage2: NewHeuristicStage2(),
+		Stage3: NewDeterministicStage3(),
 	}
+}
+
+// NewPipeline wires the inline pipeline per StageConfig: an HTTP ONNX sidecar /
+// LLM judge when an endpoint is configured, else the zero-config heuristic /
+// deterministic engine. This is what the agent constructs at startup.
+func NewPipeline(cfg StageConfig) *Pipeline {
+	var s2 Stage2Engine = NewHeuristicStage2()
+	if cfg.Stage2Endpoint != "" {
+		s2 = NewHTTPStage2(cfg.Stage2Endpoint, cfg.Stage2Timeout)
+	}
+	var s3 Stage3Engine = NewDeterministicStage3()
+	if cfg.Stage3Endpoint != "" {
+		s3 = NewHTTPStage3(cfg.Stage3Endpoint, cfg.Stage3Timeout)
+	}
+	return &Pipeline{Stage1: NewStage1Engine(), Stage2: s2, Stage3: s3}
 }
 
 // Evaluate runs the pipeline against one input. Returns a Decision the
