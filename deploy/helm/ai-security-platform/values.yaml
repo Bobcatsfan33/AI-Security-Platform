@@ -1,0 +1,104 @@
+# Default values for the AI Security Platform control plane.
+# Override via `helm install ... --values custom.yaml` or `--set`.
+
+image:
+  repository: ghcr.io/bobcatsfan33/ai-security-platform
+  tag: "" # defaults to .Chart.AppVersion
+  pullPolicy: IfNotPresent
+  pullSecrets: []
+
+environment: production
+
+# Non-secret config. Point these at your managed Postgres/ClickHouse/Redis/
+# Redpanda — NOT the docker-compose containers.
+config:
+  databaseUrl: "postgresql+asyncpg://platform:platform@postgres:5432/platform"
+  redisUrl: "redis://redis:6379/0"
+  clickhouseUrl: "http://clickhouse:8123"
+  redpandaBrokers: "redpanda:9092"
+  streamingEnabled: "true" # API dual-writes ingested events to the EPA stream
+  corsOrigins: ""
+
+# JWT secret + crypto keyring refs. In production set existingSecret to a Secret
+# managed by Vault/ASM/KMS (key "jwt-secret"); the literal is dev-only and the
+# control plane fails closed at startup if JWT_SECRET is unset (secret_gate.py).
+secrets:
+  existingSecret: ""
+  jwtSecret: ""
+
+# Shared HA / security defaults applied to every workload.
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  fsGroup: 65532
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop: ["ALL"]
+  readOnlyRootFilesystem: true
+
+# Spread replicas across nodes/zones for HA (soft anti-affinity by default).
+affinity: {}
+nodeSelector: {}
+tolerations: []
+
+# ── Control-plane API ──────────────────────────────────────────────────────
+api:
+  enabled: true
+  replicaCount: 2
+  port: 8000
+  resources:
+    requests: { cpu: "250m", memory: "512Mi" }
+    limits: { cpu: "1", memory: "1Gi" }
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+  pdb:
+    enabled: true
+    minAvailable: 1
+  service:
+    type: ClusterIP
+    port: 8000
+  ingress:
+    enabled: false
+    className: ""
+    host: "api.example.com"
+    annotations: {}
+    tls:
+      enabled: true
+      secretName: "ai-security-platform-tls"
+
+# ── EPA detection consumer ─────────────────────────────────────────────────
+# Scale up to (not beyond) the runtime.events partition count.
+epaConsumer:
+  enabled: true
+  replicaCount: 2
+  resources:
+    requests: { cpu: "250m", memory: "256Mi" }
+    limits: { cpu: "1", memory: "512Mi" }
+  autoscaling:
+    enabled: false # bounded by partition count — scale deliberately
+    minReplicas: 2
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 70
+  pdb:
+    enabled: true
+    minAvailable: 1
+
+# ── Optional background worker ─────────────────────────────────────────────
+worker:
+  enabled: false
+  replicaCount: 1
+  command: ["python", "-m", "scripts.worker"]
+  resources:
+    requests: { cpu: "100m", memory: "256Mi" }
+    limits: { cpu: "500m", memory: "512Mi" }
+
+# Prometheus scraping for /metrics (see A4 observability).
+serviceMonitor:
+  enabled: false
+  namespace: ""
+  interval: "30s"
+  labels: {}

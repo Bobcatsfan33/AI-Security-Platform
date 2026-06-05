@@ -1,0 +1,18 @@
+{{ .Chart.Name }} {{ .Chart.AppVersion }} installed as release "{{ .Release.Name }}".
+
+Components:
+  API:          {{ if .Values.api.enabled }}enabled ({{ if .Values.api.autoscaling.enabled }}HPA {{ .Values.api.autoscaling.minReplicas }}-{{ .Values.api.autoscaling.maxReplicas }}{{ else }}{{ .Values.api.replicaCount }} replicas{{ end }}){{ else }}disabled{{ end }}
+  EPA consumer: {{ if .Values.epaConsumer.enabled }}enabled ({{ .Values.epaConsumer.replicaCount }} replicas){{ else }}disabled{{ end }}
+  Worker:       {{ if .Values.worker.enabled }}enabled{{ else }}disabled{{ end }}
+
+{{- if not .Values.secrets.existingSecret }}
+
+WARNING: a managed Secret holds the JWT secret as a literal. For production set
+  secrets.existingSecret to a Secret backed by Vault/ASM/KMS.
+{{- end }}
+
+Reach the API:
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "aisp.fullname" . }}-api {{ .Values.api.service.port }}:{{ .Values.api.service.port }}
+
+Run DB migrations before first traffic (one-off Job or exec):
+  kubectl -n {{ .Release.Namespace }} exec deploy/{{ include "aisp.fullname" . }}-api -- alembic upgrade head

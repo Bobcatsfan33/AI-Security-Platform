@@ -1,0 +1,10 @@
+apiVersion: v2
+name: ai-security-platform
+description: |
+  The AI Security Platform control plane — multi-tenant API, the EPA detection
+  consumer fleet, and optional background workers. HA-ready (HPA, PDB,
+  anti-affinity), secrets via a managed or external Secret, optional
+  ServiceMonitor + Ingress/TLS.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
