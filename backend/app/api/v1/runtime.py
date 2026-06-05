@@ -52,10 +52,19 @@ CONTROL_QUEUE_TTL_SECONDS = 86_400
 
 
 EventType = Literal[
-    "request", "response", "tool_call", "tool_result",
-    "rag_retrieval", "memory_access", "file_access",
-    "external_api_call", "policy_violation", "block",
-    "downgrade", "kill_switch", "alert",
+    "request",
+    "response",
+    "tool_call",
+    "tool_result",
+    "rag_retrieval",
+    "memory_access",
+    "file_access",
+    "external_api_call",
+    "policy_violation",
+    "block",
+    "downgrade",
+    "kill_switch",
+    "alert",
 ]
 Direction = Literal["inbound", "outbound", "internal"]
 EnforcementLevel = Literal["fast", "balanced", "comprehensive"]
@@ -151,22 +160,16 @@ async def ingest_events(
     rejected_reasons: list[str] = []
     for event in batch.events:
         if event.org_id != identity.org_id:
-            rejected_reasons.append(
-                f"event {event.event_id}: org_id mismatch"
-            )
+            rejected_reasons.append(f"event {event.event_id}: org_id mismatch")
             continue
         try:
             ev = _to_runtime_event(event)
         except Exception as exc:  # noqa: BLE001
-            rejected_reasons.append(
-                f"event {event.event_id}: coerce failed: {exc}"
-            )
+            rejected_reasons.append(f"event {event.event_id}: coerce failed: {exc}")
             continue
         enqueued = await record_runtime_event(ev)
         if not enqueued:
-            rejected_reasons.append(
-                f"event {event.event_id}: telemetry queue full or writer down"
-            )
+            rejected_reasons.append(f"event {event.event_id}: telemetry queue full or writer down")
             continue
         accepted += 1
         # Dual-write to the streaming spine so the EPA fleet sees events live.
@@ -182,9 +185,7 @@ async def ingest_events(
                     extra={"event_id": event.event_id, "error": str(exc)},
                 )
         # Mirror security-relevant runtime events to the SIEM forwarder.
-        if event.event_type in {
-            "policy_violation", "block", "kill_switch", "alert", "downgrade"
-        }:
+        if event.event_type in {"policy_violation", "block", "kill_switch", "alert", "downgrade"}:
             get_forwarder().submit(
                 SiemEvent(
                     timestamp=event.timestamp,
@@ -205,6 +206,10 @@ async def ingest_events(
                     },
                 )
             )
+    if accepted:
+        from app.observability.metrics import RUNTIME_EVENTS_INGESTED
+
+        RUNTIME_EVENTS_INGESTED.inc(accepted)
     return IngestResult(
         accepted=accepted,
         rejected=len(batch.events) - accepted,
