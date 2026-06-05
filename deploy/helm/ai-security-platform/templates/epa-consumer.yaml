@@ -1,0 +1,111 @@
+{{- if .Values.epaConsumer.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "aisp.fullname" . }}-epa-consumer
+  labels:
+    {{- include "aisp.labels" . | nindent 4 }}
+    app.kubernetes.io/component: epa-consumer
+spec:
+  {{- if not .Values.epaConsumer.autoscaling.enabled }}
+  replicas: {{ .Values.epaConsumer.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: epa-consumer
+  template:
+    metadata:
+      labels:
+        {{- include "aisp.labels" . | nindent 8 }}
+        app.kubernetes.io/component: epa-consumer
+    spec:
+      {{- with .Values.image.pullSecrets }}
+      imagePullSecrets: {{ toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext: {{ toYaml .Values.podSecurityContext | nindent 8 }}
+      affinity: {{- include "aisp.affinity" . | nindent 8 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector: {{ toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations: {{ toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: epa-consumer
+          image: {{ include "aisp.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext: {{ toYaml .Values.containerSecurityContext | nindent 12 }}
+          command: ["python", "-m", "scripts.epa_consumer"]
+          env:
+            {{- include "aisp.env" . | nindent 12 }}
+          resources: {{ toYaml .Values.epaConsumer.resources | nindent 12 }}
+{{- if .Values.epaConsumer.autoscaling.enabled }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "aisp.fullname" . }}-epa-consumer
+  labels: {{- include "aisp.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "aisp.fullname" . }}-epa-consumer
+  minReplicas: {{ .Values.epaConsumer.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.epaConsumer.autoscaling.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.epaConsumer.autoscaling.targetCPUUtilizationPercentage }}
+{{- end }}
+{{- if .Values.epaConsumer.pdb.enabled }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "aisp.fullname" . }}-epa-consumer
+  labels: {{- include "aisp.labels" . | nindent 4 }}
+spec:
+  minAvailable: {{ .Values.epaConsumer.pdb.minAvailable }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: epa-consumer
+{{- end }}
+{{- end }}
+{{- if .Values.worker.enabled }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "aisp.fullname" . }}-worker
+  labels:
+    {{- include "aisp.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker
+spec:
+  replicas: {{ .Values.worker.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: worker
+  template:
+    metadata:
+      labels:
+        {{- include "aisp.labels" . | nindent 8 }}
+        app.kubernetes.io/component: worker
+    spec:
+      securityContext: {{ toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: worker
+          image: {{ include "aisp.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext: {{ toYaml .Values.containerSecurityContext | nindent 12 }}
+          command: {{ toYaml .Values.worker.command | nindent 12 }}
+          env:
+            {{- include "aisp.env" . | nindent 12 }}
+          resources: {{ toYaml .Values.worker.resources | nindent 12 }}
+{{- end }}

@@ -1,0 +1,27 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "aisp.fullname" . }}-config
+  labels:
+    {{- include "aisp.labels" . | nindent 4 }}
+data:
+  database-url: {{ .Values.config.databaseUrl | quote }}
+  redis-url: {{ .Values.config.redisUrl | quote }}
+  clickhouse-url: {{ .Values.config.clickhouseUrl | quote }}
+  redpanda-brokers: {{ .Values.config.redpandaBrokers | quote }}
+  streaming-enabled: {{ .Values.config.streamingEnabled | quote }}
+  cors-origins: {{ .Values.config.corsOrigins | quote }}
+{{- if not .Values.secrets.existingSecret }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "aisp.fullname" . }}-secrets
+  labels:
+    {{- include "aisp.labels" . | nindent 4 }}
+type: Opaque
+stringData:
+  # Dev/default only. In production set secrets.existingSecret to a Secret
+  # managed by Vault/ASM/KMS — never ship a literal JWT secret.
+  jwt-secret: {{ required "secrets.jwtSecret or secrets.existingSecret is required" .Values.secrets.jwtSecret | quote }}
+{{- end }}
