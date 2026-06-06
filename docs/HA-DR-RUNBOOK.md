@@ -21,6 +21,18 @@ Helm values to add (then verify a rolling restart keeps detection live):
 - PodDisruptionBudget, readiness/liveness probes (ServiceMonitor already shipped)
 - Anti-affinity so replicas span nodes/zones
 
+## Migration discipline (A5 — DONE)
+
+- **Apply + rollback are CI-verified.** `tests/unit/test_migrations.py` enforces
+  a single linear revision chain (one base, one head, no dangling
+  down_revisions), a real downgrade on every migration (forward+rollback
+  discipline), no model→migration drift (every model table has a
+  `create_table`), and a **DB-free offline round-trip**: Alembic emits symmetric
+  forward `CREATE TABLE` ↔ rollback `DROP TABLE` SQL. ✅
+- CI also runs `alembic upgrade head` against a real Postgres before the suite. ✅
+- Open: a live downgrade→upgrade drill against a production-shaped DB (part of
+  the game-day below).
+
 ## Disaster recovery
 
 Targets (proposed — confirm with the business): **RPO ≤ 5 min, RTO ≤ 30 min.**
