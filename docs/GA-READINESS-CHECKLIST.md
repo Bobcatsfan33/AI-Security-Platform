@@ -1,8 +1,15 @@
-# GA Readiness Checklist (Phase H — SCAFFOLDING)
+# GA Readiness Checklist (Phase H)
 
-> **Status: SCAFFOLDING / checklist.** These items require external parties
-> (penetration testers, SOC 2 auditor) and human sign-off. They cannot be
-> completed autonomously and are NOT done. This file is the tracking surface.
+> **Status update.** Track A engineering (A1–A5) is COMPLETE and merged:
+> inline ML/LLM enforcement, coverage ratchet 24→40, control-plane Helm chart
+> with HA, Prometheus/OTel observability, and migration integrity guards.
+> Track B docs are DONE: SOC 2 evidence map (`docs/SOC2-EVIDENCE-MAP.md`) and
+> the detection-content authoring guide (`docs/PATTERN-AUTHORING-GUIDE.md`).
+>
+> What remains genuinely requires **external parties + a multi-month window**
+> (penetration testers, SOC 2 auditor) or **live infrastructure** (HA-DR
+> game-day). Those cannot be completed autonomously and are NOT done — this
+> file tracks them.
 
 ## Third-party penetration test
 - ☐ Engage a third-party pen-test firm. **Book by the start of efficacy
