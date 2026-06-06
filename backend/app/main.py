@@ -16,11 +16,14 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 from typing import AsyncIterator
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 
 from app import __version__
 from app.api.middleware import CorrelationIdMiddleware
+from app.observability.metrics import render
+from app.observability.middleware import MetricsMiddleware
+from app.observability.tracing import setup_tracing
 from app.api.v1 import assets as assets_routes
 from app.api.v1 import auth as auth_routes
 from app.api.v1 import connectors as connectors_routes
@@ -97,8 +100,7 @@ def create_app() -> FastAPI:
         title="AI Asset Intelligence Platform",
         version="2.0.0",
         description=(
-            "Discover every AI system. Monitor every model. "
-            "Know your risk before auditors ask."
+            "Discover every AI system. Monitor every model. " "Know your risk before auditors ask."
         ),
         lifespan=lifespan,
         openapi_url=f"{settings.api_v1_prefix}/openapi.json",
@@ -118,6 +120,10 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
     app.add_middleware(SecurityHeadersMiddleware)
+    app.add_middleware(MetricsMiddleware)
+
+    # Optional OpenTelemetry tracing (no-op unless OTEL endpoint + packages).
+    setup_tracing(app)
 
     prefix = settings.api_v1_prefix
     app.include_router(health_routes.router, prefix=prefix)
@@ -130,6 +136,11 @@ def create_app() -> FastAPI:
     app.include_router(narratives_routes.router, prefix=f"{prefix}/narratives")
     app.include_router(suppressions_routes.router, prefix=f"{prefix}/suppressions")
     app.include_router(validation_routes.router, prefix=f"{prefix}/validation")
+
+    @app.get("/metrics", include_in_schema=False)
+    async def metrics() -> Response:
+        body, content_type = render()
+        return Response(content=body, media_type=content_type)
 
     return app
 

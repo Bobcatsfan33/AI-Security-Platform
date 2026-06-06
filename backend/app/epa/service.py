@@ -36,10 +36,21 @@ class EpaConsumerService:
 
     async def process_one(self, event: dict[str, Any]) -> list[Any]:
         """Process a single event end-to-end. Unit-testable."""
+        from app.observability.metrics import (
+            EPA_EVENTS,
+            record_narrative,
+            record_signal,
+        )
+
         signals = await self._fleet.handle_event(event)
         self.events_processed += 1
+        EPA_EVENTS.inc()
+        for sig in signals:
+            record_signal(sig.kind)
         narratives = await self._pipeline.ingest(signals)
         self.narratives_written += len(narratives)
+        for n in narratives:
+            record_narrative(n.severity)
         return narratives
 
     async def run(self) -> None:
