@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends
 from app.auth.dependencies import require_role
 from app.identity.types import IdentityContext
 from app.reports.efficacy import build_efficacy_report
+from app.validation.detector_efficacy import evaluate_detectors
 from app.validation.harness import run_suite
 
 router = APIRouter(tags=["validation"])
@@ -36,3 +37,12 @@ async def efficacy_report(
     suite = await run_suite()
     markdown = build_efficacy_report(suite.summary())
     return {"markdown": markdown}
+
+
+@router.get("/detector-efficacy")
+async def detector_efficacy(
+    identity: IdentityContext = Depends(require_role("admin")),
+) -> dict[str, Any]:
+    """Per-detector precision/recall/F1/FPR over the labeled eval set — the
+    AI Guard 'F1 ≥ 0.9, low FPR' claim, measured for the deterministic floor."""
+    return evaluate_detectors()
