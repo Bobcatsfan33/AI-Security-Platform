@@ -43,13 +43,13 @@ func (s stubStage3) Judge(_ context.Context, _ *Input, _ *CompiledPolicy) StageR
 func compileWithLevel(t *testing.T, level string) *CompiledPolicy {
 	t.Helper()
 	raw, _ := json.Marshal(map[string]any{
-		"id":                              "p",
-		"org_id":                          "org",
-		"version":                         1,
-		"enforcement_level":               level,
-		"fail_behavior":                   "open",
-		"ml_confidence_threshold_high":    0.7,
-		"ml_confidence_threshold_low":     0.3,
+		"id":                           "p",
+		"org_id":                       "org",
+		"version":                      1,
+		"enforcement_level":            level,
+		"fail_behavior":                "open",
+		"ml_confidence_threshold_high": 0.7,
+		"ml_confidence_threshold_low":  0.3,
 	})
 	p, err := CompileFromJSON(raw)
 	if err != nil {

@@ -83,14 +83,14 @@ const (
 
 // Input is the payload being inspected.
 type Input struct {
-	Text       string
-	Direction  Direction
-	AssetID    string
-	SessionID  string
-	ToolName   string
-	ToolArgs   map[string]any
-	SourceIP   string
-	Timestamp  time.Time
+	Text      string
+	Direction Direction
+	AssetID   string
+	SessionID string
+	ToolName  string
+	ToolArgs  map[string]any
+	SourceIP  string
+	Timestamp time.Time
 }
 
 // StageResult is one stage's verdict on one input.

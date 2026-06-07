@@ -24,6 +24,7 @@ from app.api.middleware import CorrelationIdMiddleware
 from app.observability.metrics import render
 from app.observability.middleware import MetricsMiddleware
 from app.observability.tracing import setup_tracing
+from app.api.v1 import aiguard as aiguard_routes
 from app.api.v1 import assets as assets_routes
 from app.api.v1 import auth as auth_routes
 from app.api.v1 import connectors as connectors_routes
@@ -136,6 +137,7 @@ def create_app() -> FastAPI:
     app.include_router(narratives_routes.router, prefix=f"{prefix}/narratives")
     app.include_router(suppressions_routes.router, prefix=f"{prefix}/suppressions")
     app.include_router(validation_routes.router, prefix=f"{prefix}/validation")
+    app.include_router(aiguard_routes.router, prefix=f"{prefix}/aiguard")
 
     @app.get("/metrics", include_in_schema=False)
     async def metrics() -> Response:

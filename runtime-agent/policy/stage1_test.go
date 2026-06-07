@@ -199,13 +199,13 @@ func TestStage1PII(t *testing.T) {
 
 func TestStage1ToolFirewall(t *testing.T) {
 	tests := []struct {
-		name             string
-		toolName         string
-		denylist         []any
-		approval         []any
-		allowlist        []any
-		wantAction       Action
-		wantMatched      bool
+		name        string
+		toolName    string
+		denylist    []any
+		approval    []any
+		allowlist   []any
+		wantAction  Action
+		wantMatched bool
 	}{
 		{
 			name:        "denylist_blocks",
