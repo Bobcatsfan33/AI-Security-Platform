@@ -12,6 +12,7 @@ from typing import Any, Literal
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
+from app.aiguard.publish import get_publisher, maybe_publish_inspection
 from app.aiguard.service import get_service
 from app.auth.dependencies import require_role
 from app.detectors import default_thresholds, names
@@ -35,6 +36,13 @@ class InspectRequest(BaseModel):
     competitor_terms: list[str] = Field(default_factory=list)
     brand_terms: list[str] = Field(default_factory=list)
     allowed_languages: list[str] = Field(default_factory=list)
+    # Flow tagging — let a gateway attach the inspection to the agent/flow it
+    # belongs to, so a block/detect verdict joins that flow's behavioural
+    # narrative instead of spawning a standalone incident.
+    asset_id: str = ""
+    agent_instance_id: str = ""
+    correlation_key: str = ""
+    publish: bool = True
 
 
 @router.post("/inspect")
@@ -52,7 +60,28 @@ async def inspect(
     )
     config = {k: v.model_dump(exclude_none=True) for k, v in body.config.items()}
     resp = get_service().inspect(text=body.text, direction=direction, config=config, context=ctx)
-    return resp.to_dict()
+    out = resp.to_dict()
+
+    # Phase 2.5 bridge into the running system: a block/detect verdict becomes
+    # a content_violation signal that flows through the same NarrativePipeline
+    # as behavioural signals, so the analyst sees one unified incident.
+    # Best-effort — never let narrative publishing break the inspect response.
+    if body.publish:
+        narratives = await maybe_publish_inspection(
+            resp,
+            get_publisher(),
+            org_id=str(identity.org_id),
+            asset_id=body.asset_id,
+            agent_instance_id=body.agent_instance_id,
+            correlation_key=body.correlation_key,
+        )
+        if narratives:
+            out["narrative"] = {
+                "published": True,
+                "narrative_ids": [str(n.id) for n in narratives],
+            }
+
+    return out
 
 
 @router.get("/detectors")
