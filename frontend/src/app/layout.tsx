@@ -40,6 +40,7 @@ export default function RootLayout({
               <ul className="flex items-center gap-1">
                 <NavLink href="/assets" label="Assets" />
                 <NavLink href="/narratives" label="Workbench" />
+                <NavLink href="/aiguard" label="AI Guard" />
                 <NavLink href="/evaluations" label="Evaluations" />
                 <NavLink href="/findings" label="Findings" />
                 <NavLink href="/redteam" label="Red Team" />

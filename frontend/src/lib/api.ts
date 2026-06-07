@@ -310,3 +310,55 @@ export const narratives = {
   disposition: (id: string, body: DispositionInput) =>
     api.patch<ThreatNarrative>(`/v1/narratives/${id}/disposition`, body),
 };
+
+// ───────────────────────────────────────── AI Guard (Phase 0/2.5)
+
+export type AIGuardAction = "allow" | "block" | "detect";
+export type AIGuardDirection = "inbound" | "outbound";
+export type DetectorAction = "block" | "detect" | "off";
+
+export type DetectorCatalog = {
+  detectors: string[];
+  default_thresholds: Record<string, number>;
+};
+
+export type DetectorOutcome = {
+  name: string;
+  category: string;
+  confidence: number;
+  threshold: number;
+  triggered: boolean;
+  action: string;
+  severity: string;
+  evidence: Record<string, unknown>;
+};
+
+export type AIGuardResponse = {
+  action: AIGuardAction;
+  direction: string;
+  reason: string;
+  triggered: string[];
+  latency_ms: number;
+  detectors: DetectorOutcome[];
+  // Present when a block/detect verdict was published into the narrative
+  // pipeline (the Phase 2.5 bridge).
+  narrative?: { published: boolean; narrative_ids: string[] };
+};
+
+export type DetectorConfig = { threshold?: number; action?: DetectorAction };
+
+export type InspectInput = {
+  text: string;
+  direction: AIGuardDirection;
+  config: Record<string, DetectorConfig>;
+  asset_id?: string;
+  agent_instance_id?: string;
+  correlation_key?: string;
+  publish?: boolean;
+};
+
+export const aiguard = {
+  detectors: () => api.get<DetectorCatalog>("/v1/aiguard/detectors"),
+  inspect: (body: InspectInput) =>
+    api.post<AIGuardResponse>("/v1/aiguard/inspect", body),
+};
