@@ -35,10 +35,14 @@ func (noopStage3) Judge(_ context.Context, _ *Input, _ *CompiledPolicy) StageRes
 // set the HTTP-backed engine (ONNX sidecar / LLM judge) is used; otherwise the
 // zero-config heuristic / deterministic engine runs inline.
 type StageConfig struct {
-	Stage2Endpoint string // ONNX inference sidecar URL ("" → heuristic)
+	Stage2Endpoint string // ONNX inference sidecar URL ("" → heuristic/suite)
 	Stage2Timeout  time.Duration
 	Stage3Endpoint string // LLM-judge URL ("" → deterministic)
 	Stage3Timeout  time.Duration
+	// UseDetectorSuite selects the full AI Guard 18-detector CompositeStage2
+	// (detector suite ⊕ tuned heuristic) inline, instead of the bare
+	// heuristic. Ignored when Stage2Endpoint is set (ONNX wins).
+	UseDetectorSuite bool
 }
 
 // Pipeline orchestrates Stage 1 → 2 → 3 based on enforcement_level
@@ -66,8 +70,11 @@ func NewDefaultPipeline() *Pipeline {
 // deterministic engine. This is what the agent constructs at startup.
 func NewPipeline(cfg StageConfig) *Pipeline {
 	var s2 Stage2Engine = NewHeuristicStage2()
-	if cfg.Stage2Endpoint != "" {
-		s2 = NewHTTPStage2(cfg.Stage2Endpoint, cfg.Stage2Timeout)
+	switch {
+	case cfg.Stage2Endpoint != "":
+		s2 = NewHTTPStage2(cfg.Stage2Endpoint, cfg.Stage2Timeout) // ONNX sidecar wins
+	case cfg.UseDetectorSuite:
+		s2 = NewCompositeStage2() // full AI Guard detector breadth, inline
 	}
 	var s3 Stage3Engine = NewDeterministicStage3()
 	if cfg.Stage3Endpoint != "" {

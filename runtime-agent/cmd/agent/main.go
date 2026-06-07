@@ -47,6 +47,8 @@ type config struct {
 	stage2Timeout  time.Duration
 	stage3Endpoint string
 	stage3Timeout  time.Duration
+	// Run the full AI Guard 18-detector suite inline at Stage 2.
+	useDetectorSuite bool
 }
 
 func loadConfig() config {
@@ -69,6 +71,7 @@ func loadConfig() config {
 		stage2Timeout:     parseDuration(envOr("STAGE2_TIMEOUT", "150ms")),
 		stage3Endpoint:    os.Getenv("STAGE3_JUDGE_ENDPOINT"),
 		stage3Timeout:     parseDuration(envOr("STAGE3_TIMEOUT", "3s")),
+		useDetectorSuite:  os.Getenv("STAGE2_DETECTOR_SUITE") == "true",
 	}
 }
 
@@ -150,10 +153,11 @@ func main() {
 	}
 
 	pipeline := policy.NewPipeline(policy.StageConfig{
-		Stage2Endpoint: cfg.stage2Endpoint,
-		Stage2Timeout:  cfg.stage2Timeout,
-		Stage3Endpoint: cfg.stage3Endpoint,
-		Stage3Timeout:  cfg.stage3Timeout,
+		Stage2Endpoint:   cfg.stage2Endpoint,
+		Stage2Timeout:    cfg.stage2Timeout,
+		Stage3Endpoint:   cfg.stage3Endpoint,
+		Stage3Timeout:    cfg.stage3Timeout,
+		UseDetectorSuite: cfg.useDetectorSuite,
 	})
 	log.Info().
 		Bool("stage2_onnx", cfg.stage2Endpoint != "").

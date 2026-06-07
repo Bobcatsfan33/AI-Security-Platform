@@ -46,19 +46,19 @@ type CompiledPolicy struct {
 // rawPolicy is the JSON shape returned by the Python control plane's
 // GET /v1/policies/{id} endpoint. Field names match exactly.
 type rawPolicy struct {
-	ID                        string                   `json:"id"`
-	OrgID                     string                   `json:"org_id"`
-	Version                   int                      `json:"version"`
-	EnforcementLevel          string                   `json:"enforcement_level"`
-	FailBehavior              string                   `json:"fail_behavior"`
-	MLConfidenceThresholdHigh float64                  `json:"ml_confidence_threshold_high"`
-	MLConfidenceThresholdLow  float64                  `json:"ml_confidence_threshold_low"`
-	Rules                     []map[string]any         `json:"rules"`
-	ToolAllowlist             []string                 `json:"tool_allowlist"`
-	ToolDenylist              []string                 `json:"tool_denylist"`
-	ToolApprovalRequired      []string                 `json:"tool_approval_required"`
-	RateLimits                map[string]any           `json:"rate_limits"`
-	ContentFilters            map[string]any           `json:"content_filters"`
+	ID                        string           `json:"id"`
+	OrgID                     string           `json:"org_id"`
+	Version                   int              `json:"version"`
+	EnforcementLevel          string           `json:"enforcement_level"`
+	FailBehavior              string           `json:"fail_behavior"`
+	MLConfidenceThresholdHigh float64          `json:"ml_confidence_threshold_high"`
+	MLConfidenceThresholdLow  float64          `json:"ml_confidence_threshold_low"`
+	Rules                     []map[string]any `json:"rules"`
+	ToolAllowlist             []string         `json:"tool_allowlist"`
+	ToolDenylist              []string         `json:"tool_denylist"`
+	ToolApprovalRequired      []string         `json:"tool_approval_required"`
+	RateLimits                map[string]any   `json:"rate_limits"`
+	ContentFilters            map[string]any   `json:"content_filters"`
 }
 
 // CompileFromJSON parses a control-plane policy response into a
