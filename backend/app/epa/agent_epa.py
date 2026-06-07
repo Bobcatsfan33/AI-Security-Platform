@@ -35,6 +35,8 @@ SignalKind = Literal[
     # Cross-agent (Sprint 7) — emitted by the correlation EPA, not per-agent.
     "propagation_chain",
     "coordinated_exfiltration",
+    # AI Guard bridge — inline content detection joining the behavioural timeline.
+    "content_violation",
 ]
 Severity = Literal["info", "low", "medium", "high", "critical"]
 
