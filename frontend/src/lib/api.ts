@@ -362,3 +362,58 @@ export const aiguard = {
   inspect: (body: InspectInput) =>
     api.post<AIGuardResponse>("/v1/aiguard/inspect", body),
 };
+
+// ───────────────────────────────────────── Risk Index (Phase 2 SPM)
+
+export type RiskComponents = {
+  supply_chain_score: number;
+  iam_over_privilege: number;
+  runtime_block_rate: number;
+  redteam_success_rate: number;
+};
+
+export type RiskIndexResult = {
+  asset_id: string;
+  score: number;
+  grade: string;
+  components: Record<string, number>;
+};
+
+export type RiskModel = {
+  weights: Record<string, number>;
+  grade_bands: Array<{ grade: string; min: number }>;
+};
+
+export const riskIndex = {
+  model: () => api.get<RiskModel>("/v1/risk-index/model"),
+  compute: (body: { asset_id: string } & RiskComponents) =>
+    api.post<RiskIndexResult>("/v1/risk-index/compute", body),
+};
+
+// ───────────────────────────────────────── Model benchmark (Phase 4)
+
+export type BenchmarkSeeds = {
+  categories: Record<string, number>;
+  total: number;
+};
+
+export type BenchmarkReport = {
+  seeds: number;
+  ranking: Array<{ model: string; resilience: number }>;
+  models: Array<{
+    model: string;
+    best_resilience: number;
+    configs: Array<{
+      config: string;
+      resilience: number;
+      resisted: number;
+      total: number;
+    }>;
+  }>;
+};
+
+export const benchmark = {
+  seeds: () => api.get<BenchmarkSeeds>("/v1/benchmark/seeds"),
+  run: (body: { system_prompts: Record<string, string>; categories?: string[] }) =>
+    api.post<BenchmarkReport>("/v1/benchmark/run", body),
+};

@@ -24,12 +24,14 @@ from app.api.middleware import CorrelationIdMiddleware
 from app.api.v1 import aiguard as aiguard_routes
 from app.api.v1 import assets as assets_routes
 from app.api.v1 import auth as auth_routes
+from app.api.v1 import benchmark as benchmark_routes
 from app.api.v1 import connectors as connectors_routes
 from app.api.v1 import dashboard as dashboard_routes
 from app.api.v1 import discovery as discovery_routes
 from app.api.v1 import health as health_routes
 from app.api.v1 import narratives as narratives_routes
 from app.api.v1 import remediation as remediation_routes
+from app.api.v1 import risk_index as risk_index_routes
 from app.api.v1 import runtime as runtime_routes
 from app.api.v1 import suppressions as suppressions_routes
 from app.api.v1 import validation as validation_routes
@@ -151,6 +153,8 @@ def create_app() -> FastAPI:
     app.include_router(validation_routes.router, prefix=f"{prefix}/validation")
     app.include_router(aiguard_routes.router, prefix=f"{prefix}/aiguard")
     app.include_router(remediation_routes.router, prefix=f"{prefix}/remediation")
+    app.include_router(risk_index_routes.router, prefix=f"{prefix}/risk-index")
+    app.include_router(benchmark_routes.router, prefix=f"{prefix}/benchmark")
 
     @app.get("/metrics", include_in_schema=False)
     async def metrics() -> Response:
