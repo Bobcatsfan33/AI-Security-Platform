@@ -41,6 +41,7 @@ export default function RootLayout({
                 <NavLink href="/assets" label="Assets" />
                 <NavLink href="/narratives" label="Workbench" />
                 <NavLink href="/aiguard" label="AI Guard" />
+                <NavLink href="/posture" label="Risk Posture" />
                 <NavLink href="/evaluations" label="Evaluations" />
                 <NavLink href="/findings" label="Findings" />
                 <NavLink href="/redteam" label="Red Team" />

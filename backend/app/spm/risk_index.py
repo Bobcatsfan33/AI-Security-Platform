@@ -3,7 +3,7 @@
 Blends supply-chain risk (:mod:`app.aibom.risk`), IAM over-privilege
 (:mod:`app.spm.iam`), runtime detector exposure (share of recent traffic that
 triggered AI Guard), and red-team exposure (share of attacks that succeeded)
-into a single 0–100 index + letter grade. Backs the product's "AI App Risk
+into a single 0-100 index + letter grade. Backs the product's "AI App Risk
 Index"."""
 
 from __future__ import annotations
@@ -11,23 +11,28 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from typing import Any
 
-_WEIGHTS = {
+WEIGHTS = {
     "supply_chain": 0.30,
     "iam": 0.25,
     "runtime_exposure": 0.25,
     "redteam_exposure": 0.20,
 }
 
+# Grade bands as (grade, inclusive lower bound), ordered high->low. The index is
+# 0-100 where higher = riskier, so an F is the worst.
+GRADE_BANDS: list[dict[str, object]] = [
+    {"grade": "F", "min": 80},
+    {"grade": "D", "min": 60},
+    {"grade": "C", "min": 40},
+    {"grade": "B", "min": 20},
+    {"grade": "A", "min": 0},
+]
+
 
 def _grade(score: float) -> str:
-    if score >= 80:
-        return "F"
-    if score >= 60:
-        return "D"
-    if score >= 40:
-        return "C"
-    if score >= 20:
-        return "B"
+    for band in GRADE_BANDS:
+        if score >= float(band["min"]):  # type: ignore[arg-type]
+            return str(band["grade"])
     return "A"
 
 
@@ -56,7 +61,7 @@ def compute_risk_index(
         "runtime_exposure": _clamp(runtime_block_rate),
         "redteam_exposure": _clamp(redteam_success_rate),
     }
-    weighted = sum(comps[k] * _WEIGHTS[k] for k in comps) * 100
+    weighted = sum(comps[k] * WEIGHTS[k] for k in comps) * 100
     score = round(weighted, 2)
     return RiskIndex(
         asset_id=asset_id,
