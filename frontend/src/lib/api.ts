@@ -167,30 +167,6 @@ export type Connector = {
   created_at: string;
 };
 
-export type CampaignSummary = {
-  evaluation_id: string;
-  asset_id: string;
-  status: string;
-  total_attacks: number;
-  successful_attacks: number;
-  success_rate: number;
-  target_errors: number;
-  total_cost_usd: number;
-  novel_findings: number;
-  by_category: Record<string, { total: number; successful: number }>;
-  started_at: string | null;
-  completed_at: string | null;
-};
-
-export type Strategy = {
-  id: string;
-  category: string;
-  name: string;
-  description: string;
-  severity: string;
-  attack_type: string;
-};
-
 // ───────────────────────────────────────── Tier 3 types
 
 export type DashboardRuntimeOverview = {
@@ -416,4 +392,70 @@ export const benchmark = {
   seeds: () => api.get<BenchmarkSeeds>("/v1/benchmark/seeds"),
   run: (body: { system_prompts: Record<string, string>; categories?: string[] }) =>
     api.post<BenchmarkReport>("/v1/benchmark/run", body),
+};
+
+// ───────────────────────────────────────── Red Team (v2)
+
+export type RedTeamStrategy = {
+  id: string;
+  category: string;
+  name: string;
+  description: string;
+  severity: string;
+  attack_type: string;
+};
+
+export type ConnectorSpecIn = {
+  provider: string;
+  model: string;
+  api_key_ref?: string;
+  config?: Record<string, unknown>;
+};
+
+export type CampaignCreate = {
+  target: ConnectorSpecIn;
+  system_prompt?: string;
+  asset_description?: string;
+  strategy_ids?: string[];
+  max_attacks?: number | null;
+};
+
+export type RedTeamCampaign = {
+  id: string;
+  asset_id: string | null;
+  status: string;
+  total_attacks: number;
+  successful_attacks: number;
+  success_rate: number;
+  target_errors: number;
+  score: number;
+  risk_label: string | null;
+  total_cost_usd: number;
+  summary: Record<string, unknown>;
+  error_message: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+};
+
+export type RedTeamFinding = {
+  id: string;
+  strategy_id: string;
+  category: string;
+  severity: string;
+  classification: string;
+  compliance_score: number;
+  confidence: number;
+  prompt: string;
+  response: string;
+  recommendation: string;
+};
+
+export const redteam = {
+  strategies: () => api.get<RedTeamStrategy[]>("/v1/redteam/strategies"),
+  listCampaigns: () => api.get<RedTeamCampaign[]>("/v1/redteam/campaigns"),
+  getCampaign: (id: string) => api.get<RedTeamCampaign>(`/v1/redteam/campaigns/${id}`),
+  createCampaign: (body: CampaignCreate) =>
+    api.post<RedTeamCampaign>("/v1/redteam/campaigns", body),
+  findings: (id: string) =>
+    api.get<RedTeamFinding[]>(`/v1/redteam/campaigns/${id}/findings`),
 };
