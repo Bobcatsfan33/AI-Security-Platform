@@ -4,208 +4,313 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 
 import {
-  api,
   ApiError,
-  type Asset,
-  type CampaignSummary,
-  type Strategy,
+  redteam,
+  type CampaignCreate,
+  type RedTeamCampaign,
+  type RedTeamFinding,
+  type RedTeamStrategy,
 } from "@/lib/api";
 
+const STATUS_STYLES: Record<string, string> = {
+  created: "bg-slate-100 text-slate-600",
+  running: "bg-sky-100 text-sky-700",
+  completed: "bg-emerald-100 text-emerald-800",
+  failed: "bg-red-100 text-red-800",
+};
+
+const RISK_STYLES: Record<string, string> = {
+  good: "bg-emerald-100 text-emerald-800",
+  needs_hardening: "bg-amber-100 text-amber-800",
+  high_risk: "bg-red-100 text-red-800",
+};
+
+const PROVIDERS = ["openai", "anthropic", "ollama", "azure_openai", "bedrock", "custom"];
+
 export default function RedTeamPage() {
-  const [assets, setAssets] = useState<Asset[]>([]);
-  const [strategies, setStrategies] = useState<Strategy[]>([]);
-  const [campaigns, setCampaigns] = useState<CampaignSummary[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  return (
+    <div>
+      <h1 className="mb-1 text-2xl font-semibold">Red Team</h1>
+      <p className="mb-6 max-w-3xl text-sm text-slate-600">
+        Run the attack-strategy library against a target model, judge each
+        response, and review the findings worth hardening against.
+      </p>
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <LaunchCard />
+        <StrategiesCard />
+      </div>
+      <CampaignsCard />
+    </div>
+  );
+}
+
+function LaunchCard() {
+  const [provider, setProvider] = useState("openai");
+  const [model, setModel] = useState("");
+  const [apiKeyRef, setApiKeyRef] = useState("");
+  const [systemPrompt, setSystemPrompt] = useState("");
   const [busy, setBusy] = useState(false);
-  const [selectedAsset, setSelectedAsset] = useState<string>("");
-  const [maxAttacks, setMaxAttacks] = useState<number>(30);
+  const [error, setError] = useState<string | null>(null);
+  const [launched, setLaunched] = useState<string | null>(null);
 
-  useEffect(() => {
-    void load();
-    const t = setInterval(() => void loadCampaigns(), 5000);
-    return () => clearInterval(t);
-  }, []);
-
-  async function load(): Promise<void> {
-    try {
-      setError(null);
-      const [a, s] = await Promise.all([
-        api.get<Asset[]>("/v1/assets"),
-        api.get<Strategy[]>("/v1/redteam/strategies"),
-      ]);
-      setAssets(a);
-      setStrategies(s);
-      void loadCampaigns();
-    } catch (err: unknown) {
-      setError(err instanceof ApiError ? err.message : "load failed");
-    }
-  }
-
-  async function loadCampaigns(): Promise<void> {
-    try {
-      const data = await api.get<CampaignSummary[]>("/v1/redteam/campaigns");
-      setCampaigns(data);
-    } catch {
-      // silent — error displayed on initial load
-    }
-  }
-
-  async function startCampaign(): Promise<void> {
-    if (!selectedAsset) {
-      setError("Pick an asset first");
-      return;
-    }
+  async function launch(): Promise<void> {
     setBusy(true);
     setError(null);
+    setLaunched(null);
     try {
-      await api.post<CampaignSummary>("/v1/redteam/campaigns", {
-        asset_id: selectedAsset,
-        max_attacks: maxAttacks,
-        auto_create_regression: true,
-      });
-      void loadCampaigns();
+      const body: CampaignCreate = {
+        target: { provider, model, api_key_ref: apiKeyRef },
+        system_prompt: systemPrompt,
+      };
+      const created = await redteam.createCampaign(body);
+      setLaunched(created.id);
     } catch (err: unknown) {
-      setError(err instanceof ApiError ? err.message : "start failed");
+      setError(err instanceof ApiError ? err.message : "Launch failed");
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <div>
-      <h1 className="mb-6 text-2xl font-semibold">Red Team Campaigns</h1>
-
-      <section className="mb-8 rounded-lg border border-slate-200 bg-white p-5">
-        <h2 className="mb-3 font-medium">Start a campaign</h2>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+    <section className="rounded-lg border border-slate-200 bg-white">
+      <div className="border-b border-slate-200 px-5 py-3">
+        <h2 className="font-medium">Launch campaign</h2>
+      </div>
+      <div className="space-y-3 px-5 py-4">
+        <div className="grid grid-cols-2 gap-3">
           <label className="text-sm">
-            <span className="mb-1 block font-medium">Asset</span>
+            <span className="mb-1 block text-slate-600">Provider</span>
             <select
-              value={selectedAsset}
-              onChange={(e) => setSelectedAsset(e.target.value)}
-              className="w-full rounded-md border border-slate-300 px-3 py-2"
+              value={provider}
+              onChange={(e) => setProvider(e.target.value)}
+              className="w-full rounded-md border border-slate-300 px-2 py-1.5"
             >
-              <option value="">— select —</option>
-              {assets.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.name} ({a.provider} / {a.model_name})
+              {PROVIDERS.map((p) => (
+                <option key={p} value={p}>
+                  {p}
                 </option>
               ))}
             </select>
           </label>
           <label className="text-sm">
-            <span className="mb-1 block font-medium">Max attacks</span>
+            <span className="mb-1 block text-slate-600">Model</span>
             <input
-              type="number"
-              value={maxAttacks}
-              onChange={(e) => setMaxAttacks(Number(e.target.value))}
-              min={1}
-              max={1000}
-              className="w-full rounded-md border border-slate-300 px-3 py-2"
+              value={model}
+              onChange={(e) => setModel(e.target.value)}
+              placeholder="gpt-4o-mini"
+              className="w-full rounded-md border border-slate-300 px-2 py-1.5"
             />
           </label>
-          <div className="flex items-end">
-            <button
-              type="button"
-              onClick={startCampaign}
-              disabled={busy}
-              className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
-            >
-              {busy ? "Starting…" : "Start campaign"}
-            </button>
-          </div>
         </div>
-        <p className="mt-3 text-xs text-slate-500">
-          Successful LLM-generated attacks are auto-promoted to permanent
-          regression test cases.
-        </p>
-      </section>
+        <label className="block text-sm">
+          <span className="mb-1 block text-slate-600">API key ref</span>
+          <input
+            value={apiKeyRef}
+            onChange={(e) => setApiKeyRef(e.target.value)}
+            placeholder="env:OPENAI_API_KEY"
+            className="w-full rounded-md border border-slate-300 px-2 py-1.5 font-mono text-xs"
+          />
+        </label>
+        <label className="block text-sm">
+          <span className="mb-1 block text-slate-600">Target system prompt (to red-team)</span>
+          <textarea
+            value={systemPrompt}
+            onChange={(e) => setSystemPrompt(e.target.value)}
+            rows={3}
+            placeholder="You are a helpful assistant…"
+            className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm"
+          />
+        </label>
+        <button
+          type="button"
+          onClick={() => void launch()}
+          disabled={busy || model.length === 0}
+          className="rounded-md bg-slate-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+        >
+          {busy ? "Launching…" : "Launch campaign"}
+        </button>
+        {launched ? (
+          <p className="text-sm text-emerald-700">
+            Campaign {launched.slice(0, 8)} launched — runs in the background.
+          </p>
+        ) : null}
+        {error ? (
+          <p className="text-sm text-red-600">
+            {error}{" "}
+            <Link href="/login" className="underline">
+              Sign in
+            </Link>
+          </p>
+        ) : null}
+      </div>
+    </section>
+  );
+}
 
-      {error ? (
-        <p className="mb-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-          {error}
-        </p>
-      ) : null}
+function StrategiesCard() {
+  const [strategies, setStrategies] = useState<RedTeamStrategy[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-      <section className="mb-8">
-        <h2 className="mb-3 font-medium">Recent campaigns</h2>
-        {campaigns.length === 0 ? (
-          <p className="text-sm text-slate-500">No campaigns yet.</p>
+  useEffect(() => {
+    void (async () => {
+      try {
+        setStrategies(await redteam.strategies());
+      } catch (err: unknown) {
+        setError(err instanceof ApiError ? err.message : "Failed to load strategies");
+      }
+    })();
+  }, []);
+
+  return (
+    <section className="rounded-lg border border-slate-200 bg-white">
+      <div className="border-b border-slate-200 px-5 py-3">
+        <h2 className="font-medium">
+          Attack strategies{strategies ? ` (${strategies.length})` : ""}
+        </h2>
+      </div>
+      <div className="px-5 py-4">
+        {error ? <p className="text-sm text-red-600">{error}</p> : null}
+        {strategies === null ? (
+          <p className="text-sm text-slate-500">Loading…</p>
         ) : (
-          <ul className="overflow-hidden rounded-lg border border-slate-200 bg-white">
-            {campaigns.map((c) => (
-              <li
-                key={c.evaluation_id}
-                className="border-b border-slate-200 px-5 py-4 last:border-b-0"
-              >
-                <div className="flex items-center justify-between">
-                  <div>
-                    <Link
-                      href={`/evaluations/${c.evaluation_id}`}
-                      className="font-mono text-sm text-slate-700 hover:underline"
-                    >
-                      {c.evaluation_id.slice(0, 8)}…
-                    </Link>{" "}
-                    · {c.status}
-                  </div>
-                  <div className="text-right text-sm">
-                    {c.successful_attacks}/{c.total_attacks} succeeded ·{" "}
-                    {(c.success_rate * 100).toFixed(1)}% rate ·{" "}
-                    {c.novel_findings} novel
-                  </div>
-                </div>
-                <div className="mt-1 text-xs text-slate-500">
-                  asset {c.asset_id.slice(0, 8)}… · cost $
-                  {c.total_cost_usd.toFixed(4)}
-                </div>
+          <ul className="max-h-72 space-y-2 overflow-y-auto">
+            {strategies.map((s) => (
+              <li key={s.id} className="text-sm">
+                <span className="font-medium">{s.name}</span>{" "}
+                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
+                  {s.category}
+                </span>
+                <p className="text-xs text-slate-500">{s.description}</p>
               </li>
             ))}
           </ul>
         )}
-      </section>
-
-      <section>
-        <h2 className="mb-3 font-medium">
-          Strategy library ({strategies.length})
-        </h2>
-        <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          {strategies.map((s) => (
-            <li
-              key={s.id}
-              className="rounded-lg border border-slate-200 bg-white p-4"
-            >
-              <div className="flex items-center justify-between">
-                <span className="font-medium">{s.name}</span>
-                <SeverityBadge severity={s.severity} />
-              </div>
-              <div className="mt-0.5 text-xs text-slate-500">
-                {s.category} · {s.attack_type}
-              </div>
-              <p className="mt-2 text-sm text-slate-700">{s.description}</p>
-            </li>
-          ))}
-        </ul>
-      </section>
-    </div>
+      </div>
+    </section>
   );
 }
 
-const severityColors: Record<string, string> = {
-  info: "bg-slate-100 text-slate-700",
-  low: "bg-emerald-100 text-emerald-700",
-  medium: "bg-yellow-100 text-yellow-800",
-  high: "bg-orange-100 text-orange-800",
-  critical: "bg-red-100 text-red-700",
-};
+function CampaignsCard() {
+  const [campaigns, setCampaigns] = useState<RedTeamCampaign[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string | null>(null);
 
-function SeverityBadge({ severity }: { severity: string }) {
+  async function load(): Promise<void> {
+    try {
+      const data = await redteam.listCampaigns();
+      setCampaigns(data);
+      setError(null);
+    } catch (err: unknown) {
+      setError(err instanceof ApiError ? err.message : "Failed to load campaigns");
+    }
+  }
+
+  useEffect(() => {
+    void (async () => {
+      await load();
+    })();
+  }, []);
+
   return (
-    <span
-      className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-        severityColors[severity] ?? severityColors.medium
-      }`}
-    >
-      {severity}
-    </span>
+    <section className="mt-6 rounded-lg border border-slate-200 bg-white">
+      <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3">
+        <h2 className="font-medium">Campaigns</h2>
+        <button
+          type="button"
+          onClick={() => void load()}
+          className="rounded-md border border-slate-300 px-2.5 py-1 text-xs hover:bg-slate-50"
+        >
+          Refresh
+        </button>
+      </div>
+      <div className="px-5 py-4">
+        {error ? <p className="text-sm text-red-600">{error}</p> : null}
+        {campaigns === null ? (
+          <p className="text-sm text-slate-500">Loading…</p>
+        ) : campaigns.length === 0 ? (
+          <p className="text-sm text-slate-500">No campaigns yet.</p>
+        ) : (
+          <ul className="divide-y divide-slate-100">
+            {campaigns.map((c) => (
+              <li key={c.id} className="py-2">
+                <div className="flex items-center gap-3 text-sm">
+                  <span className="font-mono text-xs text-slate-500">{c.id.slice(0, 8)}</span>
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-xs ${STATUS_STYLES[c.status] ?? STATUS_STYLES.created}`}
+                  >
+                    {c.status}
+                  </span>
+                  {c.status === "completed" ? (
+                    <>
+                      <span className="text-slate-600">
+                        {c.successful_attacks}/{c.total_attacks} succeeded
+                      </span>
+                      <span className="tabular-nums">score {c.score.toFixed(0)}</span>
+                      {c.risk_label ? (
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-xs ${RISK_STYLES[c.risk_label] ?? ""}`}
+                        >
+                          {c.risk_label}
+                        </span>
+                      ) : null}
+                    </>
+                  ) : null}
+                  {c.error_message ? (
+                    <span className="truncate text-xs text-red-600" title={c.error_message}>
+                      {c.error_message}
+                    </span>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => setSelected(selected === c.id ? null : c.id)}
+                    className="ml-auto rounded-md border border-slate-300 px-2 py-0.5 text-xs hover:bg-slate-50"
+                  >
+                    {selected === c.id ? "Hide" : "Findings"}
+                  </button>
+                </div>
+                {selected === c.id ? <FindingsList campaignId={c.id} /> : null}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function FindingsList({ campaignId }: { campaignId: string }) {
+  const [findings, setFindings] = useState<RedTeamFinding[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        setFindings(await redteam.findings(campaignId));
+      } catch (err: unknown) {
+        setError(err instanceof ApiError ? err.message : "Failed to load findings");
+      }
+    })();
+  }, [campaignId]);
+
+  if (error) return <p className="mt-2 text-sm text-red-600">{error}</p>;
+  if (findings === null) return <p className="mt-2 text-sm text-slate-500">Loading findings…</p>;
+  if (findings.length === 0)
+    return <p className="mt-2 text-sm text-slate-500">No findings for this campaign.</p>;
+
+  return (
+    <ul className="mt-2 divide-y divide-slate-100 rounded-md border border-slate-200 bg-slate-50">
+      {findings.map((f) => (
+        <li key={f.id} className="px-3 py-2 text-sm">
+          <div className="flex items-center gap-2">
+            <span className="font-mono text-xs">{f.strategy_id}</span>
+            <span className="rounded-full bg-slate-200 px-2 py-0.5 text-xs">{f.category}</span>
+            <span className="ml-auto text-xs text-slate-500">
+              {f.classification} · {(f.compliance_score * 100).toFixed(0)}%
+            </span>
+          </div>
+          <p className="mt-1 text-xs text-slate-600">{f.recommendation}</p>
+        </li>
+      ))}
+    </ul>
   );
 }
