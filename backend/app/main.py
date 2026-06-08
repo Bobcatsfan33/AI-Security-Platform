@@ -30,6 +30,7 @@ from app.api.v1 import dashboard as dashboard_routes
 from app.api.v1 import discovery as discovery_routes
 from app.api.v1 import health as health_routes
 from app.api.v1 import narratives as narratives_routes
+from app.api.v1 import redteam as redteam_routes
 from app.api.v1 import remediation as remediation_routes
 from app.api.v1 import risk_index as risk_index_routes
 from app.api.v1 import runtime as runtime_routes
@@ -155,6 +156,7 @@ def create_app() -> FastAPI:
     app.include_router(remediation_routes.router, prefix=f"{prefix}/remediation")
     app.include_router(risk_index_routes.router, prefix=f"{prefix}/risk-index")
     app.include_router(benchmark_routes.router, prefix=f"{prefix}/benchmark")
+    app.include_router(redteam_routes.router, prefix=f"{prefix}/redteam")
 
     @app.get("/metrics", include_in_schema=False)
     async def metrics() -> Response:
