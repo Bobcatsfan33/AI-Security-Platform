@@ -10,7 +10,7 @@ Per-detector configuration (the "sliding threshold meter" + action):
       ...
     }
 
-* ``threshold`` (0–1) — detector triggers when confidence >= threshold.
+* ``threshold`` (0-1) — detector triggers when confidence >= threshold.
 * ``action`` — what a *triggered* detector contributes to the verdict:
   ``block`` (hard stop), ``detect`` (alert/log, allow through), or ``off``
   (disabled). Defaults: enabled, default per-detector threshold, action
@@ -24,13 +24,39 @@ from typing import Any
 
 from app.aiguard.response import AIGuardResponse, DetectorOutcome
 from app.detectors import ALL_DETECTORS
-from app.detectors.base import Detector, DetectorContext, Direction, applies
+from app.detectors.base import Detector, DetectorContext, DetectorResult, Direction, applies
+from app.detectors.normalize import decode_and_normalize
 
 _DEFAULT_BLOCK_SEVERITIES = {"high", "critical"}
 
 
 def _default_action(det: Detector) -> str:
     return "block" if det.severity in _DEFAULT_BLOCK_SEVERITIES else "detect"
+
+
+def _best_over_candidates(
+    det: Detector, candidates: list[tuple[str, str]], ctx: DetectorContext
+) -> DetectorResult:
+    """Run ``det`` against every candidate form (raw + normalized + decoded) and
+    return the highest-confidence verdict, so an attack hidden in base64 / a
+    homoglyph blob is caught. The winning non-raw form is recorded in evidence
+    as ``matched_form`` for analyst transparency."""
+    best: DetectorResult | None = None
+    best_label = "raw"
+    for label, cand in candidates:
+        res = det.detect(cand, ctx).clamp()
+        if best is None or res.confidence > best.confidence:
+            best, best_label = res, label
+    assert best is not None  # candidates always includes ("raw", text)
+    if best_label != "raw" and best.confidence > 0.0:
+        return DetectorResult(
+            best.name,
+            best.category,
+            best.confidence,
+            best.severity,
+            {**best.evidence, "matched_form": best_label},
+        )
+    return best
 
 
 class AIGuardService:
@@ -63,6 +89,11 @@ class AIGuardService:
         triggered: list[str] = []
         worst_block: DetectorOutcome | None = None
 
+        # Decode + normalize pre-pass: run every detector against the raw text
+        # plus its normalized + decoded variants (defeats the encoding-bypass
+        # class). Computed once per request, shared across all detectors.
+        candidates = decode_and_normalize(text).candidates()
+
         for det in self._detectors:
             cfg = config.get(det.name, {})
             if cfg.get("action") == "off" or not cfg.get("enabled", True):
@@ -71,7 +102,7 @@ class AIGuardService:
                 continue
             threshold = float(cfg.get("threshold", det.default_threshold))
             action = cfg.get("action", _default_action(det))
-            res = det.detect(text, ctx).clamp()
+            res = _best_over_candidates(det, candidates, ctx)
             is_trig = res.confidence >= threshold and res.confidence > 0.0
             outcome = DetectorOutcome(
                 name=res.name,
