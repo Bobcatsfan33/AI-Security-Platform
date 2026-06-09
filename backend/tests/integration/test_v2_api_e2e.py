@@ -7,22 +7,21 @@ JWT directly so we don't depend on the OIDC/SAML round-trip.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
+import jwt
 import pytest
-from jose import jwt
 from sqlalchemy import text
 
 from app.core.config import get_settings
 from app.db.session import SessionLocal
-
 
 pytestmark = pytest.mark.integration
 
 
 def _issue_admin_token() -> str:
     settings = get_settings()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     claims = {
         "iss": "ai-security-platform",
         "sub": str(uuid.uuid4()),
