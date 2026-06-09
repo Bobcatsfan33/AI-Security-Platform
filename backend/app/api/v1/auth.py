@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import secrets
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -30,10 +30,16 @@ from app.identity.registry import build_adapter
 from app.identity.saml_adapter import generate_sp_metadata
 from app.identity.types import IdentityContext
 from app.security.audit_log import AuditEventType, AuditOutcome, log_event
+from app.security.rate_limit import LOGIN, TOKEN, rate_limit_ip
 from app.services.redis_client import get_redis
 
 router = APIRouter(tags=["auth"])
 log = get_logger("auth")
+
+# Per-IP throttles: SSO initiation/callback (credential exchange) and token
+# refresh are the credential-stuffing / brute-force surface.
+_login_rl = rate_limit_ip(bucket="login", **LOGIN)
+_token_rl = rate_limit_ip(bucket="token", **TOKEN)
 
 OIDC_STATE_PREFIX = "auth:oidc_state:"
 SAML_STATE_PREFIX = "auth:saml_state:"
@@ -43,6 +49,7 @@ OIDC_STATE_TTL_SECONDS = STATE_TTL_SECONDS
 
 
 # --------------------------------------------------------------------------- DTOs
+
 
 class TokenPairResponse(BaseModel):
     access_token: str
@@ -58,6 +65,7 @@ class RefreshRequest(BaseModel):
 
 
 # ---------------------------------------------------------------------- helpers
+
 
 async def _get_org_idp(
     db: AsyncSession,
@@ -104,7 +112,8 @@ def _saml_sp_entity_id_for(request: Request, org_slug: str) -> str:
 
 # ----------------------------------------------------------------------- routes
 
-@router.get("/oidc/{org_slug}/login")
+
+@router.get("/oidc/{org_slug}/login", dependencies=[Depends(_login_rl)])
 async def oidc_login(
     org_slug: str,
     request: Request,
@@ -127,13 +136,15 @@ async def oidc_login(
     try:
         url = await adapter.begin_login(redirect_uri=redirect_uri, state=state)
     except IdentityAuthError as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
-        ) from e
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)) from e
     return RedirectResponse(url=url, status_code=status.HTTP_302_FOUND)
 
 
-@router.get("/oidc/{org_slug}/callback", response_model=TokenPairResponse)
+@router.get(
+    "/oidc/{org_slug}/callback",
+    response_model=TokenPairResponse,
+    dependencies=[Depends(_login_rl)],
+)
 async def oidc_callback(
     org_slug: str,
     request: Request,
@@ -160,9 +171,7 @@ async def oidc_callback(
     adapter = build_adapter(idp)
     callback_params = {**params, "_redirect_uri": redirect_uri}
     try:
-        claims = await adapter.complete_login(
-            callback_params=callback_params, expected_state=state
-        )
+        claims = await adapter.complete_login(callback_params=callback_params, expected_state=state)
     except IdentityAuthError as e:
         log.warning("oidc_login_failed", reason=str(e), org_slug=org_slug)
         log_event(
@@ -174,9 +183,7 @@ async def oidc_callback(
             resource=f"/v1/auth/oidc/{org_slug}/callback",
             detail={"reason": str(e), "idp_id": str(idp.id)},
         )
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail=str(e)
-        ) from e
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(e)) from e
 
     user = await upsert_user_from_claims(db, idp=idp, claims=claims)
     await db.commit()
@@ -231,7 +238,7 @@ async def oidc_callback(
 # ----------------------------------------------------------------- SAML routes
 
 
-@router.get("/saml/{org_slug}/login")
+@router.get("/saml/{org_slug}/login", dependencies=[Depends(_login_rl)])
 async def saml_login(
     org_slug: str,
     request: Request,
@@ -254,13 +261,15 @@ async def saml_login(
     try:
         url = await adapter.begin_login(redirect_uri=acs_url, state=state)
     except IdentityAuthError as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
-        ) from e
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)) from e
     return RedirectResponse(url=url, status_code=status.HTTP_302_FOUND)
 
 
-@router.post("/saml/{org_slug}/acs", response_model=TokenPairResponse)
+@router.post(
+    "/saml/{org_slug}/acs",
+    response_model=TokenPairResponse,
+    dependencies=[Depends(_login_rl)],
+)
 async def saml_acs(
     org_slug: str,
     request: Request,
@@ -314,9 +323,7 @@ async def saml_acs(
             resource=f"/v1/auth/saml/{org_slug}/acs",
             detail={"reason": str(e), "idp_id": str(idp.id)},
         )
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail=str(e)
-        ) from e
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(e)) from e
 
     user = await upsert_user_from_claims(db, idp=idp, claims=claims)
     await db.commit()
@@ -385,7 +392,7 @@ async def saml_sp_metadata(org_slug: str, request: Request) -> Response:
 # ---------------------------------------------------------------- refresh / logout
 
 
-@router.post("/refresh", response_model=TokenPairResponse)
+@router.post("/refresh", response_model=TokenPairResponse, dependencies=[Depends(_token_rl)])
 async def refresh(req: RefreshRequest) -> TokenPairResponse:
     payload = await consume_refresh_token(req.refresh_token)
     if payload is None:
@@ -457,4 +464,4 @@ async def me(identity: IdentityContext = Depends(current_identity)) -> dict[str,
 @router.get("/_internal/now")
 async def server_time() -> dict[str, str]:
     """Trivial unauthenticated diagnostic — useful for smoke tests."""
-    return {"now": datetime.now(timezone.utc).isoformat()}
+    return {"now": datetime.now(UTC).isoformat()}
