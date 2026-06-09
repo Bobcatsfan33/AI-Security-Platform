@@ -18,11 +18,10 @@ consume via long-poll.
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -30,6 +29,12 @@ from pydantic import BaseModel, Field
 
 from app.auth.dependencies import require_role, require_scope
 from app.identity.types import IdentityContext
+from app.security.rate_limit import (
+    INGEST_IP,
+    INGEST_PRINCIPAL,
+    rate_limit_ip,
+    rate_limit_principal,
+)
 from app.services.redis_client import get_redis
 from app.siem.exporters import SiemEvent
 from app.siem.forwarder import get_forwarder
@@ -39,6 +44,11 @@ from app.telemetry.runtime_event import RuntimeEvent
 
 logger = logging.getLogger("platform.runtime")
 router = APIRouter(tags=["runtime"])
+
+# Telemetry-ingest flood guard: bound per source IP and per authenticated
+# principal so neither a single host nor a single key can flood the pipeline.
+_ingest_ip_rl = rate_limit_ip(bucket="ingest", **INGEST_IP)
+_ingest_principal_rl = rate_limit_principal(bucket="ingest", **INGEST_PRINCIPAL)
 
 HEARTBEAT_KEY_PREFIX = "runtime:heartbeat:"
 HEARTBEAT_TTL_SECONDS = 300
@@ -142,7 +152,11 @@ class IngestResult(BaseModel):
 # ─────────────────────────────────────────────── routes
 
 
-@router.post("/events", response_model=IngestResult)
+@router.post(
+    "/events",
+    response_model=IngestResult,
+    dependencies=[Depends(_ingest_ip_rl), Depends(_ingest_principal_rl)],
+)
 async def ingest_events(
     batch: EventBatch,
     identity: IdentityContext = Depends(require_scope("runtime:ingest")),
@@ -164,7 +178,7 @@ async def ingest_events(
             continue
         try:
             ev = _to_runtime_event(event)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             rejected_reasons.append(f"event {event.event_id}: coerce failed: {exc}")
             continue
         enqueued = await record_runtime_event(ev)
@@ -179,7 +193,7 @@ async def ingest_events(
         if producer is not None:
             try:
                 await producer.publish(ev)
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 logger.warning(
                     "runtime_event_stream_publish_failed",
                     extra={"event_id": event.event_id, "error": str(exc)},
@@ -319,7 +333,7 @@ async def heartbeat(
     redis = await get_redis()
     key = HEARTBEAT_KEY_PREFIX + payload.agent_id
     body = payload.model_dump(mode="json")
-    body["received_at"] = datetime.now(timezone.utc).isoformat()
+    body["received_at"] = datetime.now(UTC).isoformat()
     await redis.set(key, json.dumps(body, separators=(",", ":")), ex=HEARTBEAT_TTL_SECONDS)
 
 
@@ -397,7 +411,7 @@ async def enqueue_command(
         type=payload.type,
         asset_id=str(payload.asset_id) if payload.asset_id else "",
         tool_name=payload.tool_name or "",
-        issued_at=datetime.now(timezone.utc).isoformat(),
+        issued_at=datetime.now(UTC).isoformat(),
         issued_by=str(identity.user_id) if identity.user_id else "system",
     )
     redis = await get_redis()
