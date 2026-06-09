@@ -22,8 +22,8 @@ import json
 import logging
 import re
 import time
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Awaitable, Callable
 
 from app.policy.compiled import CompiledPolicy
 from app.policy.types import PolicyInput, StageResult
@@ -78,24 +78,51 @@ class LlmJudgeStage3:
     """Stage 3 engine implementing the Stage3Engine protocol.
 
     Maps a :class:`JudgeVerdict` to a :class:`StageResult` action:
-      confidence ≥ 0.8 and violation → blocked
-      confidence ≥ 0.5 and violation → escalated (human review)
-      otherwise                      → matched=False (allow)
+      confidence ≥ 0.8 and violation -> blocked
+      confidence ≥ 0.5 and violation -> escalated (human review)
+      otherwise                      -> matched=False (allow)
 
     Fail-open: a judge error never blocks the request — it logs and returns
     matched=False so a flaky model can't take down the data path.
     """
 
     def __init__(self, *, judge: JudgeFn | None = None) -> None:
-        self._judge: JudgeFn = judge or deterministic_judge
+        # HONESTY (Phase 0.5): with no judge configured, Stage 3 is DISABLED —
+        # it must not silently run a regex stand-in and emit a "judge" verdict.
+        # Callers who genuinely want the dependency-free second opinion opt in
+        # explicitly via judge=deterministic_judge (reported as
+        # "stage3_deterministic", never as an LLM judge).
+        self._judge: JudgeFn | None = judge
+        if judge is None:
+            self._mode = "disabled"
+        elif judge is deterministic_judge:
+            self._mode = "stage3_deterministic"
+        else:
+            self._mode = "stage3_llm_judge"
+
+    @property
+    def mode(self) -> str:
+        return self._mode
 
     async def judge(self, *, input_: PolicyInput, policy: CompiledPolicy) -> StageResult:
+        if self._judge is None:
+            # Disabled: report honestly, compute nothing.
+            return StageResult(
+                stage="stage3_judge",
+                matched=False,
+                action="allowed",
+                mode="disabled",
+                reason="stage3 disabled: no judge configured",
+            )
+
         start_ns = time.perf_counter_ns()
         try:
             verdict = await self._judge(input_)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             logger.warning("stage3_judge_failed", extra={"error": str(exc)})
-            return StageResult(stage="stage3_judge", matched=False, action="allowed")
+            return StageResult(
+                stage="stage3_judge", matched=False, action="allowed", mode=self._mode
+            )
 
         latency_us = (time.perf_counter_ns() - start_ns) // 1000
         if not verdict.is_violation:
@@ -105,6 +132,7 @@ class LlmJudgeStage3:
                 action="allowed",
                 confidence=verdict.confidence,
                 latency_us=int(latency_us),
+                mode=self._mode,
             )
 
         if verdict.confidence >= 0.8:
@@ -118,6 +146,7 @@ class LlmJudgeStage3:
                 action="allowed",
                 confidence=verdict.confidence,
                 latency_us=int(latency_us),
+                mode=self._mode,
             )
 
         return StageResult(
@@ -130,6 +159,7 @@ class LlmJudgeStage3:
             confidence=verdict.confidence,
             reason=verdict.reason or "LLM judge confirmed violation",
             latency_us=int(latency_us),
+            mode=self._mode,
         )
 
 
@@ -162,7 +192,7 @@ def make_connector_judge(connector: object, *, max_tokens: int = 256) -> JudgeFn
                 max_tokens=max_tokens,
             )
             return _parse_verdict(resp.text)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             logger.warning("connector_judge_failed", extra={"error": str(exc)})
             return JudgeVerdict(is_violation=False, confidence=0.0, reason="judge error")
 

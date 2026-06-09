@@ -5,8 +5,8 @@ blueprint) classifies inputs through up to three stages before reaching
 a final decision:
 
   Stage 1 (regex / deterministic) — sub-1ms latency
-  Stage 2 (ONNX classifier)       — 5–10ms latency  [Sprint 3]
-  Stage 3 (LLM judge)             — 500–3000ms latency  [Sprint 7]
+  Stage 2 (ONNX classifier)       — 5-10ms latency  [Sprint 3]
+  Stage 3 (LLM judge)             — 500-3000ms latency  [Sprint 7]
 
 Each stage returns a :class:`StageResult`. The pipeline orchestrator
 combines stage results, applies confidence routing, and emits one final
@@ -37,7 +37,7 @@ RuleType = Literal[
 Severity = Literal["info", "low", "medium", "high", "critical"]
 
 
-class Direction(str, Enum):
+class Direction(str, Enum):  # noqa: UP042 - (str, Enum) kept for .value/str() wire-compat
     """Whether the inspected payload is going INTO the model (inbound) or
     coming OUT of the model (outbound). Different rules apply to each."""
 
@@ -73,8 +73,8 @@ class StageResult:
 
     ``confidence`` semantics by stage:
       Stage 1 (regex):     always 1.0 on match (deterministic)
-      Stage 2 (ML/ONNX):   0.0–1.0 model output
-      Stage 3 (LLM judge): 0.0–1.0 derived from judge response
+      Stage 2 (ML/ONNX):   0.0-1.0 model output
+      Stage 3 (LLM judge): 0.0-1.0 derived from judge response
     """
 
     stage: PipelineExitStage
@@ -87,6 +87,12 @@ class StageResult:
     reason: str = ""
     latency_us: int = 0  # microseconds — Stage 1 budgets are sub-1ms
     evidence: dict[str, Any] = field(default_factory=dict)
+    # How this verdict was ACTUALLY computed — the honesty field. One of:
+    # "stage1_regex", "stage2_heuristic", "stage2_onnx", "stage2_detectors",
+    # "stage2_http", "stage3_deterministic", "stage3_llm_judge", "stage3_http",
+    # or "disabled" (stage has no real backend — it did NOT compute a verdict).
+    # Never let `stage` (pipeline position) imply a capability `mode` denies.
+    mode: str = ""
 
 
 @dataclass(frozen=True)
@@ -126,27 +132,21 @@ class Stage1Engine(Protocol):
     patterns at construction time, never compile per-call.
     """
 
-    async def evaluate(
-        self, *, input_: PolicyInput, policy: "CompiledPolicy"
-    ) -> StageResult: ...
+    async def evaluate(self, *, input_: PolicyInput, policy: CompiledPolicy) -> StageResult: ...
 
 
 @runtime_checkable
 class Stage2Engine(Protocol):
     """Stage 2 — ML classifier (ONNX). Sprint 3."""
 
-    async def classify(
-        self, *, input_: PolicyInput, policy: "CompiledPolicy"
-    ) -> StageResult: ...
+    async def classify(self, *, input_: PolicyInput, policy: CompiledPolicy) -> StageResult: ...
 
 
 @runtime_checkable
 class Stage3Engine(Protocol):
     """Stage 3 — LLM judge. Sprint 7."""
 
-    async def judge(
-        self, *, input_: PolicyInput, policy: "CompiledPolicy"
-    ) -> StageResult: ...
+    async def judge(self, *, input_: PolicyInput, policy: CompiledPolicy) -> StageResult: ...
 
 
 # Forward-declared placeholder; the concrete CompiledPolicy lives in

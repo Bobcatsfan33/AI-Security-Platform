@@ -30,7 +30,6 @@ from app.policy.types import (
     StageResult,
 )
 
-
 # ─────────────────────────────────────────────── Engine
 
 
@@ -92,9 +91,7 @@ class Stage1RegexEngine:
 
     # ─────────────────────────────────────────── helpers
 
-    def _match_rule(
-        self, *, rule: CompiledRule, text: str
-    ) -> StageResult | None:
+    def _match_rule(self, *, rule: CompiledRule, text: str) -> StageResult | None:
         """Return a StageResult if the rule matches, else None."""
         if rule.type == "regex":
             for pattern in rule.regex_patterns:
@@ -118,18 +115,14 @@ class Stage1RegexEngine:
                     digits = re.sub(r"\D", "", m.group(0))
                     if not luhn_check(digits):
                         continue
-                return _result_for(
-                    rule=rule, evidence={"pii_detected": True}
-                )
+                return _result_for(rule=rule, evidence={"pii_detected": True})
 
         # rate_limit and custom rule types are scaffolded but not implemented
         # in Sprint 2 — they require state (per-session counters) which
         # belongs in the orchestrator, not the stage engine. Skip.
         return None
 
-    def _check_tool_firewall(
-        self, *, tool_name: str, policy: CompiledPolicy
-    ) -> StageResult | None:
+    def _check_tool_firewall(self, *, tool_name: str, policy: CompiledPolicy) -> StageResult | None:
         if not tool_name:
             return None
         if tool_name in policy.tool_denylist:
@@ -176,6 +169,7 @@ class Stage1RegexEngine:
     @staticmethod
     def _stamp_latency(result: StageResult, start_ns: int) -> StageResult:
         latency_us = (time.perf_counter_ns() - start_ns) // 1000
+        # Single chokepoint for every Stage 1 result — stamp the honest mode.
         return StageResult(
             stage=result.stage,
             matched=result.matched,
@@ -187,6 +181,7 @@ class Stage1RegexEngine:
             reason=result.reason,
             latency_us=int(latency_us),
             evidence=result.evidence,
+            mode="stage1_regex",
         )
 
 

@@ -59,7 +59,11 @@ class DetectorSuiteStage2:
 
         if resp.action == "allow":
             return StageResult(
-                stage="stage2_ml", matched=False, action="allowed", latency_us=int(latency_us)
+                stage="stage2_ml",
+                matched=False,
+                action="allowed",
+                latency_us=int(latency_us),
+                mode="stage2_detectors",
             )
 
         # Pick the highest-confidence triggered detector to characterize the hit.
@@ -68,6 +72,7 @@ class DetectorSuiteStage2:
         action = "blocked" if resp.action == "block" else "flagged"
         return StageResult(
             stage="stage2_ml",
+            mode="stage2_detectors",
             matched=True,
             action=action,
             severity=top.severity,  # type: ignore[arg-type]
