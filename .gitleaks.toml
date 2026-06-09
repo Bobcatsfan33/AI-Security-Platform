@@ -1,0 +1,26 @@
+# gitleaks config — secrets scanning (Phase 0.3 CI gate).
+# Extends the default rule set; allowlists build artifacts and documented,
+# non-sensitive test fixtures so the gate flags REAL leaks, not noise.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Build output + documented test fixtures (not real secrets)"
+
+# Paths that must never count: build output (gitignored, per-build keys),
+# caches, vendored deps, and lockfiles (integrity hashes look like keys).
+paths = [
+  '''(^|/)\.next/''',          # Next.js build output — ephemeral, gitignored
+  '''(^|/)node_modules/''',
+  '''(^|/)__pycache__/''',
+  '''(^|/)\.venv/''',
+  '''package-lock\.json$''',   # npm integrity sha-512 hashes are not secrets
+]
+
+# Documented non-sensitive test/CI values (32+ char strings that exist only to
+# satisfy length validators in test and CI environments).
+regexes = [
+  '''ci-secret-must-be-at-least-32-chars-long-padding''',
+  '''test-secret-must-be-at-least-32-chars-long-for-pydantic-validation''',
+]

@@ -28,17 +28,17 @@ from app.detectors.util import COMMON_EN, tokens
 
 # Invisible characters used to splice/obfuscate. Mirrors the set the injection
 # detector flags; here we *strip* them so the underlying text is inspectable.
-_ZERO_WIDTH = {"​", "‌", "‍", "⁠", "﻿"}
+_ZERO_WIDTH = {"\u200b", "\u200c", "\u200d", "\u2060", "\ufeff"}
 _BIDI = {
-    "‪",
-    "‫",
-    "‬",
-    "‭",
-    "‮",
-    "⁦",
-    "⁧",
-    "⁨",
-    "⁩",
+    "\u202a",
+    "\u202b",
+    "\u202c",
+    "\u202d",
+    "\u202e",
+    "\u2066",
+    "\u2067",
+    "\u2068",
+    "\u2069",
 }
 
 _B64_RE = re.compile(r"[A-Za-z0-9+/]{16,}={0,2}")

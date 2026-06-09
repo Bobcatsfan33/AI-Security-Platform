@@ -5,8 +5,8 @@ from __future__ import annotations
 import re
 import unicodedata
 
-from app.detectors.base import DetectorContext, DetectorResult, Direction
 from app.detectors import util
+from app.detectors.base import DetectorContext, DetectorResult, Direction
 
 _PI_SIGNALS: tuple[tuple[re.Pattern[str], float], ...] = (
     (
@@ -94,12 +94,12 @@ class JailbreakDetector:
 
 # ─────────────────────────────────────────────── Invisible / steganographic text
 
-_ZERO_WIDTH = {"​", "‌", "‍", "⁠", "﻿"}
-_BIDI = {"‪", "‫", "‬", "‭", "‮", "⁦", "⁧", "⁨", "⁩"}
+_ZERO_WIDTH = {"\u200b", "\u200c", "\u200d", "\u2060", "\ufeff"}
+_BIDI = {"\u202a", "\u202b", "\u202c", "\u202d", "\u202e", "\u2066", "\u2067", "\u2068", "\u2069"}
 
 
 def _is_tag_char(ch: str) -> bool:
-    # Unicode Tags block U+E0000–U+E007F is used to smuggle hidden ASCII.
+    # Unicode Tags block U+E0000-U+E007F is used to smuggle hidden ASCII.
     return 0xE0000 <= ord(ch) <= 0xE007F
 
 
