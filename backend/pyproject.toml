@@ -49,7 +49,7 @@ dependencies = [
     "python-multipart>=0.0.9", # SAML ACS form-data parsing
 
     # Auth primitives
-    "python-jose[cryptography]>=3.3",  # JWT
+    "pyjwt[crypto]>=2.9",              # JWT (replaces python-jose; RS256-ready)
     "passlib[bcrypt]>=1.7.4",          # password / api-key hashing
     "bcrypt<5.0,>=4.0",                # passlib pin
     "cryptography>=42.0",              # field-level encryption (Fernet)

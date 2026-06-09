@@ -17,10 +17,11 @@ from __future__ import annotations
 import secrets
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from jose import JWTError, jwt
+import jwt
+from jwt import PyJWTError
 
 from app.core.config import get_settings
 from app.services.redis_client import get_redis
@@ -39,7 +40,7 @@ class TokenPair:
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _make_jti() -> str:
@@ -73,9 +74,7 @@ async def issue_token_pair(
         "exp": int(access_expires.timestamp()),
         "jti": jti,
     }
-    access_token = jwt.encode(
-        access_claims, settings.jwt_secret, algorithm=settings.jwt_algorithm
-    )
+    access_token = jwt.encode(access_claims, settings.jwt_secret, algorithm=settings.jwt_algorithm)
 
     refresh_token = secrets.token_urlsafe(48)
     refresh_payload = {
@@ -112,7 +111,7 @@ async def verify_access_token(token: str) -> dict[str, Any]:
             algorithms=[settings.jwt_algorithm],
             options={"require": ["exp", "sub", "org", "jti"]},
         )
-    except JWTError as e:
+    except PyJWTError as e:
         raise TokenError(f"invalid_token: {e}") from e
 
     jti = claims.get("jti")
