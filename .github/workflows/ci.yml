@@ -46,6 +46,11 @@ jobs:
         run: |
           pip install --upgrade pip
           pip install -e ".[dev]"
+      - name: pip-audit (dependency vulns)
+        working-directory: backend
+        run: |
+          pip install pip-audit
+          pip-audit
       - name: Apply migrations
         working-directory: backend
         run: alembic upgrade head
@@ -85,3 +90,45 @@ jobs:
       - name: Build
         working-directory: frontend
         run: npm run build
+
+  security:
+    name: Security gates
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+
+      # ── Secrets scanning (working tree; .gitleaks.toml allowlists build
+      #    artifacts + documented test fixtures) ────────────────────────────
+      - name: gitleaks (secrets scan)
+        run: |
+          go install github.com/zricethezav/gitleaks/v8@latest
+          "$(go env GOPATH)/bin/gitleaks" detect --no-git --no-banner -c .gitleaks.toml
+
+      # ── Python SAST (pip-audit runs in the backend job, where the full
+      #    dependency set is installed) ─────────────────────────────────────
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: bandit (Python SAST, high severity)
+        run: |
+          pip install --upgrade pip bandit
+          bandit -r app --severity-level high
+        working-directory: backend
+
+      # ── Node dependency audit (high severity) ───────────────────────────
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: npm audit (high severity)
+        working-directory: frontend
+        run: npm audit --audit-level=high
+
+      # ── Go SAST (high severity + high confidence) ───────────────────────
+      - name: gosec (Go SAST)
+        run: |
+          go install github.com/securego/gosec/v2/cmd/gosec@latest
+          "$(go env GOPATH)/bin/gosec" -severity high -confidence high ./...
+        working-directory: runtime-agent
