@@ -14,9 +14,9 @@ touching the others:
   1. ``ClassifierBackend`` (Protocol) — runs raw inference on
      pre-tokenized input. Default impl: :class:`OrtBackend` using
      ``onnxruntime``.
-  2. ``Tokenizer`` (Protocol) — converts text → input_ids / attention_
+  2. ``Tokenizer`` (Protocol) — converts text -> input_ids / attention_
      mask. Default impl: :class:`HfTokenizer` using ``tokenizers``.
-  3. :class:`OnnxClassifierStage2` — orchestrates tokenize → infer →
+  3. :class:`OnnxClassifierStage2` — orchestrates tokenize -> infer ->
      map outputs to a :class:`StageResult`.
 
 Model registry
@@ -67,10 +67,8 @@ logger = logging.getLogger("platform.policy.stage2")
 class ClassifierBackend(Protocol):
     """Runs ONNX inference. Stub for tests; OrtBackend in production."""
 
-    def classify(
-        self, *, input_ids: list[int], attention_mask: list[int]
-    ) -> dict[str, float]:
-        """Return label → probability for one input.
+    def classify(self, *, input_ids: list[int], attention_mask: list[int]) -> dict[str, float]:
+        """Return label -> probability for one input.
 
         Implementations decide how to map output tensors to labels —
         typically a softmax over logits with the model's id2label map.
@@ -80,12 +78,9 @@ class ClassifierBackend(Protocol):
 
 @runtime_checkable
 class Tokenizer(Protocol):
-    """Text → (input_ids, attention_mask). Stub for tests; HF in prod."""
+    """Text -> (input_ids, attention_mask). Stub for tests; HF in prod."""
 
-    def encode(
-        self, text: str, *, max_length: int
-    ) -> tuple[list[int], list[int]]:
-        ...
+    def encode(self, text: str, *, max_length: int) -> tuple[list[int], list[int]]: ...
 
 
 # ─────────────────────────────────────────────── Config
@@ -105,7 +100,7 @@ class ClassifierSpec:
     enabled: bool = True
 
     @classmethod
-    def from_dict(cls, d: dict[str, Any]) -> "ClassifierSpec":
+    def from_dict(cls, d: dict[str, Any]) -> ClassifierSpec:
         return cls(
             id=str(d.get("id", "")),
             name=str(d.get("name", "")),
@@ -142,9 +137,7 @@ class OrtBackend:
         self._session: Any = None
         self._id2label: dict[int, str] = {}
 
-    def classify(
-        self, *, input_ids: list[int], attention_mask: list[int]
-    ) -> dict[str, float]:
+    def classify(self, *, input_ids: list[int], attention_mask: list[int]) -> dict[str, float]:
         session = self._get_session()
         import numpy as np  # local — onnxruntime pulls numpy
 
@@ -155,12 +148,10 @@ class OrtBackend:
         ids_arr = np.array([input_ids], dtype=np.int64)
         feeds["input_ids" if "input_ids" in declared else next(iter(declared))] = ids_arr
         if "attention_mask" in declared:
-            feeds["attention_mask"] = np.array(
-                [attention_mask], dtype=np.int64
-            )
+            feeds["attention_mask"] = np.array([attention_mask], dtype=np.int64)
 
         outputs = session.run(None, feeds)
-        logits = outputs[0][0]  # (batch=1, num_labels) → (num_labels,)
+        logits = outputs[0][0]  # (batch=1, num_labels) -> (num_labels,)
         probs = _softmax(list(logits))
         return {self._label_for(i): probs[i] for i in range(len(probs))}
 
@@ -170,9 +161,7 @@ class OrtBackend:
                 import onnxruntime as ort  # type: ignore[import-untyped]
             except ImportError as exc:  # pragma: no cover
                 raise RuntimeError("onnxruntime not installed") from exc
-            self._session = ort.InferenceSession(
-                self._model_path, providers=self._providers
-            )
+            self._session = ort.InferenceSession(self._model_path, providers=self._providers)
             self._id2label = self._extract_id2label(self._session)
         return self._session
 
@@ -207,9 +196,7 @@ class HfTokenizer:
         self._tokenizer_path = _resolve_artifact_path(tokenizer_path)
         self._tokenizer: Any = None
 
-    def encode(
-        self, text: str, *, max_length: int
-    ) -> tuple[list[int], list[int]]:
+    def encode(self, text: str, *, max_length: int) -> tuple[list[int], list[int]]:
         tokenizer = self._load()
         encoded = tokenizer.encode(text)
         ids = encoded.ids[:max_length]
@@ -232,7 +219,7 @@ class HfTokenizer:
 
 
 class OnnxClassifierStage2:
-    """Stage 2 engine. Orchestrates tokenize → infer → emit StageResult.
+    """Stage 2 engine. Orchestrates tokenize -> infer -> emit StageResult.
 
     A pipeline typically holds ONE instance per policy. Each instance can
     drive one or more classifiers (e.g. prompt_injection + jailbreak +
@@ -255,11 +242,11 @@ class OnnxClassifierStage2:
         # Lazy: build (backend, tokenizer) per spec on first use
         self._cache: dict[str, tuple[ClassifierBackend, Tokenizer]] = {}
 
-    async def classify(
-        self, *, input_: PolicyInput, policy: CompiledPolicy
-    ) -> StageResult:
+    async def classify(self, *, input_: PolicyInput, policy: CompiledPolicy) -> StageResult:
         if not self._specs:
-            return StageResult(stage="stage2_ml", matched=False, action="allowed")
+            return StageResult(
+                stage="stage2_ml", matched=False, action="allowed", mode="stage2_onnx"
+            )
 
         start_ns = time.perf_counter_ns()
         best: tuple[str, str, float] | None = None  # (rule_id, category, confidence)
@@ -267,7 +254,7 @@ class OnnxClassifierStage2:
         for spec in self._specs:
             try:
                 backend, tokenizer = self._get_or_build(spec)
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 logger.warning(
                     "stage2_classifier_load_failed",
                     extra={"spec_id": spec.id, "error": str(exc)},
@@ -275,13 +262,9 @@ class OnnxClassifierStage2:
                 continue
 
             try:
-                ids, mask = tokenizer.encode(
-                    input_.text, max_length=spec.max_input_length
-                )
-                label_probs = backend.classify(
-                    input_ids=ids, attention_mask=mask
-                )
-            except Exception as exc:  # noqa: BLE001
+                ids, mask = tokenizer.encode(input_.text, max_length=spec.max_input_length)
+                label_probs = backend.classify(input_ids=ids, attention_mask=mask)
+            except Exception as exc:
                 logger.warning(
                     "stage2_classifier_infer_failed",
                     extra={"spec_id": spec.id, "error": str(exc)},
@@ -306,6 +289,7 @@ class OnnxClassifierStage2:
                 matched=False,
                 action="allowed",
                 latency_us=int(latency_us),
+                mode="stage2_onnx",
             )
 
         rule_id, category, confidence = best
@@ -315,6 +299,7 @@ class OnnxClassifierStage2:
         # regex; Stage 2 is intentionally heuristic.
         return StageResult(
             stage="stage2_ml",
+            mode="stage2_onnx",
             matched=True,
             action="flagged",
             severity="medium",
@@ -326,9 +311,7 @@ class OnnxClassifierStage2:
             evidence={"label_probs": {category: round(confidence, 4)}},
         )
 
-    def _get_or_build(
-        self, spec: ClassifierSpec
-    ) -> tuple[ClassifierBackend, Tokenizer]:
+    def _get_or_build(self, spec: ClassifierSpec) -> tuple[ClassifierBackend, Tokenizer]:
         if spec.id not in self._cache:
             backend = self._backend_factory(spec)
             tokenizer = self._tokenizer_factory(spec)
@@ -345,9 +328,7 @@ def _default_backend_factory(spec: ClassifierSpec) -> ClassifierBackend:
 
 def _default_tokenizer_factory(spec: ClassifierSpec) -> Tokenizer:
     if not spec.tokenizer_artifact_path:
-        raise RuntimeError(
-            f"classifier {spec.id!r} has no tokenizer_artifact_path"
-        )
+        raise RuntimeError(f"classifier {spec.id!r} has no tokenizer_artifact_path")
     return HfTokenizer(tokenizer_path=spec.tokenizer_artifact_path)
 
 

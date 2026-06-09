@@ -28,7 +28,6 @@ from app.policy.stage1 import Stage1RegexEngine
 from app.policy.stage2_heuristic import HeuristicStage2
 from app.policy.stage3_judge import LlmJudgeStage3
 from app.policy.types import (
-    Direction,
     PolicyDecision,
     PolicyInput,
     Stage1Engine,
@@ -37,26 +36,21 @@ from app.policy.types import (
     StageResult,
 )
 
-
 # ─────────────────────────────────────────────── No-op stubs for Stages 2 & 3
 
 
 class _NoopStage2:
-    """Placeholder for the ONNX classifier (Sprint 3)."""
+    """Explicitly-disabled Stage 2 — computes nothing, reports it honestly."""
 
-    async def classify(
-        self, *, input_: PolicyInput, policy: CompiledPolicy
-    ) -> StageResult:
-        return StageResult(stage="stage2_ml", matched=False, action="allowed")
+    async def classify(self, *, input_: PolicyInput, policy: CompiledPolicy) -> StageResult:
+        return StageResult(stage="stage2_ml", matched=False, action="allowed", mode="disabled")
 
 
 class _NoopStage3:
-    """Placeholder for the LLM judge (Sprint 7)."""
+    """Explicitly-disabled Stage 3 — computes nothing, reports it honestly."""
 
-    async def judge(
-        self, *, input_: PolicyInput, policy: CompiledPolicy
-    ) -> StageResult:
-        return StageResult(stage="stage3_judge", matched=False, action="allowed")
+    async def judge(self, *, input_: PolicyInput, policy: CompiledPolicy) -> StageResult:
+        return StageResult(stage="stage3_judge", matched=False, action="allowed", mode="disabled")
 
 
 # ─────────────────────────────────────────────── Pipeline
@@ -75,7 +69,7 @@ class PolicyPipeline:
     stage3: Stage3Engine
 
     @classmethod
-    def default(cls) -> "PolicyPipeline":
+    def default(cls) -> PolicyPipeline:
         """Default wiring: real Stage 1 + functional Stage 2 + Stage 3 judge.
 
         Stage 2 is the zero-config :class:`HeuristicStage2` — swap in

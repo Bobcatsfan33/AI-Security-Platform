@@ -12,9 +12,9 @@ prompt-injection and jailbreak attempts. It is intentionally *not* presented
 as a trained model — confidences are calibrated from signal strength, and the
 ONNX engine supersedes it when configured. It exists so the three-stage
 pipeline is real end-to-end with no external dependencies, and so the
-confidence-routing path (Stage 2 → Stage 3 escalation) is exercised.
+confidence-routing path (Stage 2 -> Stage 3 escalation) is exercised.
 
-Signals (each contributes weighted evidence toward a 0–1 confidence):
+Signals (each contributes weighted evidence toward a 0-1 confidence):
   - Instruction-override phrases ("ignore previous instructions", …)
   - Role / persona hijack ("you are now", "DAN", "developer mode", …)
   - System-prompt exfiltration ("repeat the text above", "system prompt")
@@ -32,7 +32,7 @@ from app.policy.types import PolicyInput, StageResult
 # Each pattern carries (weight, category). Weights sum (capped at 1.0) into
 # the confidence. Tuned so a single strong phrase lands in the "high" band
 # (≥0.7) and a single weak/structural signal lands in the "uncertain" band
-# (0.3–0.7) so Stage 3 escalation gets exercised.
+# (0.3-0.7) so Stage 3 escalation gets exercised.
 _SIGNALS: tuple[tuple[re.Pattern[str], float, str], ...] = (
     (
         re.compile(r"\bignore\s+(?:all\s+)?(?:previous|prior|above)\s+instructions?\b", re.I),
@@ -68,7 +68,7 @@ class HeuristicStage2:
     """Stage 2 engine implementing the Stage2Engine protocol with no ML deps.
 
     Returns ``matched=True`` with ``action="flagged"`` and a calibrated
-    confidence; the orchestrator handles routing (high → act, uncertain →
+    confidence; the orchestrator handles routing (high -> act, uncertain ->
     Stage 3). Returns ``matched=False`` when no signal fires.
     """
 
@@ -92,6 +92,7 @@ class HeuristicStage2:
         if not hits:
             return StageResult(
                 stage="stage2_ml",
+                mode="stage2_heuristic",
                 matched=False,
                 action="allowed",
                 latency_us=int(latency_us),
@@ -101,6 +102,7 @@ class HeuristicStage2:
         severity = "high" if confidence >= 0.7 else "medium"
         return StageResult(
             stage="stage2_ml",
+            mode="stage2_heuristic",
             matched=True,
             action="flagged",
             severity=severity,
