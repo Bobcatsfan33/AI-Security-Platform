@@ -18,7 +18,7 @@ from __future__ import annotations
 import hashlib
 import uuid
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict, Field
@@ -49,12 +49,12 @@ class AssetRead(BaseModel):
     asset_type: str
     asset_status: str
     provider: str
-    version: Optional[str]
+    version: str | None
     external_id: str
     connector_id: uuid.UUID
     risk_score: int
-    owner_id: Optional[uuid.UUID]
-    description: Optional[str]
+    owner_id: uuid.UUID | None
+    description: str | None
     metadata: dict[str, Any] = Field(default_factory=dict)
     discovered_at: datetime
     last_seen_at: datetime
@@ -65,9 +65,9 @@ class AssetRead(BaseModel):
 class DeploymentRead(BaseModel):
     id: uuid.UUID
     environment: str
-    endpoint_url: Optional[str]
-    region: Optional[str]
-    replicas: Optional[int]
+    endpoint_url: str | None
+    region: str | None
+    replicas: int | None
     status: str
 
 
@@ -85,30 +85,30 @@ class OwnerRead(BaseModel):
     id: uuid.UUID
     team: str
     email: str
-    department: Optional[str]
+    department: str | None
 
 
 class AssetDetail(AssetRead):
     deployments: list[DeploymentRead] = Field(default_factory=list)
     tags: list[TagRead] = Field(default_factory=list)
     outgoing_relationships: list[RelationshipRead] = Field(default_factory=list)
-    owner: Optional[OwnerRead] = None
+    owner: OwnerRead | None = None
 
 
 class AssetHistoryEntry(BaseModel):
     id: uuid.UUID
     change_type: str
-    previous_value: Optional[dict[str, Any]]
-    new_value: Optional[dict[str, Any]]
+    previous_value: dict[str, Any] | None
+    new_value: dict[str, Any] | None
     changed_at: datetime
 
 
 class OwnerAssign(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    owner_id: Optional[uuid.UUID] = None
-    team: Optional[str] = None
-    email: Optional[str] = None
-    department: Optional[str] = None
+    owner_id: uuid.UUID | None = None
+    team: str | None = None
+    email: str | None = None
+    department: str | None = None
 
 
 class DuplicatePair(BaseModel):
@@ -141,14 +141,13 @@ def _to_read(row: AIAsset) -> AssetRead:
 # ─────────────────────────────────────────────── helpers
 
 
-async def _load_asset(db: AsyncSession, asset_id: uuid.UUID) -> AIAsset:
+async def _load_asset(db: AsyncSession, asset_id: uuid.UUID, org_id: uuid.UUID) -> AIAsset:
     row = (
-        await db.execute(select(AIAsset).where(AIAsset.id == asset_id))
+        await db.execute(select(AIAsset).where(AIAsset.id == asset_id, AIAsset.org_id == org_id))
     ).scalar_one_or_none()
     if row is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="asset_not_found"
-        )
+        # 404 (not 403) for a cross-org id — don't disclose existence.
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="asset_not_found")
     return row
 
 
@@ -175,18 +174,18 @@ def _stub_embed(text: str) -> list[float]:
 
 @router.get("", response_model=list[AssetRead])
 async def list_assets(
-    asset_type: Optional[str] = Query(None),
-    provider: Optional[str] = Query(None),
-    asset_status: Optional[str] = Query(None),
-    connector_id: Optional[uuid.UUID] = Query(None),
-    owner_id: Optional[uuid.UUID] = Query(None),
-    min_risk_score: Optional[int] = Query(None, ge=0, le=100),
+    asset_type: str | None = Query(None),
+    provider: str | None = Query(None),
+    asset_status: str | None = Query(None),
+    connector_id: uuid.UUID | None = Query(None),
+    owner_id: uuid.UUID | None = Query(None),
+    min_risk_score: int | None = Query(None, ge=0, le=100),
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
     identity: IdentityContext = Depends(require_role("viewer")),
     db: AsyncSession = Depends(get_db),
 ) -> list[AssetRead]:
-    stmt = select(AIAsset)
+    stmt = select(AIAsset).where(AIAsset.org_id == identity.org_id)
     if asset_type:
         stmt = stmt.where(AIAsset.asset_type == asset_type)
     if provider:
@@ -211,14 +210,19 @@ async def list_unowned(
     db: AsyncSession = Depends(get_db),
 ) -> list[AssetRead]:
     rows = (
-        await db.execute(
-            select(AIAsset)
-            .where(AIAsset.owner_id.is_(None))
-            .where(AIAsset.asset_status == "active")
-            .order_by(desc(AIAsset.discovered_at))
-            .limit(limit)
+        (
+            await db.execute(
+                select(AIAsset)
+                .where(AIAsset.org_id == identity.org_id)
+                .where(AIAsset.owner_id.is_(None))
+                .where(AIAsset.asset_status == "active")
+                .order_by(desc(AIAsset.discovered_at))
+                .limit(limit)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     return [_to_read(r) for r in rows]
 
 
@@ -237,10 +241,16 @@ async def list_duplicates(
     (Sprint 1 keeps them NULL by default).
     """
     rows = (
-        await db.execute(
-            select(AIAsset).where(AIAsset.asset_status == "active")
+        (
+            await db.execute(
+                select(AIAsset)
+                .where(AIAsset.org_id == identity.org_id)
+                .where(AIAsset.asset_status == "active")
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
 
     seen: dict[tuple[str, str, str], list[AIAsset]] = {}
     for r in rows:
@@ -256,11 +266,7 @@ async def list_duplicates(
                 a, b = group[i], group[j]
                 if a.connector_id == b.connector_id:
                     continue
-                pairs.append(
-                    DuplicatePair(
-                        asset_a_id=a.id, asset_b_id=b.id, similarity=1.0
-                    )
-                )
+                pairs.append(DuplicatePair(asset_a_id=a.id, asset_b_id=b.id, similarity=1.0))
                 if len(pairs) >= limit:
                     return pairs
     return pairs
@@ -285,14 +291,19 @@ async def search_assets(
         AIAsset.external_id.ilike(f"%{q}%"),
     )
     rows = (
-        await db.execute(
-            select(AIAsset)
-            .where(AIAsset.asset_status == "active")
-            .where(lexical_filter)
-            .order_by(desc(AIAsset.last_seen_at))
-            .limit(limit)
+        (
+            await db.execute(
+                select(AIAsset)
+                .where(AIAsset.org_id == identity.org_id)
+                .where(AIAsset.asset_status == "active")
+                .where(lexical_filter)
+                .order_by(desc(AIAsset.last_seen_at))
+                .limit(limit)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     return [_to_read(r) for r in rows]
 
 
@@ -302,27 +313,43 @@ async def get_asset_detail(
     identity: IdentityContext = Depends(require_role("viewer")),
     db: AsyncSession = Depends(get_db),
 ) -> AssetDetail:
-    row = await _load_asset(db, asset_id)
+    row = await _load_asset(db, asset_id, identity.org_id)
+    org = identity.org_id
 
     deployments = (
-        await db.execute(
-            select(Deployment).where(Deployment.asset_id == asset_id)
-        )
-    ).scalars().all()
-    tags = (
-        await db.execute(select(AssetTag).where(AssetTag.asset_id == asset_id))
-    ).scalars().all()
-    edges = (
-        await db.execute(
-            select(AssetRelationship).where(
-                AssetRelationship.source_asset_id == asset_id
+        (
+            await db.execute(
+                select(Deployment).where(Deployment.asset_id == asset_id, Deployment.org_id == org)
             )
         )
-    ).scalars().all()
-    owner: Optional[Owner] = None
+        .scalars()
+        .all()
+    )
+    tags = (
+        (
+            await db.execute(
+                select(AssetTag).where(AssetTag.asset_id == asset_id, AssetTag.org_id == org)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    edges = (
+        (
+            await db.execute(
+                select(AssetRelationship).where(
+                    AssetRelationship.source_asset_id == asset_id,
+                    AssetRelationship.org_id == org,
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    owner: Owner | None = None
     if row.owner_id is not None:
         owner = (
-            await db.execute(select(Owner).where(Owner.id == row.owner_id))
+            await db.execute(select(Owner).where(Owner.id == row.owner_id, Owner.org_id == org))
         ).scalar_one_or_none()
 
     base = _to_read(row)
@@ -349,7 +376,9 @@ async def get_asset_detail(
         ],
         owner=(
             OwnerRead(
-                id=owner.id, team=owner.team, email=owner.email,
+                id=owner.id,
+                team=owner.team,
+                email=owner.email,
                 department=owner.department,
             )
             if owner is not None
@@ -365,15 +394,22 @@ async def get_history(
     identity: IdentityContext = Depends(require_role("viewer")),
     db: AsyncSession = Depends(get_db),
 ) -> list[AssetHistoryEntry]:
-    await _load_asset(db, asset_id)
+    await _load_asset(db, asset_id, identity.org_id)
     rows = (
-        await db.execute(
-            select(AssetChangelog)
-            .where(AssetChangelog.asset_id == asset_id)
-            .order_by(desc(AssetChangelog.changed_at))
-            .limit(limit)
+        (
+            await db.execute(
+                select(AssetChangelog)
+                .where(
+                    AssetChangelog.asset_id == asset_id,
+                    AssetChangelog.org_id == identity.org_id,
+                )
+                .order_by(desc(AssetChangelog.changed_at))
+                .limit(limit)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     return [
         AssetHistoryEntry(
             id=r.id,
@@ -395,14 +431,14 @@ async def assign_owner(
 ) -> AssetRead:
     """Two paths: pass an existing owner_id, or pass team+email to
     create-or-find an owner row in one call."""
-    row = await _load_asset(db, asset_id)
+    row = await _load_asset(db, asset_id, identity.org_id)
     previous_owner_id = row.owner_id
 
     if payload.owner_id is not None:
-        # Verify the owner row exists.
+        # Verify the owner row exists in this org.
         owner = (
             await db.execute(
-                select(Owner).where(Owner.id == payload.owner_id)
+                select(Owner).where(Owner.id == payload.owner_id, Owner.org_id == identity.org_id)
             )
         ).scalar_one_or_none()
         if owner is None:
@@ -415,12 +451,14 @@ async def assign_owner(
         owner = (
             await db.execute(
                 select(Owner)
+                .where(Owner.org_id == identity.org_id)
                 .where(Owner.email == payload.email)
                 .where(Owner.team == payload.team)
             )
         ).scalar_one_or_none()
         if owner is None:
             owner = Owner(
+                org_id=identity.org_id,
                 team=payload.team,
                 email=payload.email,
                 department=payload.department,
@@ -436,6 +474,7 @@ async def assign_owner(
 
     db.add(
         AssetChangelog(
+            org_id=identity.org_id,
             asset_id=row.id,
             change_type="owner_changed",
             previous_value={"owner_id": str(previous_owner_id) if previous_owner_id else None},

@@ -36,10 +36,10 @@ os.environ.setdefault("REDIS_URL", "redis://localhost:6379/15")
 # pytest-asyncio creates per-test loops, which leaves the pool with stale
 # connections attached to dead loops. NullPool opens a fresh connection
 # per acquire and disposes it on release — the right trade for tests.
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine  # noqa: E402
-from sqlalchemy.pool import NullPool  # noqa: E402
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.pool import NullPool
 
-from app.db import session as _db_session  # noqa: E402
+from app.db import session as _db_session
 
 _test_engine = create_async_engine(
     os.environ["DATABASE_URL"],
@@ -47,19 +47,35 @@ _test_engine = create_async_engine(
     echo=False,
 )
 _db_session.engine = _test_engine
-_db_session.SessionLocal = async_sessionmaker(
-    bind=_test_engine, expire_on_commit=False
-)
+_db_session.SessionLocal = async_sessionmaker(bind=_test_engine, expire_on_commit=False)
 
 from app.db.models.connector import Connector  # noqa: E402
+from app.db.models.organization import Organization  # noqa: E402
 from app.db.session import SessionLocal  # noqa: E402
 
 
 @pytest_asyncio.fixture
-async def fresh_mock_connector() -> AsyncIterator[Connector]:
+async def test_org() -> AsyncIterator[uuid.UUID]:
+    """Create a real Organization row (asset-graph org_id FKs require it),
+    yield its id, then delete it — CASCADE removes any org-scoped children."""
+    org_id = uuid.uuid4()
+    async with SessionLocal() as db:
+        db.add(Organization(id=org_id, name="itest-org", slug=f"itest-{uuid.uuid4().hex[:8]}"))
+        await db.commit()
+
+    yield org_id
+
+    async with SessionLocal() as db:
+        await db.execute(text("DELETE FROM organizations WHERE id = :id"), {"id": org_id})
+        await db.commit()
+
+
+@pytest_asyncio.fixture
+async def fresh_mock_connector(test_org: uuid.UUID) -> AsyncIterator[Connector]:
     """Insert a v2 mock connector row, yield it, then delete (CASCADE)."""
     row = Connector(
         id=uuid.uuid4(),
+        org_id=test_org,
         name=f"mock-{uuid.uuid4().hex[:6]}",
         connector_type="mock",
         config_encrypted={"stable": True},
@@ -73,9 +89,7 @@ async def fresh_mock_connector() -> AsyncIterator[Connector]:
     yield row
 
     async with SessionLocal() as db:
-        await db.execute(
-            text("DELETE FROM connectors WHERE id = :id"), {"id": row.id}
-        )
+        await db.execute(text("DELETE FROM connectors WHERE id = :id"), {"id": row.id})
         await db.commit()
 
 

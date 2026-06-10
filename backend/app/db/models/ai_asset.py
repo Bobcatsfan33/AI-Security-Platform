@@ -69,6 +69,9 @@ class AIAsset(Base):
     )
 
     id: Mapped[UUIDPk]
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
+    )
     name: Mapped[str] = mapped_column(Text, nullable=False)
     asset_type: Mapped[str] = mapped_column(ASSET_TYPE_ENUM, nullable=False, index=True)
     asset_status: Mapped[str] = mapped_column(

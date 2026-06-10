@@ -30,6 +30,9 @@ class SyncJob(Base):
     __tablename__ = "sync_jobs"
 
     id: Mapped[UUIDPk]
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
+    )
     connector_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("connectors.id", ondelete="CASCADE"), nullable=False, index=True
     )

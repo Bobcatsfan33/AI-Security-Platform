@@ -9,10 +9,11 @@ Replaces the v1 ``connector_configs`` table. v2 connectors are the
 
 from __future__ import annotations
 
+import uuid
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import Boolean, DateTime, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, JsonbDict, TimestampUtc, TimestampUtcUpdated, UUIDPk
@@ -22,6 +23,9 @@ class Connector(Base):
     __tablename__ = "connectors"
 
     id: Mapped[UUIDPk]
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
+    )
     name: Mapped[str] = mapped_column(Text, nullable=False)
     connector_type: Mapped[str] = mapped_column(Text, nullable=False, index=True)
     # Credentials live as an encrypted JSON blob. The service layer uses

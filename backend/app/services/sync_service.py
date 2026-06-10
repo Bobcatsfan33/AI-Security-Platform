@@ -26,8 +26,8 @@ import json
 import logging
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -36,6 +36,8 @@ from app.connectors.discovery import (
     BaseConnector,
     DiscoveredAsset,
     UnknownConnectorTypeError,
+)
+from app.connectors.discovery import (
     get as get_connector_class,
 )
 from app.db.models.ai_asset import AIAsset
@@ -59,27 +61,25 @@ class SyncResult:
     sync_job_id: uuid.UUID
     status: str
     started_at: datetime
-    completed_at: Optional[datetime] = None
+    completed_at: datetime | None = None
     assets_discovered: int = 0
     assets_updated: int = 0
     assets_removed: int = 0
-    error_message: Optional[str] = None
+    error_message: str | None = None
     discovered: list[dict[str, Any]] = field(default_factory=list)
 
 
 class SyncService:
     """Orchestrates one sync run for one connector."""
 
-    async def run(
-        self, db: AsyncSession, connector_id: uuid.UUID
-    ) -> SyncResult:
+    async def run(self, db: AsyncSession, connector_id: uuid.UUID) -> SyncResult:
         connector_row = await self._load_connector(db, connector_id)
         if connector_row is None:
             raise ValueError(f"connector {connector_id} not found")
         if not connector_row.is_enabled:
             raise ValueError(f"connector {connector_id} is disabled")
 
-        job = SyncJob(connector_id=connector_id, status="running")
+        job = SyncJob(connector_id=connector_id, org_id=connector_row.org_id, status="running")
         db.add(job)
         await db.commit()
         await db.refresh(job)
@@ -96,6 +96,7 @@ class SyncService:
             counts = await self._upsert(
                 db,
                 connector_id=connector_id,
+                org_id=connector_row.org_id,
                 assets=assets,
                 is_first_run=connector_row.last_sync_at is None,
             )
@@ -106,7 +107,7 @@ class SyncService:
             result.discovered = [a.model_dump() for a in assets]
             result.status = "completed"
 
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             await db.execute(
                 update(SyncJob)
                 .where(SyncJob.id == job.id)
@@ -126,18 +127,16 @@ class SyncService:
             await db.commit()
             result.completed_at = now
 
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             await db.rollback()
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             err = str(exc) or exc.__class__.__name__
             logger.exception("sync_failed")
             try:
                 await db.execute(
                     update(SyncJob)
                     .where(SyncJob.id == job.id)
-                    .values(
-                        status="failed", completed_at=now, error_message=err
-                    )
+                    .values(status="failed", completed_at=now, error_message=err)
                 )
                 await db.execute(
                     update(Connector)
@@ -145,7 +144,7 @@ class SyncService:
                     .values(last_sync_at=now, last_sync_status="failed")
                 )
                 await db.commit()
-            except Exception:  # noqa: BLE001 — best effort
+            except Exception:
                 await db.rollback()
             result.status = "failed"
             result.error_message = err
@@ -155,22 +154,16 @@ class SyncService:
 
     # ───────────────────────────────────────────── internals
 
-    async def _load_connector(
-        self, db: AsyncSession, connector_id: uuid.UUID
-    ) -> Connector | None:
+    async def _load_connector(self, db: AsyncSession, connector_id: uuid.UUID) -> Connector | None:
         return (
-            await db.execute(
-                select(Connector).where(Connector.id == connector_id)
-            )
+            await db.execute(select(Connector).where(Connector.id == connector_id))
         ).scalar_one_or_none()
 
     def _instantiate(self, row: Connector) -> BaseConnector:
         try:
             cls = get_connector_class(row.connector_type)
         except UnknownConnectorTypeError as exc:
-            raise ValueError(
-                f"connector_type {row.connector_type!r} is not registered"
-            ) from exc
+            raise ValueError(f"connector_type {row.connector_type!r} is not registered") from exc
         # config_encrypted is stored as JSONB; current schema treats it as
         # opaque dict. Field-level encryption is a Sprint 2 enhancement.
         config = row.config_encrypted or {}
@@ -188,22 +181,21 @@ class SyncService:
         db: AsyncSession,
         *,
         connector_id: uuid.UUID,
+        org_id: uuid.UUID,
         assets: list[DiscoveredAsset],
         is_first_run: bool,
     ) -> dict[str, int]:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         external_ids_seen: set[str] = set()
 
         # Load all existing rows for this connector in one shot so we can
         # decide insert vs update without N+1 queries.
         existing_rows = (
-            await db.execute(
-                select(AIAsset).where(AIAsset.connector_id == connector_id)
-            )
-        ).scalars().all()
-        existing_by_ext: dict[str, AIAsset] = {
-            r.external_id: r for r in existing_rows
-        }
+            (await db.execute(select(AIAsset).where(AIAsset.connector_id == connector_id)))
+            .scalars()
+            .all()
+        )
+        existing_by_ext: dict[str, AIAsset] = {r.external_id: r for r in existing_rows}
 
         discovered = 0
         updated = 0
@@ -214,6 +206,7 @@ class SyncService:
             existing = existing_by_ext.get(asset.external_id)
             if existing is None:
                 row = AIAsset(
+                    org_id=org_id,
                     name=asset.name,
                     asset_type=asset.asset_type,
                     asset_status="active",
@@ -230,6 +223,7 @@ class SyncService:
                 await db.flush()
                 db.add(
                     AssetChangelog(
+                        org_id=org_id,
                         asset_id=row.id,
                         change_type="created",
                         previous_value=None,
@@ -252,6 +246,7 @@ class SyncService:
                 if before != after:
                     db.add(
                         AssetChangelog(
+                            org_id=org_id,
                             asset_id=existing.id,
                             change_type="updated",
                             previous_value=before,
@@ -273,6 +268,7 @@ class SyncService:
                 row.asset_status = "inactive"
                 db.add(
                     AssetChangelog(
+                        org_id=org_id,
                         asset_id=row.id,
                         change_type="removed",
                         previous_value=before,
@@ -327,13 +323,11 @@ async def clear_cursor(connector_id: uuid.UUID) -> None:
     await client.delete(f"{CURSOR_KEY_PREFIX}{connector_id}")
 
 
-async def hit_rate_limit(
-    connector_id: uuid.UUID, *, max_per_minute: int
-) -> bool:
+async def hit_rate_limit(connector_id: uuid.UUID, *, max_per_minute: int) -> bool:
     """Return True if a sync should *throttle*. Window is one minute,
     fixed (i.e. each new minute resets the counter)."""
     client = await get_redis()
-    bucket = datetime.now(timezone.utc).strftime("%Y%m%d%H%M")
+    bucket = datetime.now(UTC).strftime("%Y%m%d%H%M")
     key = f"{RATE_KEY_PREFIX}{connector_id}:{bucket}"
     count = await client.incr(key)
     if count == 1:

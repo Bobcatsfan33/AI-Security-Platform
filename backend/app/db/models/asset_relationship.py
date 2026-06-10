@@ -31,6 +31,9 @@ class AssetRelationship(Base):
     )
 
     id: Mapped[UUIDPk]
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
+    )
     source_asset_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("ai_assets.id", ondelete="CASCADE"), nullable=False, index=True
     )
