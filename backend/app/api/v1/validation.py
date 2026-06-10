@@ -13,12 +13,24 @@ from typing import Any
 from fastapi import APIRouter, Depends
 
 from app.auth.dependencies import require_role
+from app.benchmark import render_scorecard_markdown, run_detection_benchmark
 from app.identity.types import IdentityContext
 from app.reports.efficacy import build_efficacy_report
 from app.validation.detector_efficacy import evaluate_detectors
 from app.validation.harness import run_suite
 
 router = APIRouter(tags=["validation"])
+
+
+@router.get("/detection-scorecard")
+async def detection_scorecard(
+    identity: IdentityContext = Depends(require_role("analyst")),
+) -> dict[str, Any]:
+    """Published efficacy scorecard: per-class detection rate, benign
+    false-positive rate, and inline latency over the labeled corpus (AI Guard
+    suite + decode/normalize pre-pass). Reproducible, no live model required."""
+    scorecard = run_detection_benchmark()
+    return {**scorecard.to_dict(), "markdown": render_scorecard_markdown(scorecard)}
 
 
 @router.get("/efficacy")
