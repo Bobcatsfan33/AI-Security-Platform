@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Optional
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
@@ -24,8 +23,8 @@ class ConnectorStatusRow(BaseModel):
     name: str
     connector_type: str
     is_enabled: bool
-    last_sync_at: Optional[datetime]
-    last_sync_status: Optional[str]
+    last_sync_at: datetime | None
+    last_sync_status: str | None
 
 
 class DiscoveryStatus(BaseModel):
@@ -42,19 +41,25 @@ async def get_status(
     db: AsyncSession = Depends(get_db),
 ) -> DiscoveryStatus:
     connectors = (
-        await db.execute(select(Connector).order_by(Connector.name))
-    ).scalars().all()
+        (
+            await db.execute(
+                select(Connector)
+                .where(Connector.org_id == identity.org_id)
+                .order_by(Connector.name)
+            )
+        )
+        .scalars()
+        .all()
+    )
     total_assets = int(
         (
-            await db.execute(select(func.count()).select_from(AIAsset))
+            await db.execute(
+                select(func.count()).select_from(AIAsset).where(AIAsset.org_id == identity.org_id)
+            )
         ).scalar_one()
         or 0
     )
-    healthy = sum(
-        1
-        for c in connectors
-        if c.is_enabled and c.last_sync_status == "completed"
-    )
+    healthy = sum(1 for c in connectors if c.is_enabled and c.last_sync_status == "completed")
     return DiscoveryStatus(
         total_connectors=len(connectors),
         enabled_connectors=sum(1 for c in connectors if c.is_enabled),

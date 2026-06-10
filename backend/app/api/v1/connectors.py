@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field
@@ -29,8 +29,10 @@ from app.connectors.discovery import (
     ConnectionStatus,
     ConnectorMetadata,
     UnknownConnectorTypeError,
-    get as get_connector_class,
     list_available,
+)
+from app.connectors.discovery import (
+    get as get_connector_class,
 )
 from app.db.models.connector import Connector
 from app.db.session import get_db
@@ -49,7 +51,7 @@ class ConnectorCreate(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     connector_type: str = Field(min_length=1, max_length=64)
     config: dict[str, Any] = Field(default_factory=dict)
-    schedule: Optional[str] = None
+    schedule: str | None = None
     is_enabled: bool = True
 
 
@@ -57,10 +59,10 @@ class ConnectorRead(BaseModel):
     id: uuid.UUID
     name: str
     connector_type: str
-    schedule: Optional[str]
+    schedule: str | None
     is_enabled: bool
-    last_sync_at: Optional[datetime]
-    last_sync_status: Optional[str]
+    last_sync_at: datetime | None
+    last_sync_status: str | None
     created_at: datetime
     updated_at: datetime
 
@@ -68,7 +70,7 @@ class ConnectorRead(BaseModel):
 class ConnectionTestResponse(BaseModel):
     connected: bool
     message: str
-    latency_ms: Optional[float] = None
+    latency_ms: float | None = None
 
 
 class SyncTriggerResponse(BaseModel):
@@ -77,9 +79,9 @@ class SyncTriggerResponse(BaseModel):
     assets_discovered: int
     assets_updated: int
     assets_removed: int
-    error_message: Optional[str] = None
+    error_message: str | None = None
     started_at: datetime
-    completed_at: Optional[datetime]
+    completed_at: datetime | None
 
 
 # ─────────────────────────────────────────────── helpers
@@ -100,15 +102,16 @@ def _to_read(row: Connector) -> ConnectorRead:
 
 
 async def _load_connector(
-    db: AsyncSession, connector_id: uuid.UUID
+    db: AsyncSession, connector_id: uuid.UUID, org_id: uuid.UUID
 ) -> Connector:
     row = (
-        await db.execute(select(Connector).where(Connector.id == connector_id))
+        await db.execute(
+            select(Connector).where(Connector.id == connector_id, Connector.org_id == org_id)
+        )
     ).scalar_one_or_none()
     if row is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="connector_not_found"
-        )
+        # 404 (not 403) for a cross-org id — don't disclose existence.
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="connector_not_found")
     return row
 
 
@@ -141,6 +144,7 @@ async def create_connector(
             detail=f"unknown connector_type: {payload.connector_type}",
         )
     row = Connector(
+        org_id=identity.org_id,
         name=payload.name,
         connector_type=payload.connector_type,
         config_encrypted=payload.config,
@@ -159,10 +163,16 @@ async def list_connectors(
     db: AsyncSession = Depends(get_db),
 ) -> list[ConnectorRead]:
     rows = (
-        await db.execute(
-            select(Connector).order_by(Connector.created_at.desc())
+        (
+            await db.execute(
+                select(Connector)
+                .where(Connector.org_id == identity.org_id)
+                .order_by(Connector.created_at.desc())
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     return [_to_read(r) for r in rows]
 
 
@@ -172,18 +182,16 @@ async def get_connector(
     identity: IdentityContext = Depends(require_role("viewer")),
     db: AsyncSession = Depends(get_db),
 ) -> ConnectorRead:
-    return _to_read(await _load_connector(db, connector_id))
+    return _to_read(await _load_connector(db, connector_id, identity.org_id))
 
 
-@router.post(
-    "/{connector_id}/test", response_model=ConnectionTestResponse
-)
+@router.post("/{connector_id}/test", response_model=ConnectionTestResponse)
 async def test_connector(
     connector_id: uuid.UUID,
     identity: IdentityContext = Depends(require_role("admin")),
     db: AsyncSession = Depends(get_db),
 ) -> ConnectionTestResponse:
-    row = await _load_connector(db, connector_id)
+    row = await _load_connector(db, connector_id, identity.org_id)
     try:
         cls = get_connector_class(row.connector_type)
     except UnknownConnectorTypeError:
@@ -206,14 +214,12 @@ async def trigger_sync(
     identity: IdentityContext = Depends(require_role("admin")),
     db: AsyncSession = Depends(get_db),
 ) -> SyncTriggerResponse:
-    await _load_connector(db, connector_id)
+    await _load_connector(db, connector_id, identity.org_id)
     service = SyncService()
     try:
         result: SyncResult = await service.run(db, connector_id)
     except ValueError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
-        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
     return SyncTriggerResponse(
         sync_job_id=result.sync_job_id,
         status=result.status,
@@ -226,14 +232,12 @@ async def trigger_sync(
     )
 
 
-@router.delete(
-    "/{connector_id}", status_code=status.HTTP_204_NO_CONTENT
-)
+@router.delete("/{connector_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def soft_delete(
     connector_id: uuid.UUID,
     identity: IdentityContext = Depends(require_role("admin")),
     db: AsyncSession = Depends(get_db),
 ) -> None:
-    row = await _load_connector(db, connector_id)
+    row = await _load_connector(db, connector_id, identity.org_id)
     row.is_enabled = False
     await db.commit()

@@ -20,15 +20,15 @@ from app.db.models.sync_job import SyncJob
 from app.db.session import SessionLocal
 from app.services.sync_service import SyncService
 
-
 pytestmark = pytest.mark.integration
 
 
 @pytest_asyncio.fixture
-async def cleanup_connector():
+async def cleanup_connector(test_org: uuid.UUID):
     """Yield a fresh mock connector and CASCADE-delete it after the test."""
     row = Connector(
         id=uuid.uuid4(),
+        org_id=test_org,
         name=f"mock-{uuid.uuid4().hex[:6]}",
         connector_type="mock",
         config_encrypted={"stable": True},
@@ -40,9 +40,7 @@ async def cleanup_connector():
         await db.refresh(row)
     yield row
     async with SessionLocal() as db:
-        await db.execute(
-            text("DELETE FROM connectors WHERE id = :id"), {"id": row.id}
-        )
+        await db.execute(text("DELETE FROM connectors WHERE id = :id"), {"id": row.id})
         await db.commit()
 
 
@@ -61,23 +59,28 @@ async def test_first_run_discovers_ten_assets(cleanup_connector) -> None:
 
     async with SessionLocal() as db:
         assets = (
-            await db.execute(
-                select(AIAsset).where(AIAsset.connector_id == cleanup_connector.id)
-            )
-        ).scalars().all()
+            (await db.execute(select(AIAsset).where(AIAsset.connector_id == cleanup_connector.id)))
+            .scalars()
+            .all()
+        )
         assert len(assets) == 10
         # All 6 types present
         assert {a.asset_type for a in assets} == {
-            "model", "endpoint", "dataset", "pipeline", "agent", "tool",
+            "model",
+            "endpoint",
+            "dataset",
+            "pipeline",
+            "agent",
+            "tool",
         }
         # Every asset is active and tied to this connector
         assert all(a.asset_status == "active" for a in assets)
 
         sync_jobs = (
-            await db.execute(
-                select(SyncJob).where(SyncJob.connector_id == cleanup_connector.id)
-            )
-        ).scalars().all()
+            (await db.execute(select(SyncJob).where(SyncJob.connector_id == cleanup_connector.id)))
+            .scalars()
+            .all()
+        )
         assert len(sync_jobs) == 1
         assert sync_jobs[0].status == "completed"
 
@@ -88,14 +91,14 @@ async def test_first_run_discovers_ten_assets(cleanup_connector) -> None:
                         AssetChangelog.asset_id.in_([a.id for a in assets])
                     )
                 )
-            ).scalars().all()
+            )
+            .scalars()
+            .all()
         )
         assert changelog_count == 10
 
         connector = (
-            await db.execute(
-                select(Connector).where(Connector.id == cleanup_connector.id)
-            )
+            await db.execute(select(Connector).where(Connector.id == cleanup_connector.id))
         ).scalar_one()
         assert connector.last_sync_status == "completed"
         assert connector.last_sync_at is not None
@@ -121,8 +124,8 @@ async def test_second_run_is_idempotent(cleanup_connector) -> None:
 
     async with SessionLocal() as db:
         assets = (
-            await db.execute(
-                select(AIAsset).where(AIAsset.connector_id == cleanup_connector.id)
-            )
-        ).scalars().all()
+            (await db.execute(select(AIAsset).where(AIAsset.connector_id == cleanup_connector.id)))
+            .scalars()
+            .all()
+        )
         assert len(assets) == 10  # unchanged
