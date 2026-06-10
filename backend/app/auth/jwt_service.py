@@ -7,9 +7,20 @@ Design (Sprint 1):
     - Rotation: on /auth/refresh the old refresh token is invalidated and a
       new pair is issued. This limits blast radius if a refresh token leaks.
 
-The JWT secret is loaded from settings. For production we'd switch to RS256
-with a JWKS endpoint so the runtime agent can verify access tokens without
-sharing a symmetric secret — that's a Sprint 7 concern.
+Signing (Phase 3A): RS256 when ``jwt_private_key`` is configured — access
+tokens are stamped with a ``kid`` and verifiers fetch the public key from
+``/v1/auth/.well-known/jwks.json``, so no party needs the symmetric secret.
+Falls back to HS256 (``jwt_secret``) for dev/test.
+
+Key-rotation runbook:
+  1. Generate a new RSA keypair.
+  2. Move the CURRENT public key into ``jwt_additional_public_keys`` keyed by
+     its current ``jwt_key_id`` (so in-flight tokens still verify).
+  3. Set ``jwt_private_key`` to the new private key and ``jwt_key_id`` to a new
+     kid; redeploy. New tokens sign under the new kid; old ones verify against
+     the retained public key until they expire.
+  4. After the old access-token TTL elapses, drop the old entry from
+     ``jwt_additional_public_keys``.
 """
 
 from __future__ import annotations
@@ -18,13 +29,63 @@ import secrets
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from functools import lru_cache
 from typing import Any
 
 import jwt
+from cryptography.hazmat.primitives import serialization
 from jwt import PyJWTError
 
 from app.core.config import get_settings
 from app.services.redis_client import get_redis
+
+
+@dataclass(frozen=True)
+class _SigningContext:
+    """How tokens are signed + verified, derived from settings.
+
+    RS256 when a private key is configured (verifiers use the public key via
+    JWKS — no shared secret); HS256 otherwise. ``verify_keys`` maps kid →
+    public key for RS256 (active + rotated-out), or ``{None: secret}`` for
+    HS256 (kid-less)."""
+
+    algorithm: str
+    sign_key: Any
+    kid: str | None
+    verify_keys: dict[str | None, Any]
+
+
+@lru_cache(maxsize=8)
+def _build_context(
+    private_pem: str | None,
+    kid: str,
+    additional_items: tuple[tuple[str, str], ...],
+    secret: str,
+) -> _SigningContext:
+    if private_pem:
+        private_key = serialization.load_pem_private_key(private_pem.encode(), password=None)
+        verify_keys: dict[str | None, Any] = {kid: private_key.public_key()}
+        for extra_kid, pem in additional_items:
+            verify_keys[extra_kid] = serialization.load_pem_public_key(pem.encode())
+        return _SigningContext("RS256", private_key, kid, verify_keys)
+    return _SigningContext("HS256", secret, None, {None: secret})
+
+
+def signing_context() -> _SigningContext:
+    """The current signing context (cached per unique key configuration)."""
+    s = get_settings()
+    return _build_context(
+        s.jwt_private_key,
+        s.jwt_key_id,
+        tuple(sorted(s.jwt_additional_public_keys.items())),
+        s.jwt_secret,
+    )
+
+
+def reset_signing_context_cache() -> None:
+    """Drop the cached contexts — call after a key rotation or in tests."""
+    _build_context.cache_clear()
+
 
 REVOKED_PREFIX = "auth:revoked:"
 REFRESH_PREFIX = "auth:refresh:"
@@ -74,7 +135,9 @@ async def issue_token_pair(
         "exp": int(access_expires.timestamp()),
         "jti": jti,
     }
-    access_token = jwt.encode(access_claims, settings.jwt_secret, algorithm=settings.jwt_algorithm)
+    ctx = signing_context()
+    headers = {"kid": ctx.kid} if ctx.kid else None
+    access_token = jwt.encode(access_claims, ctx.sign_key, algorithm=ctx.algorithm, headers=headers)
 
     refresh_token = secrets.token_urlsafe(48)
     refresh_payload = {
@@ -103,12 +166,20 @@ class TokenError(Exception):
 
 
 async def verify_access_token(token: str) -> dict[str, Any]:
-    settings = get_settings()
+    ctx = signing_context()
     try:
+        if ctx.algorithm == "HS256":
+            key: Any = ctx.verify_keys[None]
+        else:
+            # RS256: select the public key by the token's kid.
+            kid = jwt.get_unverified_header(token).get("kid")
+            key = ctx.verify_keys.get(kid)
+            if key is None:
+                raise TokenError(f"unknown_kid: {kid}")
         claims = jwt.decode(
             token,
-            settings.jwt_secret,
-            algorithms=[settings.jwt_algorithm],
+            key,
+            algorithms=[ctx.algorithm],
             options={"require": ["exp", "sub", "org", "jti"]},
         )
     except PyJWTError as e:

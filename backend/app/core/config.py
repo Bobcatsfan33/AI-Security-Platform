@@ -47,10 +47,20 @@ class Settings(BaseSettings):
     runtime_events_topic: str = "runtime.events"
 
     # JWT signing
+    # When jwt_private_key (PEM) is set, access tokens are RS256-signed and
+    # verified via the public key (published at /v1/auth/.well-known/jwks.json),
+    # so verifiers never need the symmetric secret. Otherwise HS256 with
+    # jwt_secret (dev/test fallback). jwt_secret stays required: it still backs
+    # refresh-token bookkeeping and the HS256 fallback.
     jwt_secret: str = Field(min_length=32)
     jwt_algorithm: Literal["HS256", "HS384", "HS512", "RS256"] = "HS256"
-    jwt_access_ttl_seconds: int = 900       # 15 minutes
-    jwt_refresh_ttl_seconds: int = 604800   # 7 days
+    jwt_private_key: str | None = None  # PEM RS256 private key; enables asymmetric signing
+    jwt_key_id: str = "default"  # kid stamped on RS256 tokens + published in JWKS
+    # kid -> PEM public key for keys rotated OUT but whose tokens may still be
+    # in flight. Verification accepts the active key + all of these.
+    jwt_additional_public_keys: dict[str, str] = Field(default_factory=dict)
+    jwt_access_ttl_seconds: int = 900  # 15 minutes
+    jwt_refresh_ttl_seconds: int = 604800  # 7 days
 
     @property
     def cors_origins_list(self) -> list[str]:
