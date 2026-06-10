@@ -18,6 +18,7 @@ from app.auth.jwt_service import (
     consume_refresh_token,
     issue_token_pair,
     revoke_jti,
+    signing_context,
 )
 from app.auth.user_provisioning import upsert_user_from_claims
 from app.core.config import get_settings
@@ -465,3 +466,24 @@ async def me(identity: IdentityContext = Depends(current_identity)) -> dict[str,
 async def server_time() -> dict[str, str]:
     """Trivial unauthenticated diagnostic — useful for smoke tests."""
     return {"now": datetime.now(UTC).isoformat()}
+
+
+@router.get("/.well-known/jwks.json")
+async def jwks() -> dict[str, Any]:
+    """Public JWKS — RS256 verifiers (the runtime agent, downstream services)
+    fetch the public key here and validate access tokens WITHOUT the shared
+    symmetric secret. Returns all active + rotated-out public keys by ``kid``.
+    Empty ``keys`` when running in HS256 fallback mode (no public key exists)."""
+    import json
+
+    from jwt.algorithms import RSAAlgorithm
+
+    ctx = signing_context()
+    keys: list[dict[str, Any]] = []
+    for kid, public_key in ctx.verify_keys.items():
+        if kid is None:  # HS256 — nothing public to publish
+            continue
+        jwk = json.loads(RSAAlgorithm.to_jwk(public_key))
+        jwk.update({"kid": kid, "use": "sig", "alg": "RS256"})
+        keys.append(jwk)
+    return {"keys": keys}
