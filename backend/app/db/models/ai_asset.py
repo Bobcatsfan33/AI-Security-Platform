@@ -35,6 +35,7 @@ from app.db.base import (
     TimestampUtcUpdated,
     UUIDPk,
 )
+from app.db.tenancy import TenantScoped
 
 ASSET_TYPE_ENUM = ENUM(
     "model",
@@ -57,7 +58,7 @@ ASSET_STATUS_ENUM = ENUM(
 )
 
 
-class AIAsset(Base):
+class AIAsset(Base, TenantScoped):
     __tablename__ = "ai_assets"
     __table_args__ = (
         UniqueConstraint(

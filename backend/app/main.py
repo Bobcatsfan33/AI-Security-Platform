@@ -61,6 +61,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     )
 
     assert_production_secrets()
+
+    # Wall 1 of tenant isolation: arm the ORM guard before the first request so
+    # every tenant-scoped ORM query is org-filtered automatically (see
+    # app/db/tenancy.py). Wall 2 (Postgres RLS) is enforced by the DB.
+    from app.db.tenancy import install_tenant_guard
+
+    install_tenant_guard()
+
     await get_redis()
     await start_writer()
 

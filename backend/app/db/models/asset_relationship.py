@@ -13,9 +13,10 @@ from sqlalchemy import CheckConstraint, ForeignKey, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, TimestampUtc, UUIDPk
+from app.db.tenancy import TenantScoped
 
 
-class AssetRelationship(Base):
+class AssetRelationship(Base, TenantScoped):
     __tablename__ = "asset_relationships"
     __table_args__ = (
         UniqueConstraint(

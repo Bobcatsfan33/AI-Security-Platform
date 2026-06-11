@@ -9,9 +9,10 @@ from sqlalchemy import ForeignKey, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, TimestampUtc, UUIDPk
+from app.db.tenancy import TenantScoped
 
 
-class Owner(Base):
+class Owner(Base, TenantScoped):
     __tablename__ = "owners"
 
     id: Mapped[UUIDPk]

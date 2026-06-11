@@ -28,11 +28,12 @@ from app.db.base import (
     UUIDFk,
     UUIDPk,
 )
+from app.db.tenancy import TenantScoped
 
 _DateTimeTz = DateTime(timezone=True)
 
 
-class RedTeamCampaign(Base):
+class RedTeamCampaign(Base, TenantScoped):
     __tablename__ = "red_team_campaigns"
 
     id: Mapped[UUIDPk]
@@ -62,7 +63,7 @@ class RedTeamCampaign(Base):
     updated_at: Mapped[TimestampUtcUpdated]
 
 
-class RedTeamFinding(Base):
+class RedTeamFinding(Base, TenantScoped):
     __tablename__ = "red_team_findings"
 
     id: Mapped[UUIDPk]

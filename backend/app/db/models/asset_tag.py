@@ -8,9 +8,10 @@ from sqlalchemy import ForeignKey, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, UUIDPk
+from app.db.tenancy import TenantScoped
 
 
-class AssetTag(Base):
+class AssetTag(Base, TenantScoped):
     __tablename__ = "asset_tags"
     __table_args__ = (
         UniqueConstraint("asset_id", "key", name="uq_asset_tags_asset_key"),

@@ -24,6 +24,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.api_key import ApiKey
+from app.security.audit_log import AuditEventType, log_event
 
 KEY_PREFIX_LEN = 8
 KEY_SECRET_LEN = 32  # bytes; will be ~43 chars urlsafe-base64
@@ -79,11 +80,19 @@ async def verify_api_key(db: AsyncSession, plaintext: str) -> ApiKey | None:
     if len(prefix) != KEY_PREFIX_LEN:
         return None
 
+    # Sanctioned tenant-guard bypass #1: this lookup resolves WHICH org the key
+    # belongs to, so it necessarily runs before any org context exists. Audited
+    # so every bypass is observable. (grep: bypass_tenant_guard)
+    log_event(
+        AuditEventType.TENANT_GUARD_BYPASS,
+        resource="api_keys",
+        detail={"reason": "api_key_resolution"},
+    )
     stmt = select(ApiKey).where(
         ApiKey.key_prefix == prefix,
         ApiKey.is_active.is_(True),
     )
-    result = await db.execute(stmt)
+    result = await db.execute(stmt, execution_options={"bypass_tenant_guard": True})
     candidates = result.scalars().all()
 
     for candidate in candidates:

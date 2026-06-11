@@ -17,23 +17,32 @@ This dependency:
 from __future__ import annotations
 
 import secrets
+from collections.abc import AsyncIterator
 
 from fastapi import Depends, Header, HTTPException, status
 from passlib.hash import bcrypt
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.idp_config import IdpConfig
 from app.db.models.organization import Organization
 from app.db.session import get_db
+from app.db.tenancy import current_org_id
+from app.security.audit_log import AuditEventType, log_event
 
 
 async def scim_authenticated_idp(
     org_slug: str,
     authorization: str | None = Header(default=None),
     db: AsyncSession = Depends(get_db),
-) -> tuple[Organization, IdpConfig]:
-    """Resolve the org + active SCIM IdP and verify the bearer token."""
+) -> AsyncIterator[tuple[Organization, IdpConfig]]:
+    """Resolve the org + active SCIM IdP, verify the bearer token, and arm
+    tenant isolation for the rest of the request.
+
+    A yield dependency: SCIM does not go through ``current_identity``, so it
+    must arm Wall 1 (the ``current_org_id`` ContextVar) and Wall 2 (the
+    ``app.current_org`` GUC) itself once the org is known, and reset on exit.
+    """
     if not authorization or not authorization.lower().startswith("bearer "):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -42,19 +51,32 @@ async def scim_authenticated_idp(
         )
     token = authorization.split(" ", 1)[1].strip()
 
+    # Organization is the tenant root (not TenantScoped) — resolvable without org
+    # context.
     org = (
         await db.execute(select(Organization).where(Organization.slug == org_slug))
     ).scalar_one_or_none()
     if org is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="org_not_found")
 
+    # Sanctioned tenant-guard bypass #2: IdpConfig is tenant-scoped, but this
+    # lookup resolves which IdP the inbound token belongs to and runs before org
+    # context is armed. Audited so every bypass is observable. (grep:
+    # bypass_tenant_guard)
+    log_event(
+        AuditEventType.TENANT_GUARD_BYPASS,
+        tenant_id=str(org.id),
+        resource="idp_configs",
+        detail={"reason": "scim_idp_resolution"},
+    )
     idp = (
         await db.execute(
             select(IdpConfig).where(
                 IdpConfig.org_id == org.id,
                 IdpConfig.provider_type == "scim",
                 IdpConfig.status == "active",
-            )
+            ),
+            execution_options={"bypass_tenant_guard": True},
         )
     ).scalar_one_or_none()
     if idp is None:
@@ -69,7 +91,19 @@ async def scim_authenticated_idp(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="invalid_bearer_token",
         )
-    return org, idp
+
+    # Token verified — arm both isolation walls for the provisioning queries that
+    # follow (all of which filter by this org explicitly; the walls make that a
+    # guarantee, not a convention).
+    ctx_token = current_org_id.set(org.id)
+    await db.execute(
+        text("SELECT set_config('app.current_org', :org, true)"),
+        {"org": str(org.id)},
+    )
+    try:
+        yield org, idp
+    finally:
+        current_org_id.reset(ctx_token)
 
 
 def _verify_token(plaintext: str, hashed: str) -> bool:

@@ -101,6 +101,9 @@ class AuditEventType(str, Enum):
     API_KEY_CREATED = "apikey.created"
     API_KEY_REVOKED = "apikey.revoked"
 
+    # Tenant isolation — sanctioned ORM-guard bypass (pre-org-context lookups)
+    TENANT_GUARD_BYPASS = "tenant.guard_bypass"
+
     # System
     CONFIG_CHANGED = "system.config_changed"
     STARTUP = "system.startup"
