@@ -37,6 +37,7 @@ func (DeterministicStage3) Judge(_ context.Context, in *Input, _ *CompiledPolicy
 	if strongJudgeMarker.MatchString(in.Text) {
 		return StageResult{
 			Stage:      ExitStage3Judge,
+			Mode:       "stage3_deterministic",
 			Matched:    true,
 			Action:     ActionBlocked,
 			Severity:   SeverityHigh,
@@ -47,7 +48,7 @@ func (DeterministicStage3) Judge(_ context.Context, in *Input, _ *CompiledPolicy
 			LatencyUS:  time.Since(start).Microseconds(),
 		}
 	}
-	return StageResult{Stage: ExitStage3Judge, Matched: false, Action: ActionAllowed, LatencyUS: time.Since(start).Microseconds()}
+	return StageResult{Stage: ExitStage3Judge, Mode: "stage3_deterministic", Matched: false, Action: ActionAllowed, LatencyUS: time.Since(start).Microseconds()}
 }
 
 // HTTPStage3 calls a configured LLM-judge endpoint.
