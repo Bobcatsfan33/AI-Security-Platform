@@ -20,7 +20,7 @@ from typing import Any
 from app.core.config import get_settings
 from app.policy.compiled import compile_policy
 from app.policy.stage2_heuristic import HeuristicStage2
-from app.policy.stage2_onnx import ClassifierSpec, OnnxClassifierStage2
+from app.policy.stage2_onnx import ClassifierSpec, OnnxClassifierStage2, OrtBackend
 from app.policy.types import Direction, PolicyInput
 from app.provisioning import provision_artifact
 
@@ -30,10 +30,37 @@ _MINIMAL_POLICY = compile_policy(
     policy_row={"id": "_classify", "org_id": "_", "enforcement_level": "balanced"}
 )
 
-# Categories the prompt-injection classifier emits, with default trigger
-# thresholds. (Operators tune per-deployment; these are sane defaults.)
-_DEFAULT_CATEGORIES = ("prompt_injection", "jailbreak")
-_DEFAULT_THRESHOLDS = {"prompt_injection": 0.5, "jailbreak": 0.5}
+# Labels that mean "not a violation" — never treated as a detection category,
+# so a benign input scored confidently safe doesn't fire.
+_BENIGN_LABELS = frozenset({"safe", "benign", "clean", "negative", "ok"})
+# Fallback category if a label map yields no positive labels.
+_DEFAULT_CATEGORIES = ("prompt_injection",)
+
+
+def _parse_label_map(raw: str) -> dict[int, str]:
+    """Parse ``"0:safe,1:prompt_injection"`` → ``{0: "safe", 1: "prompt_injection"}``.
+
+    Maps the model's raw class indices onto the platform's category taxonomy, so
+    a binary SAFE/INJECTION classifier surfaces as ``prompt_injection`` even when
+    the HuggingFace ``id2label`` didn't survive the ONNX export (it commonly
+    doesn't — exported models then emit bare ``"0"``/``"1"`` labels).
+    """
+    mapping: dict[int, str] = {}
+    for pair in raw.split(","):
+        pair = pair.strip()
+        if not pair:
+            continue
+        idx, _, label = pair.partition(":")
+        try:
+            mapping[int(idx.strip())] = label.strip()
+        except ValueError:
+            continue
+    return mapping
+
+
+def _positive_categories(id2label: dict[int, str]) -> tuple[str, ...]:
+    """The detection categories — every mapped label that isn't benign."""
+    return tuple(v for v in id2label.values() if v and v.lower() not in _BENIGN_LABELS)
 
 
 def build_onnx_stage2_from_settings(
@@ -69,14 +96,25 @@ def build_onnx_stage2_from_settings(
         logger.warning("stage2_model_provision_failed", extra={"error": str(exc)})
         return None
 
+    id2label = _parse_label_map(getattr(s, "stage2_onnx_label_map", "0:safe,1:prompt_injection"))
+    categories = _positive_categories(id2label) or _DEFAULT_CATEGORIES
+    threshold = float(getattr(s, "stage2_onnx_threshold", 0.5))
     spec = ClassifierSpec(
         id="stage2-onnx",
         name="prompt-injection-onnx",
         model_artifact_path=str(model_path),
         tokenizer_artifact_path=tokenizer_path,
-        categories_detected=_DEFAULT_CATEGORIES,
-        threshold_per_label=_DEFAULT_THRESHOLDS,
+        categories_detected=categories,
+        threshold_per_label=dict.fromkeys(categories, threshold),
     )
+
+    # Default backend: the real ORT backend, told how to relabel raw class
+    # indices into our taxonomy (a test passes its own fake instead).
+    if backend_factory is None:
+
+        def backend_factory(spec: ClassifierSpec) -> OrtBackend:
+            return OrtBackend(model_path=spec.model_artifact_path, id2label=id2label)
+
     return OnnxClassifierStage2(
         specs=[spec], backend_factory=backend_factory, tokenizer_factory=tokenizer_factory
     )

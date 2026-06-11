@@ -57,6 +57,21 @@ class TestProvisioner:
             provision_artifact(url="", sha256="", dest=tmp_path / "x")
 
 
+class TestLabelMap:
+    def test_parses_pairs(self):
+        assert sp._parse_label_map("0:safe,1:prompt_injection") == {
+            0: "safe",
+            1: "prompt_injection",
+        }
+
+    def test_tolerates_whitespace_and_junk(self):
+        assert sp._parse_label_map(" 1 : prompt_injection , , bad ") == {1: "prompt_injection"}
+
+    def test_positive_categories_excludes_benign(self):
+        m = {0: "safe", 1: "prompt_injection", 2: "Benign", 3: "jailbreak"}
+        assert sp._positive_categories(m) == ("prompt_injection", "jailbreak")
+
+
 class TestBuildFromSettings:
     def setup_method(self):
         reset_for_tests()
@@ -84,6 +99,8 @@ class TestBuildFromSettings:
                 stage2_onnx_tokenizer_url=tok_url,
                 stage2_onnx_tokenizer_sha256=tok_sha,
                 model_cache_dir=str(tmp_path / "cache"),
+                stage2_onnx_label_map="0:safe,1:prompt_injection",
+                stage2_onnx_threshold=0.5,
             ),
         )
 

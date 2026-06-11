@@ -80,6 +80,12 @@ class Settings(BaseSettings):
     stage2_onnx_tokenizer_url: str = ""  # file:// or http(s):// to tokenizer.json
     stage2_onnx_tokenizer_sha256: str = ""
     model_cache_dir: str = "/var/cache/aisp/models"
+    # Maps the model's raw class indices onto the platform category taxonomy
+    # (HF id2label rarely survives ONNX export, so labels arrive as "0"/"1").
+    # Benign labels (safe/benign/clean/…) never fire. Default fits the
+    # recommended binary SAFE/INJECTION prompt-injection classifier.
+    stage2_onnx_label_map: str = "0:safe,1:prompt_injection"
+    stage2_onnx_threshold: float = 0.5  # min probability for a category to fire
 
     @property
     def cors_origins_list(self) -> list[str]:
