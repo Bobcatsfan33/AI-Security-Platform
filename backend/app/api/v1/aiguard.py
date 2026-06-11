@@ -12,9 +12,10 @@ from typing import Any, Literal
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
+from app.aiguard.judge import judge_content
 from app.aiguard.publish import get_publisher, maybe_publish_inspection
 from app.aiguard.service import get_service
-from app.auth.dependencies import require_role
+from app.auth.dependencies import require_role, require_scope
 from app.detectors import default_thresholds, names
 from app.detectors.base import DetectorContext, Direction
 from app.identity.types import IdentityContext
@@ -90,3 +91,20 @@ async def list_detectors(
 ) -> dict[str, Any]:
     """Catalogue + default thresholds — backs the 'sliding threshold' UI."""
     return {"detectors": list(names()), "default_thresholds": default_thresholds()}
+
+
+class JudgeRequest(BaseModel):
+    text: str
+
+
+@router.post("/judge")
+async def judge(
+    body: JudgeRequest,
+    identity: IdentityContext = Depends(require_scope("runtime:ingest")),
+) -> dict[str, Any]:
+    """Stage-3 LLM-judge verdict for one piece of text — the real hosted second
+    opinion (Phase 1B). Verdict shape matches the runtime agent's HTTPStage3,
+    so its STAGE3_JUDGE_ENDPOINT can target this route. Returns
+    ``mode="disabled"`` (and a non-violation) when no judge is configured;
+    verdicts are cached by content hash."""
+    return await judge_content(body.text)
