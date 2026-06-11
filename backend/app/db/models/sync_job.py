@@ -15,6 +15,7 @@ from sqlalchemy.dialects.postgresql import ENUM
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, UUIDPk
+from app.db.tenancy import TenantScoped
 
 SYNC_STATUS_ENUM = ENUM(
     "pending",
@@ -26,7 +27,7 @@ SYNC_STATUS_ENUM = ENUM(
 )
 
 
-class SyncJob(Base):
+class SyncJob(Base, TenantScoped):
     __tablename__ = "sync_jobs"
 
     id: Mapped[UUIDPk]

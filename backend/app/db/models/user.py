@@ -21,13 +21,14 @@ from app.db.base import (
     UUIDFk,
     UUIDPk,
 )
+from app.db.tenancy import TenantScoped
 
 if TYPE_CHECKING:
     from app.db.models.idp_config import IdpConfig
     from app.db.models.organization import Organization
 
 
-class User(Base):
+class User(Base, TenantScoped):
     __tablename__ = "users"
     __table_args__ = (
         UniqueConstraint("org_id", "email", name="uq_users_org_id_email"),

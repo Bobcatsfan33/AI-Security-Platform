@@ -8,24 +8,40 @@ require_role / require_any_role:
     Dependency factories that wrap current_identity with an RBAC check.
 
 Tenant isolation:
-    Every authenticated request carries `org_id`. Repositories and services must
-    filter by this org_id; the auth layer does not (yet) inject it into ORM
-    queries automatically. The convention is enforced in tests.
+    Every authenticated request carries `org_id`. ``current_identity`` arms both
+    isolation walls for the request — it sets the ``current_org_id`` ContextVar
+    (Wall 1, the ORM guard) and the ``app.current_org`` Postgres GUC (Wall 2,
+    RLS) — and resets the ContextVar when the request ends. Repositories no
+    longer need to remember to filter; see ``app/db/tenancy.py``.
 """
 
 from __future__ import annotations
 
 import uuid
-from collections.abc import Iterable
+from collections.abc import AsyncIterator, Iterable
 
 from fastapi import Depends, Header, HTTPException, Request, status
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.api_key_service import verify_api_key
 from app.auth.jwt_service import TokenError, verify_access_token
 from app.auth.rbac import has_role_at_least, is_in
 from app.db.session import get_db
+from app.db.tenancy import current_org_id
 from app.identity.types import IdentityContext
+
+
+async def _bind_org(db: AsyncSession, org_id: uuid.UUID) -> None:
+    """Wall 2: set the transaction-local GUC the RLS policies read.
+
+    ``set_config(..., true)`` scopes it to the current transaction, which is
+    safe under connection pooling.
+    """
+    await db.execute(
+        text("SELECT set_config('app.current_org', :org, true)"),
+        {"org": str(org_id)},
+    )
 
 
 async def current_identity(
@@ -33,8 +49,14 @@ async def current_identity(
     authorization: str | None = Header(default=None),
     x_api_key: str | None = Header(default=None, alias="X-API-Key"),
     db: AsyncSession = Depends(get_db),
-) -> IdentityContext:
-    """Resolve the request principal. Prefers JWT over API key when both are sent."""
+) -> AsyncIterator[IdentityContext]:
+    """Resolve the request principal and arm tenant isolation.
+
+    Prefers JWT over API key when both are sent. A yield dependency so the org
+    context is always reset, even on error. FastAPI resolves yield dependencies
+    transparently, so existing call sites are unchanged.
+    """
+    identity: IdentityContext
 
     if authorization and authorization.lower().startswith("bearer "):
         token = authorization.split(" ", 1)[1].strip()
@@ -55,10 +77,7 @@ async def current_identity(
             idp_subject_id=claims.get("idp_sub"),
             jwt_id=claims.get("jti"),
         )
-        request.state.identity = identity
-        return identity
-
-    if x_api_key:
+    elif x_api_key:
         record = await verify_api_key(db, x_api_key)
         if record is None:
             raise HTTPException(
@@ -73,14 +92,20 @@ async def current_identity(
             scopes=tuple(record.scopes or ()),
             api_key_id=record.id,
         )
-        request.state.identity = identity
-        return identity
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="not_authenticated",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
-    raise HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="not_authenticated",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
+    request.state.identity = identity
+    token = current_org_id.set(identity.org_id)  # Wall 1 armed
+    await _bind_org(db, identity.org_id)  # Wall 2 armed
+    try:
+        yield identity
+    finally:
+        current_org_id.reset(token)  # never leaks across requests
 
 
 def require_role(minimum: str):

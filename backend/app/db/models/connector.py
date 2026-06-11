@@ -17,9 +17,10 @@ from sqlalchemy import Boolean, DateTime, ForeignKey, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, JsonbDict, TimestampUtc, TimestampUtcUpdated, UUIDPk
+from app.db.tenancy import TenantScoped
 
 
-class Connector(Base):
+class Connector(Base, TenantScoped):
     __tablename__ = "connectors"
 
     id: Mapped[UUIDPk]

@@ -25,12 +25,13 @@ from app.db.base import (
     UUIDFk,
     UUIDPk,
 )
+from app.db.tenancy import TenantScoped
 
 if TYPE_CHECKING:
     from app.db.models.organization import Organization
 
 
-class IdpConfig(Base):
+class IdpConfig(Base, TenantScoped):
     __tablename__ = "idp_configs"
 
     id: Mapped[UUIDPk]

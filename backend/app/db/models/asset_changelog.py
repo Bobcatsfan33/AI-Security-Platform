@@ -15,6 +15,7 @@ from sqlalchemy.dialects.postgresql import ENUM, JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, UUIDPk
+from app.db.tenancy import TenantScoped
 
 CHANGE_TYPE_ENUM = ENUM(
     "created",
@@ -26,7 +27,7 @@ CHANGE_TYPE_ENUM = ENUM(
 )
 
 
-class AssetChangelog(Base):
+class AssetChangelog(Base, TenantScoped):
     __tablename__ = "asset_changelog"
 
     id: Mapped[UUIDPk]

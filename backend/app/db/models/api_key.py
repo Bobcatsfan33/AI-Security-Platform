@@ -9,12 +9,13 @@ from sqlalchemy import ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, JsonbList, TimestampUtc, UUIDFk, UUIDPk
+from app.db.tenancy import TenantScoped
 
 if TYPE_CHECKING:
     from app.db.models.organization import Organization
 
 
-class ApiKey(Base):
+class ApiKey(Base, TenantScoped):
     __tablename__ = "api_keys"
 
     id: Mapped[UUIDPk]
