@@ -44,6 +44,24 @@ spec:
             - name: CORS_ORIGINS
               valueFrom: { configMapKeyRef: { name: {{ include "aisp.fullname" . }}-config, key: cors-origins } }
             {{- include "aisp.env" . | nindent 12 }}
+            {{- $cfg := printf "%s-config" (include "aisp.fullname" .) }}
+            - name: STAGE2_ONNX_MODEL_URL
+              valueFrom: { configMapKeyRef: { name: {{ $cfg }}, key: stage2-model-url } }
+            - name: STAGE2_ONNX_MODEL_SHA256
+              valueFrom: { configMapKeyRef: { name: {{ $cfg }}, key: stage2-model-sha256 } }
+            - name: STAGE2_ONNX_TOKENIZER_URL
+              valueFrom: { configMapKeyRef: { name: {{ $cfg }}, key: stage2-tokenizer-url } }
+            - name: STAGE2_ONNX_TOKENIZER_SHA256
+              valueFrom: { configMapKeyRef: { name: {{ $cfg }}, key: stage2-tokenizer-sha256 } }
+            - name: STAGE2_ONNX_LABEL_MAP
+              valueFrom: { configMapKeyRef: { name: {{ $cfg }}, key: stage2-label-map } }
+            - name: STAGE2_ONNX_THRESHOLD
+              valueFrom: { configMapKeyRef: { name: {{ $cfg }}, key: stage2-threshold } }
+            - name: MODEL_CACHE_DIR
+              valueFrom: { configMapKeyRef: { name: {{ $cfg }}, key: model-cache-dir } }
+          volumeMounts:
+            - name: model-cache
+              mountPath: {{ .Values.stage2.cacheDir | quote }}
           readinessProbe:
             httpGet: { path: /v1/health, port: http }
             initialDelaySeconds: 5
@@ -53,6 +71,10 @@ spec:
             initialDelaySeconds: 15
             periodSeconds: 20
           resources: {{ toYaml .Values.api.resources | nindent 12 }}
+      volumes:
+        - name: model-cache
+          emptyDir:
+            sizeLimit: {{ .Values.stage2.cacheSizeLimit | quote }}
 ---
 apiVersion: v1
 kind: Service

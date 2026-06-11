@@ -11,6 +11,13 @@ data:
   redpanda-brokers: {{ .Values.config.redpandaBrokers | quote }}
   streaming-enabled: {{ .Values.config.streamingEnabled | quote }}
   cors-origins: {{ .Values.config.corsOrigins | quote }}
+  stage2-model-url: {{ .Values.stage2.modelUrl | quote }}
+  stage2-model-sha256: {{ .Values.stage2.modelSha256 | quote }}
+  stage2-tokenizer-url: {{ .Values.stage2.tokenizerUrl | quote }}
+  stage2-tokenizer-sha256: {{ .Values.stage2.tokenizerSha256 | quote }}
+  stage2-label-map: {{ .Values.stage2.labelMap | quote }}
+  stage2-threshold: {{ .Values.stage2.threshold | quote }}
+  model-cache-dir: {{ .Values.stage2.cacheDir | quote }}
 {{- if not .Values.secrets.existingSecret }}
 ---
 apiVersion: v1
