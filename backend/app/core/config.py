@@ -62,6 +62,15 @@ class Settings(BaseSettings):
     jwt_access_ttl_seconds: int = 900  # 15 minutes
     jwt_refresh_ttl_seconds: int = 604800  # 7 days
 
+    # Stage-3 LLM judge (optional second opinion on uncertain content).
+    # Enabled when judge_api_key_ref resolves (key present) — otherwise the
+    # judge reports "disabled" and computes nothing (Phase 0.5 honesty). Backs
+    # POST /v1/aiguard/judge, which the runtime agent's Stage 3
+    # (STAGE3_JUDGE_ENDPOINT) can target. Use a small, cheap model.
+    judge_api_key_ref: str = "env:ANTHROPIC_API_KEY"
+    judge_model: str = "claude-haiku-4-5"
+    judge_max_tokens: int = 256
+
     @property
     def cors_origins_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
