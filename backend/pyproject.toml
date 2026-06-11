@@ -43,6 +43,7 @@ dependencies = [
 
     # ONNX Stage 2 inference (Sprint 3)
     "onnxruntime>=1.18",
+    "tokenizers>=0.15",        # fast tokenizer for the provisioned Stage-2 model (Phase 1A)
 
     # Identity federation
     "authlib>=1.3.2",          # OIDC client (battle-tested)

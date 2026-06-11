@@ -93,6 +93,25 @@ async def list_detectors(
     return {"detectors": list(names()), "default_thresholds": default_thresholds()}
 
 
+class ClassifyRequest(BaseModel):
+    text: str
+    max_length: int = 8192  # accepted for agent-schema compatibility
+
+
+@router.post("/classify")
+async def classify(
+    body: ClassifyRequest,
+    identity: IdentityContext = Depends(require_scope("runtime:ingest")),
+) -> dict[str, Any]:
+    """Stage-2 ML classification for one input (Phase 1A). Runs the provisioned
+    ONNX model when configured, else the heuristic — the response is labelled
+    with which (``mode``). Shape matches the runtime agent's HTTPStage2, so its
+    STAGE2_ONNX_ENDPOINT can target this route."""
+    from app.policy.stage2_provision import classify_text
+
+    return await classify_text(body.text)
+
+
 class JudgeRequest(BaseModel):
     text: str
 

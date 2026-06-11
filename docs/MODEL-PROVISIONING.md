@@ -41,6 +41,54 @@ Stage 1 + Stage 3).
 5. **Deliver.** Mount the signed artifact into the sidecar (init container
    pulls the versioned artifact from object storage; checksum-verified).
 
+## Provisioning the artifact (Phase 1A — implemented)
+
+The mechanism above is now concrete and checksum-pinned end to end. Two pieces
+ship in the repo; only the artifact itself is produced out-of-band (it is too
+large to commit).
+
+### 1. Export the artifact (operational, once per model version)
+
+```bash
+pip install "optimum[exporters,onnxruntime]" transformers
+python backend/scripts/export_stage2_onnx.py \
+    --model protectai/deberta-v3-base-prompt-injection-v2 \
+    --out ./dist/stage2 --quantize
+```
+
+This writes `stage2_model.onnx` + `stage2_tokenizer.json` and prints their
+SHA-256s. Attach both files to a GitHub release (or push to your object store).
+
+### 2. Pin the checksums into the deployment env
+
+The control plane provisions the artifact at startup
+(`backend/app/provisioning/model_provision.py`): it downloads from the URL,
+**verifies the SHA-256 before use** (a tampered/truncated download is rejected,
+never loaded), and caches the verified file so restarts don't re-download.
+`file://` and `http(s)://` are both supported.
+
+```bash
+STAGE2_ONNX_MODEL_URL=https://github.com/<org>/<repo>/releases/download/pi-classifier-v1/stage2_model.onnx
+STAGE2_ONNX_MODEL_SHA256=<printed by the export script>
+STAGE2_ONNX_TOKENIZER_URL=https://.../stage2_tokenizer.json
+STAGE2_ONNX_TOKENIZER_SHA256=<printed by the export script>
+MODEL_CACHE_DIR=/var/cache/aisp/models   # default
+```
+
+Leave `STAGE2_ONNX_MODEL_URL` unset → the deterministic heuristic Stage 2 runs
+instead, and every verdict is labelled `mode="stage2_heuristic"`. The platform
+never reports an ML verdict it didn't compute.
+
+### 3. Serving options
+
+- **In-process (control plane):** `POST /v1/aiguard/classify` (scope
+  `runtime:ingest`) serves the provisioned model directly — same
+  `{matched, confidence, category}` body the agent's `HTTPStage2` expects, plus
+  a `mode` field (`stage2_onnx` | `stage2_heuristic`). Point the agent's
+  `STAGE2_ONNX_ENDPOINT` at this route to skip the separate sidecar.
+- **Sidecar:** the localhost sidecar described above, for deployments that want
+  inference off the control-plane process.
+
 ## Confidence routing (unchanged by backend)
 
 The pipeline routes on the sidecar's `confidence` exactly as for the heuristic:
