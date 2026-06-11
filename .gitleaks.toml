@@ -23,4 +23,9 @@ paths = [
 regexes = [
   '''ci-secret-must-be-at-least-32-chars-long-padding''',
   '''test-secret-must-be-at-least-32-chars-long-for-pydantic-validation''',
+  # Public SHA-256 checksums of the Stage-2 ONNX release artifact
+  # (stage2-pi-classifier-v1). Published integrity hashes, not secrets —
+  # the provisioner verifies downloads against them.
+  '''1dc9297b916a15b7acb93b9bb8776bd8d1edfea7223aadc0527ac46519a378ee''',
+  '''133b1071a455bb96ec0d7aa1242e616cc42ec29652fded524fb6883832afa903''',
 ]
