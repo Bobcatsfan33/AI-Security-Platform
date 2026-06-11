@@ -71,6 +71,16 @@ class Settings(BaseSettings):
     judge_model: str = "claude-haiku-4-5"
     judge_max_tokens: int = 256
 
+    # Stage-2 ONNX model (optional real ML classifier). Provisioned at startup
+    # from a checksum-pinned release artifact (Phase 1A); unset → the heuristic
+    # Stage 2 runs instead (honest fallback). Backs POST /v1/aiguard/classify,
+    # which the runtime agent's STAGE2_ONNX_ENDPOINT can target.
+    stage2_onnx_model_url: str = ""  # file:// or http(s):// to the .onnx
+    stage2_onnx_model_sha256: str = ""
+    stage2_onnx_tokenizer_url: str = ""  # file:// or http(s):// to tokenizer.json
+    stage2_onnx_tokenizer_sha256: str = ""
+    model_cache_dir: str = "/var/cache/aisp/models"
+
     @property
     def cors_origins_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
