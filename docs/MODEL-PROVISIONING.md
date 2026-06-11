@@ -59,6 +59,13 @@ python backend/scripts/export_stage2_onnx.py \
 This writes `stage2_model.onnx` + `stage2_tokenizer.json` and prints their
 SHA-256s. Attach both files to a GitHub release (or push to your object store).
 
+> **Hosted artifact (live).** A v1 export is already published and pinned as the
+> Helm/`.env.example` default — a fresh deploy runs the real model out of the box:
+> [`stage2-pi-classifier-v1`](https://github.com/Bobcatsfan33/AI-Security-Platform/releases/tag/stage2-pi-classifier-v1).
+> Model SHA-256 `1dc9297b…78ee`, tokenizer `133b1071…a903`. Verified end-to-end
+> from the public URL: injection → `prompt_injection` 1.0, benign → clean. Only
+> re-run the export above to ship a new model version.
+
 ### 2. Pin the checksums into the deployment env
 
 The control plane provisions the artifact at startup

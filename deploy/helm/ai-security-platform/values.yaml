@@ -19,6 +19,24 @@ config:
   streamingEnabled: "true" # API dual-writes ingested events to the EPA stream
   corsOrigins: ""
 
+# Stage-2 ML classifier (AI Guard, Phase 1A). Pinned to the checksum-verified
+# release artifact — the API provisions it at startup, verifies the SHA-256
+# before loading (a tampered/truncated download is rejected), and serves it at
+# POST /v1/aiguard/classify. Clear modelUrl to fall back to the heuristic
+# (verdicts are then honestly labelled mode=stage2_heuristic).
+stage2:
+  modelUrl: "https://github.com/Bobcatsfan33/AI-Security-Platform/releases/download/stage2-pi-classifier-v1/stage2_model.onnx"
+  modelSha256: "1dc9297b916a15b7acb93b9bb8776bd8d1edfea7223aadc0527ac46519a378ee"
+  tokenizerUrl: "https://github.com/Bobcatsfan33/AI-Security-Platform/releases/download/stage2-pi-classifier-v1/stage2_tokenizer.json"
+  tokenizerSha256: "133b1071a455bb96ec0d7aa1242e616cc42ec29652fded524fb6883832afa903"
+  labelMap: "0:safe,1:prompt_injection"
+  threshold: "0.5"
+  cacheDir: "/var/cache/aisp/models"
+  # Writable cache for the provisioned model (root FS is read-only). emptyDir
+  # re-downloads ~700MB on every pod start; for production point this at a
+  # PVC/RWX volume so replicas share one cached copy.
+  cacheSizeLimit: "2Gi"
+
 # JWT secret + crypto keyring refs. In production set existingSecret to a Secret
 # managed by Vault/ASM/KMS (key "jwt-secret"); the literal is dev-only and the
 # control plane fails closed at startup if JWT_SECRET is unset (secret_gate.py).
