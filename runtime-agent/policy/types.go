@@ -105,6 +105,11 @@ type StageResult struct {
 	Reason     string
 	LatencyUS  int64
 	Evidence   map[string]any
+	// Mode names how the verdict was ACTUALLY computed — the honesty field.
+	// e.g. "stage1_regex", "stage2_heuristic", "stage3_deterministic",
+	// "stage3_http", or "disabled" (the stage has no real backend and did NOT
+	// compute a verdict). Mirrors the Python control-plane (Phase 0.5).
+	Mode string
 }
 
 // Decision is the orchestrator's combined verdict across stages.

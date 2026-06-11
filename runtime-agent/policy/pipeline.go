@@ -22,13 +22,16 @@ type Stage3Engine interface {
 type noopStage2 struct{}
 
 func (noopStage2) Classify(_ context.Context, _ *Input, _ *CompiledPolicy) StageResult {
-	return StageResult{Stage: ExitStage2ML, Matched: false, Action: ActionAllowed}
+	return StageResult{Stage: ExitStage2ML, Mode: "disabled", Matched: false, Action: ActionAllowed}
 }
 
+// noopStage3 is the honest "no judge configured" engine (Phase 0.5): it reports
+// Mode "disabled" and computes nothing — it must NOT run a regex stand-in and
+// emit a verdict labelled as a judge ruling.
 type noopStage3 struct{}
 
 func (noopStage3) Judge(_ context.Context, _ *Input, _ *CompiledPolicy) StageResult {
-	return StageResult{Stage: ExitStage3Judge, Matched: false, Action: ActionAllowed}
+	return StageResult{Stage: ExitStage3Judge, Mode: "disabled", Matched: false, Action: ActionAllowed}
 }
 
 // StageConfig configures the inline Stage 2/3 backends. When an endpoint is
@@ -54,14 +57,16 @@ type Pipeline struct {
 	Stage3 Stage3Engine
 }
 
-// NewDefaultPipeline wires all three stages live with the zero-config inline
-// engines: Stage 1 (regex/PII), Stage 2 (heuristic), Stage 3 (deterministic
-// judge). Functional out of the box with no model weights or external calls.
+// NewDefaultPipeline wires the zero-config inline engines: Stage 1 (regex/PII)
+// + Stage 2 (heuristic) run live; Stage 3 is DISABLED until a judge endpoint
+// is configured (Phase 0.5 honesty — no hidden-regex verdict). Callers that
+// genuinely want the dependency-free second opinion set Stage3 =
+// NewDeterministicStage3() explicitly (reported as "stage3_deterministic").
 func NewDefaultPipeline() *Pipeline {
 	return &Pipeline{
 		Stage1: NewStage1Engine(),
 		Stage2: NewHeuristicStage2(),
-		Stage3: NewDeterministicStage3(),
+		Stage3: noopStage3{},
 	}
 }
 
@@ -76,7 +81,8 @@ func NewPipeline(cfg StageConfig) *Pipeline {
 	case cfg.UseDetectorSuite:
 		s2 = NewCompositeStage2() // full AI Guard detector breadth, inline
 	}
-	var s3 Stage3Engine = NewDeterministicStage3()
+	// No judge endpoint → Stage 3 DISABLED (honest), not a hidden-regex verdict.
+	var s3 Stage3Engine = noopStage3{}
 	if cfg.Stage3Endpoint != "" {
 		s3 = NewHTTPStage3(cfg.Stage3Endpoint, cfg.Stage3Timeout)
 	}
