@@ -1,0 +1,25 @@
+# CODEOWNERS — required reviewers for security-sensitive paths (SH-2).
+#
+# Branch protection (scripts/org/protect.sh) sets require_code_owner_reviews on
+# main, so a change under these paths needs a review from an owner listed here.
+#
+# EXTERNAL DEPENDENCY: a second maintainer must be added alongside @Bobcatsfan33
+# to satisfy "reviewed by someone other than the author" (NIST 800-53 SA-11 /
+# SR-3, and F500 vendor due diligence). Until that account exists these lines
+# name the sole maintainer; add the second handle here when onboarded.
+
+# Default owner for everything.
+*                       @Bobcatsfan33
+
+# Authentication, identity, and tenant isolation — the breach-class surface.
+/backend/app/auth/      @Bobcatsfan33
+/backend/app/db/        @Bobcatsfan33
+/backend/app/security/  @Bobcatsfan33
+/backend/app/scim/      @Bobcatsfan33
+
+# The customer-deployed inline agent.
+/runtime-agent/         @Bobcatsfan33
+
+# CI/CD, supply chain, and deployment topology.
+/.github/               @Bobcatsfan33
+/deploy/                @Bobcatsfan33
