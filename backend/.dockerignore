@@ -1,0 +1,15 @@
+# Keep the build context small and the image clean: the Dockerfile copies only
+# app/, alembic/, alembic.ini and pyproject.toml. Everything else — the local
+# venv, the multi-hundred-MB model cache, tests, and caches — is excluded.
+.venv
+dist
+var
+tests
+**/__pycache__
+*.pyc
+.pytest_cache
+.ruff_cache
+.mypy_cache
+.coverage
+htmlcov
+.env
