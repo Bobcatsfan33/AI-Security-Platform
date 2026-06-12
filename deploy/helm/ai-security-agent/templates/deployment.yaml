@@ -69,6 +69,20 @@ spec:
               value: {{ .Values.upstream.azure | quote }}
             - name: UPSTREAM_BEDROCK
               value: {{ .Values.upstream.bedrock | quote }}
+            {{- if .Values.mtls.enabled }}
+            - name: CONTROL_PLANE_CA_PATH
+              value: {{ printf "%s/ca.crt" .Values.mtls.mountPath | quote }}
+            - name: CONTROL_PLANE_CERT_PATH
+              value: {{ printf "%s/tls.crt" .Values.mtls.mountPath | quote }}
+            - name: CONTROL_PLANE_KEY_PATH
+              value: {{ printf "%s/tls.key" .Values.mtls.mountPath | quote }}
+            {{- end }}
+          {{- if .Values.mtls.enabled }}
+          volumeMounts:
+            - name: control-plane-tls
+              mountPath: {{ .Values.mtls.mountPath | quote }}
+              readOnly: true
+          {{- end }}
           livenessProbe:
             httpGet:
               path: /healthz
@@ -83,6 +97,12 @@ spec:
             periodSeconds: 10
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
+      {{- if .Values.mtls.enabled }}
+      volumes:
+        - name: control-plane-tls
+          secret:
+            secretName: {{ .Values.mtls.secretName | quote }}
+      {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

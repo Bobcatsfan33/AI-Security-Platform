@@ -58,6 +58,17 @@ agentApiKey:
   existingSecret: ""           # name of a Secret with key "api-key"
   apiKey: ""                   # literal value (creates a managed Secret)
 
+# Mutual TLS to the control plane (A-4). The agent authenticates with a
+# short-lived client certificate — cert-manager rotates the Secret, the agent
+# hot-reloads it — and pins the control-plane server to the platform CA, instead
+# of a long-lived bearer credential on a box the platform doesn't control.
+# Disabled by default for backward compatibility; enable in production.
+mtls:
+  enabled: false
+  # Secret (e.g. issued by cert-manager) with keys ca.crt, tls.crt, tls.key.
+  secretName: "agent-control-plane-tls"
+  mountPath: "/etc/aisp/agent-certs"
+
 bind:
   proxy: ":8400"
   diagnostic: "127.0.0.1:8401"

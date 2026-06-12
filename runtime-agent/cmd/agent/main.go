@@ -16,6 +16,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog"
 
+	"github.com/Bobcatsfan33/ai-security-platform/runtime-agent/internal/controlplane"
 	"github.com/Bobcatsfan33/ai-security-platform/runtime-agent/management"
 	"github.com/Bobcatsfan33/ai-security-platform/runtime-agent/policy"
 	"github.com/Bobcatsfan33/ai-security-platform/runtime-agent/proxy"
@@ -36,6 +37,13 @@ type config struct {
 	platformAPIKey   string
 	staleGracePeriod time.Duration
 
+	// Control-plane mTLS (A-4). When all three are set, agent → control-plane
+	// calls use a client-cert-authenticated, platform-CA-pinned client with
+	// hot-reload; unset → the default client (backward compatible).
+	controlPlaneCAPath   string
+	controlPlaneCertPath string
+	controlPlaneKeyPath  string
+
 	upstreamOpenAI    string
 	upstreamAnthropic string
 	upstreamAzure     string
@@ -53,25 +61,28 @@ type config struct {
 
 func loadConfig() config {
 	return config{
-		bindProxy:         envOr("AGENT_BIND", ":8400"),
-		bindDiagnostic:    envOr("AGENT_DIAG_BIND", "127.0.0.1:8401"),
-		platformURL:       envOr("PLATFORM_URL", "http://localhost:8000"),
-		redisURL:          envOr("REDIS_URL", "redis://localhost:6379/0"),
-		orgID:             os.Getenv("AGENT_ORG_ID"),
-		policyID:          os.Getenv("AGENT_POLICY_ID"),
-		agentID:           envOr("AGENT_ID", "agent-default"),
-		environment:       envOr("AGENT_ENVIRONMENT", "production"),
-		platformAPIKey:    os.Getenv("AGENT_API_KEY"),
-		staleGracePeriod:  parseDuration(envOr("AGENT_STALE_GRACE", "5m")),
-		upstreamOpenAI:    envOr("UPSTREAM_OPENAI", "https://api.openai.com"),
-		upstreamAnthropic: envOr("UPSTREAM_ANTHROPIC", "https://api.anthropic.com"),
-		upstreamAzure:     os.Getenv("UPSTREAM_AZURE"),
-		upstreamBedrock:   envOr("UPSTREAM_BEDROCK", "https://bedrock-runtime.us-east-1.amazonaws.com"),
-		stage2Endpoint:    os.Getenv("STAGE2_ONNX_ENDPOINT"),
-		stage2Timeout:     parseDuration(envOr("STAGE2_TIMEOUT", "150ms")),
-		stage3Endpoint:    os.Getenv("STAGE3_JUDGE_ENDPOINT"),
-		stage3Timeout:     parseDuration(envOr("STAGE3_TIMEOUT", "3s")),
-		useDetectorSuite:  os.Getenv("STAGE2_DETECTOR_SUITE") == "true",
+		bindProxy:            envOr("AGENT_BIND", ":8400"),
+		bindDiagnostic:       envOr("AGENT_DIAG_BIND", "127.0.0.1:8401"),
+		platformURL:          envOr("PLATFORM_URL", "http://localhost:8000"),
+		redisURL:             envOr("REDIS_URL", "redis://localhost:6379/0"),
+		orgID:                os.Getenv("AGENT_ORG_ID"),
+		policyID:             os.Getenv("AGENT_POLICY_ID"),
+		agentID:              envOr("AGENT_ID", "agent-default"),
+		environment:          envOr("AGENT_ENVIRONMENT", "production"),
+		platformAPIKey:       os.Getenv("AGENT_API_KEY"),
+		staleGracePeriod:     parseDuration(envOr("AGENT_STALE_GRACE", "5m")),
+		controlPlaneCAPath:   os.Getenv("CONTROL_PLANE_CA_PATH"),
+		controlPlaneCertPath: os.Getenv("CONTROL_PLANE_CERT_PATH"),
+		controlPlaneKeyPath:  os.Getenv("CONTROL_PLANE_KEY_PATH"),
+		upstreamOpenAI:       envOr("UPSTREAM_OPENAI", "https://api.openai.com"),
+		upstreamAnthropic:    envOr("UPSTREAM_ANTHROPIC", "https://api.anthropic.com"),
+		upstreamAzure:        os.Getenv("UPSTREAM_AZURE"),
+		upstreamBedrock:      envOr("UPSTREAM_BEDROCK", "https://bedrock-runtime.us-east-1.amazonaws.com"),
+		stage2Endpoint:       os.Getenv("STAGE2_ONNX_ENDPOINT"),
+		stage2Timeout:        parseDuration(envOr("STAGE2_TIMEOUT", "150ms")),
+		stage3Endpoint:       os.Getenv("STAGE3_JUDGE_ENDPOINT"),
+		stage3Timeout:        parseDuration(envOr("STAGE3_TIMEOUT", "3s")),
+		useDetectorSuite:     os.Getenv("STAGE2_DETECTOR_SUITE") == "true",
 	}
 }
 
@@ -88,6 +99,34 @@ func parseDuration(s string) time.Duration {
 		return 5 * time.Minute
 	}
 	return d
+}
+
+// buildControlPlaneClient returns the mTLS HTTP client for control-plane calls
+// when the CONTROL_PLANE_* certs are configured, or nil to use each component's
+// default client. A partial configuration is fatal: silently falling back to a
+// non-mTLS client would be an unflagged security downgrade.
+func buildControlPlaneClient(cfg config, log zerolog.Logger) *http.Client {
+	set := 0
+	for _, p := range []string{cfg.controlPlaneCAPath, cfg.controlPlaneCertPath, cfg.controlPlaneKeyPath} {
+		if p != "" {
+			set++
+		}
+	}
+	if set == 0 {
+		return nil
+	}
+	if set != 3 {
+		log.Fatal().Msg("mTLS partially configured: set all of CONTROL_PLANE_CA_PATH, " +
+			"CONTROL_PLANE_CERT_PATH, CONTROL_PLANE_KEY_PATH")
+	}
+	client, err := controlplane.NewHTTPClient(
+		cfg.controlPlaneCAPath, cfg.controlPlaneCertPath, cfg.controlPlaneKeyPath,
+	)
+	if err != nil {
+		log.Fatal().Err(err).Msg("control_plane_mtls_init_failed")
+	}
+	log.Info().Msg("control_plane_mtls_enabled")
+	return client
 }
 
 func main() {
@@ -119,15 +158,20 @@ func main() {
 	}
 	defer rdb.Close()
 
+	// The single mTLS-pinned client for every control-plane call (nil when not
+	// configured → each component uses its default client).
+	cpClient := buildControlPlaneClient(cfg, log)
+
 	// Telemetry — for now log to stdout. Production sets an HTTPUploader
 	// pointing at the control plane.
-	uploader := pickUploader(cfg, log)
+	uploader := pickUploader(cfg, log, cpClient)
 	buf := telemetry.NewBuffer(log, uploader, 100, 5*time.Second, 10000)
 
 	// Policy cache
 	fetcher := &policy.HTTPFetcher{
-		BaseURL: cfg.platformURL,
-		APIKey:  cfg.platformAPIKey,
+		BaseURL:    cfg.platformURL,
+		APIKey:     cfg.platformAPIKey,
+		HTTPClient: cpClient,
 	}
 	cache := policy.NewCache(log, fetcher, cfg.staleGracePeriod)
 
@@ -170,6 +214,9 @@ func main() {
 		poller := management.NewKillSwitchPoller(
 			log, cfg.platformURL, cfg.platformAPIKey, cfg.agentID, killSwitch,
 		)
+		if cpClient != nil {
+			poller.HTTPClient = cpClient
+		}
 		go func() {
 			if err := poller.Run(rootCtx); err != nil &&
 				!errors.Is(err, context.Canceled) {
@@ -179,16 +226,17 @@ func main() {
 
 		// Heartbeat
 		hb := management.NewHeartbeatRunner(management.HeartbeatConfig{
-			Log:       log,
-			BaseURL:   cfg.platformURL,
-			APIKey:    cfg.platformAPIKey,
-			AgentID:   cfg.agentID,
-			OrgID:     cfg.orgID,
-			Version:   agentVersion,
-			PolicyID:  cfg.policyID,
-			Cache:     cache,
-			Telemetry: buf,
-			Interval:  30 * time.Second,
+			Log:        log,
+			BaseURL:    cfg.platformURL,
+			APIKey:     cfg.platformAPIKey,
+			AgentID:    cfg.agentID,
+			OrgID:      cfg.orgID,
+			Version:    agentVersion,
+			PolicyID:   cfg.policyID,
+			Cache:      cache,
+			Telemetry:  buf,
+			Interval:   30 * time.Second,
+			HTTPClient: cpClient,
 		})
 		go func() {
 			if err := hb.Run(rootCtx); err != nil &&
@@ -269,14 +317,15 @@ func newRedis(rawURL string) (*redis.Client, error) {
 	return redis.NewClient(opts), nil
 }
 
-func pickUploader(cfg config, log zerolog.Logger) telemetry.Uploader {
+func pickUploader(cfg config, log zerolog.Logger, cpClient *http.Client) telemetry.Uploader {
 	// In dev / when no API key is configured, log to stdout — the
 	// control plane's ingest endpoint is a Sprint 7 follow-on.
 	if cfg.platformAPIKey == "" {
 		return &telemetry.StdoutUploader{Log: log}
 	}
 	return &telemetry.HTTPUploader{
-		BaseURL: cfg.platformURL,
-		APIKey:  cfg.platformAPIKey,
+		BaseURL:    cfg.platformURL,
+		APIKey:     cfg.platformAPIKey,
+		HTTPClient: cpClient,
 	}
 }
