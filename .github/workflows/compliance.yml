@@ -1,0 +1,33 @@
+# .github/workflows/compliance.yml — first-party compliance evidence (A-5).
+#
+# Validates the control matrix (no 'implemented'/'partial' control without an
+# evidence file that exists) and uploads the generated OSCAL component
+# definition + STIG-style evidence summary as an artifact on every PR and push.
+name: compliance-evidence
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  evidence:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Generate OSCAL + STIG evidence (validates the matrix)
+        run: |
+          python scripts/generate_oscal.py --out dist/oscal-component-definition.json
+          python scripts/stig_evidence.py --out dist/stig-evidence-summary.md
+      - uses: actions/upload-artifact@v4
+        with:
+          name: compliance-evidence
+          path: dist/
+          retention-days: 90

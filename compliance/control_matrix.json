@@ -1,0 +1,196 @@
+{
+  "system": "AI Security Platform",
+  "framework": "NIST SP 800-53 Rev 5",
+  "baseline": "Moderate",
+  "notes": "First-party control matrix for the platform itself (we sell ATO evidence packs; this is ours). Status is honest: 'implemented' controls carry evidence_files that exist in this repo; 'partial' have a code/doc basis but an unmet external gate; 'planned' and 'not_applicable' carry no implementation claim. generate_oscal.py enforces the no-implemented-without-evidence rule and renders OSCAL.",
+  "statuses": ["implemented", "partial", "planned", "not_applicable"],
+  "controls": [
+    {
+      "id": "AC-2",
+      "title": "Account Management",
+      "status": "partial",
+      "narrative": "Users are provisioned/deprovisioned via SCIM from the customer IdP; lifecycle automation is in place. Periodic access recertification is not yet automated.",
+      "evidence_files": ["backend/app/scim/users.py", "backend/app/scim/auth.py"]
+    },
+    {
+      "id": "AC-3",
+      "title": "Access Enforcement",
+      "status": "implemented",
+      "narrative": "Role-based access is enforced on every route via require_role/require_scope dependencies resolved from a signed identity context.",
+      "evidence_files": ["backend/app/auth/dependencies.py", "backend/app/auth/rbac.py"]
+    },
+    {
+      "id": "AC-4",
+      "title": "Information Flow Enforcement",
+      "status": "implemented",
+      "narrative": "Cross-tenant data flow is prevented at two independent layers: a SQLAlchemy ORM guard injects org scoping into every query (fail-closed with no org context), and Postgres Row-Level Security enforces it at the database with FORCE against a NOBYPASSRLS app role.",
+      "evidence_files": [
+        "backend/app/db/tenancy.py",
+        "backend/alembic/versions/20260611_0006_enable_rls.py",
+        "deploy/db/roles.sql",
+        "backend/tests/integration/test_tenant_guard.py"
+      ]
+    },
+    {
+      "id": "AU-2",
+      "title": "Event Logging",
+      "status": "implemented",
+      "narrative": "A taxonomy of security-relevant events (auth, access, policy, key, tenant-guard bypass, integrity) is emitted to a tamper-evident audit log.",
+      "evidence_files": ["backend/app/security/audit_log.py"]
+    },
+    {
+      "id": "AU-3",
+      "title": "Content of Audit Records",
+      "status": "implemented",
+      "narrative": "Each record carries timestamp, event type, subject, outcome, source, resource, tenant, and a correlation id (AU-3 fields).",
+      "evidence_files": ["backend/app/security/audit_log.py"]
+    },
+    {
+      "id": "AU-9",
+      "title": "Protection of Audit Information",
+      "status": "implemented",
+      "narrative": "Records are hash-chained (HMAC-SHA256 when a key is configured) so tampering breaks the chain; integrity verification walks the log.",
+      "evidence_files": ["backend/app/security/audit_log.py"]
+    },
+    {
+      "id": "AU-12",
+      "title": "Audit Record Generation",
+      "status": "implemented",
+      "narrative": "Audit generation is centralized in log_event and invoked at every security-bearing operation across the app.",
+      "evidence_files": ["backend/app/security/audit_log.py"]
+    },
+    {
+      "id": "CA-2",
+      "title": "Control Assessments",
+      "status": "planned",
+      "narrative": "Third-party penetration test and independent assessment are scheduled; not yet performed.",
+      "evidence_files": []
+    },
+    {
+      "id": "CM-6",
+      "title": "Configuration Settings",
+      "status": "implemented",
+      "narrative": "Runtime images are hardened multi-stage non-root builds (uid 10001, no compiler/dev deps in the runtime layer); the production topology runs read-only rootfs, cap_drop ALL, no-new-privileges, with zero default credentials.",
+      "evidence_files": ["backend/Dockerfile", "frontend/Dockerfile", "docker-compose.production.yml"]
+    },
+    {
+      "id": "CP-9",
+      "title": "System Backup",
+      "status": "partial",
+      "narrative": "Backup/restore and HA-DR procedures are documented; a full game-day exercise has not been run.",
+      "evidence_files": ["docs/HA-DR-RUNBOOK.md"]
+    },
+    {
+      "id": "IA-2",
+      "title": "Identification and Authentication (Organizational Users)",
+      "status": "implemented",
+      "narrative": "Users authenticate via OIDC/SAML federation to short-lived RS256 JWTs with kid-based key rotation; API principals use bcrypt-hashed keys.",
+      "evidence_files": ["backend/app/auth/jwt_service.py", "backend/app/auth/api_key_service.py"]
+    },
+    {
+      "id": "IA-3",
+      "title": "Device Identification and Authentication",
+      "status": "implemented",
+      "narrative": "The inline runtime agent authenticates to the control plane with a short-lived client certificate (mutual TLS), not a static credential.",
+      "evidence_files": ["runtime-agent/internal/controlplane/client.go", "docs/AGENT-MTLS.md"]
+    },
+    {
+      "id": "IA-5",
+      "title": "Authenticator Management",
+      "status": "implemented",
+      "narrative": "Signing keys rotate by kid with overlap; agent certs rotate via cert-manager with hot reload; secrets resolve from env/Vault/ASM references, never literals.",
+      "evidence_files": ["backend/app/auth/jwt_service.py", "backend/app/security/secrets.py", "runtime-agent/internal/controlplane/client.go"]
+    },
+    {
+      "id": "IR-4",
+      "title": "Incident Handling",
+      "status": "planned",
+      "narrative": "Incident response runbook and on-call rotation are not yet formalized for the platform's own operations.",
+      "evidence_files": []
+    },
+    {
+      "id": "RA-5",
+      "title": "Vulnerability Monitoring and Scanning",
+      "status": "implemented",
+      "narrative": "CI gates on secret scanning (gitleaks), SAST (bandit, gosec, CodeQL), dependency audit (pip-audit, npm audit), and Trivy image scanning (HIGH/CRITICAL).",
+      "evidence_files": [".github/workflows/ci.yml", ".github/workflows/security.yml"]
+    },
+    {
+      "id": "SA-11",
+      "title": "Developer Testing and Evaluation",
+      "status": "implemented",
+      "narrative": "Every change lands via reviewed PR behind blocking unit/integration tests, Go race tests, and the security gates above.",
+      "evidence_files": [".github/workflows/ci.yml", "docs/SDLC-POLICY.md"]
+    },
+    {
+      "id": "SA-15",
+      "title": "Development Process, Standards, and Tools",
+      "status": "implemented",
+      "narrative": "A documented secure SDLC governs the workflow; CODEOWNERS requires review on security-sensitive paths; branch protection is codified.",
+      "evidence_files": ["docs/SDLC-POLICY.md", ".github/CODEOWNERS", "scripts/org/protect.sh"]
+    },
+    {
+      "id": "SC-8",
+      "title": "Transmission Confidentiality and Integrity",
+      "status": "implemented",
+      "narrative": "Agent-to-control-plane traffic uses TLS 1.3 with server identity pinned to the platform CA (not the system trust store).",
+      "evidence_files": ["runtime-agent/internal/controlplane/client.go"]
+    },
+    {
+      "id": "SC-12",
+      "title": "Cryptographic Key Establishment and Management",
+      "status": "implemented",
+      "narrative": "JWT signing keys and agent client certificates are short-lived and rotated (kid overlap; cert-manager renewal with hot reload).",
+      "evidence_files": ["backend/app/auth/jwt_service.py", "docs/AGENT-MTLS.md"]
+    },
+    {
+      "id": "SC-13",
+      "title": "Cryptographic Protection",
+      "status": "implemented",
+      "narrative": "RS256 for tokens, TLS 1.3 for agent transport, and authenticated field-level encryption for sensitive data at rest.",
+      "evidence_files": ["backend/app/security/field_crypto.py", "backend/app/auth/jwt_service.py"]
+    },
+    {
+      "id": "SC-28",
+      "title": "Protection of Information at Rest",
+      "status": "implemented",
+      "narrative": "Sensitive fields are encrypted at rest with a versioned keyring supporting rotation; keys resolve from a secret manager.",
+      "evidence_files": ["backend/app/security/field_crypto.py", "backend/app/security/secrets.py"]
+    },
+    {
+      "id": "SI-10",
+      "title": "Information Input Validation",
+      "status": "implemented",
+      "narrative": "Inbound content is decoded/normalized (NFKC, zero-width/bidi strip, multi-encoding decode) before the detector suite evaluates it, defeating encoding-bypass.",
+      "evidence_files": ["backend/app/detectors/normalize.py", "backend/app/aiguard/service.py"]
+    },
+    {
+      "id": "SR-3",
+      "title": "Supply Chain Controls and Processes",
+      "status": "implemented",
+      "narrative": "Each release builds digest-addressed images, generates CycloneDX SBOMs, and gates on Trivy — via a maintained-once org-level reusable workflow.",
+      "evidence_files": [".github/workflows/security.yml"]
+    },
+    {
+      "id": "SR-4",
+      "title": "Provenance",
+      "status": "implemented",
+      "narrative": "SLSA v1 build provenance is generated for every published image and is verifiable with slsa-verifier.",
+      "evidence_files": [".github/workflows/security.yml"]
+    },
+    {
+      "id": "SR-11",
+      "title": "Component Authenticity",
+      "status": "implemented",
+      "narrative": "Images are cosign-signed (keyless/Fulcio, OIDC workflow identity) and SBOM-attested; signatures are verifiable against the workflow identity.",
+      "evidence_files": [".github/workflows/security.yml"]
+    },
+    {
+      "id": "PE-3",
+      "title": "Physical Access Control",
+      "status": "not_applicable",
+      "narrative": "The platform runs on managed cloud / customer infrastructure; physical controls are inherited from the hosting provider.",
+      "evidence_files": []
+    }
+  ]
+}
