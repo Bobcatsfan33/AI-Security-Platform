@@ -1,0 +1,67 @@
+# docker-compose.production.yml — hardened reference topology.
+#
+# Every credential is an external, required variable (${VAR:?...}) — there are
+# NO default credentials anywhere in this file. Data stores (Postgres,
+# ClickHouse, Redis) are MANAGED services you point at via the URLs below, not
+# containers in this compose (the dev compose.yml is for local only).
+#
+# Boot:
+#   export ASP_VERSION=... DATABASE_URL=... MIGRATIONS_DATABASE_URL=... \
+#          CLICKHOUSE_URL=... REDIS_URL=... JWT_SECRET=...
+#   docker compose -f docker-compose.production.yml up -d
+services:
+  app:
+    image: ghcr.io/bobcatsfan33/ai-security-platform:${ASP_VERSION:?set ASP_VERSION}
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?asp_app role DSN required}      # NOBYPASSRLS app role (A-1)
+      CLICKHOUSE_URL: ${CLICKHOUSE_URL:?required}
+      REDIS_URL: ${REDIS_URL:?required}
+      JWT_SECRET: ${JWT_SECRET:?required}                           # min 32 chars; HS256 baseline
+      JWT_PRIVATE_KEY: ${JWT_PRIVATE_KEY:-}                         # PEM → RS256 when set (optional)
+      ENVIRONMENT: production
+      # Writable paths under the read-only root filesystem (mounted below).
+      AUDIT_LOG_PATH: /var/audit/audit.jsonl
+      MODEL_CACHE_DIR: /var/cache/aisp/models
+    volumes:
+      - audit-data:/var/audit
+      - model-cache:/var/cache/aisp/models
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    ports:
+      - "8000:8000"
+
+  migrate:
+    image: ghcr.io/bobcatsfan33/ai-security-platform:${ASP_VERSION:?set ASP_VERSION}
+    command: ["python", "-m", "alembic", "upgrade", "head"]
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    environment:
+      # Owner-role DSN — migrations run DDL and must NOT use the asp_app role
+      # (which has no DDL and is bound by RLS). See deploy/db/roles.sql.
+      DATABASE_URL: ${MIGRATIONS_DATABASE_URL:?owner-role DSN required}
+
+  frontend:
+    image: ghcr.io/bobcatsfan33/asp-frontend:${ASP_VERSION:?set ASP_VERSION}
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    ports:
+      - "3000:3000"
+
+volumes:
+  audit-data:
+  model-cache:
