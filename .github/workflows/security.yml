@@ -1,0 +1,47 @@
+# .github/workflows/security.yml — supply-chain CI (A-3).
+#
+# Calls the org-level reusable workflow once per image. CodeQL languages are
+# split across the two calls so python, go, and javascript are each analysed
+# exactly once. On pull_request the images are built + Trivy-scanned only; on
+# push to main they are also pushed to GHCR, cosign-signed (keyless), SBOM-
+# attested, and SLSA-provenance is generated.
+#
+# Complementary to ci.yml's gitleaks/bandit/gosec/npm-audit — not redundant.
+name: security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  backend:
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      security-events: write
+      attestations: write
+      actions: read
+    uses: Bobcatsfan33/.github/.github/workflows/security-reusable.yml@main
+    with:
+      image: ghcr.io/bobcatsfan33/ai-security-platform
+      languages: '["python","go"]'
+      dockerfile: backend/Dockerfile
+      context: backend
+
+  frontend:
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      security-events: write
+      attestations: write
+      actions: read
+    uses: Bobcatsfan33/.github/.github/workflows/security-reusable.yml@main
+    with:
+      image: ghcr.io/bobcatsfan33/asp-frontend
+      languages: '["javascript"]'
+      dockerfile: frontend/Dockerfile
+      context: frontend
