@@ -1,15 +1,19 @@
 # AI Security Platform
 
-The control plane for enterprise AI security — evaluation, runtime protection,
+A control plane for enterprise AI security — evaluation, runtime protection,
 governance, and threat intelligence. Hybrid SaaS + on-prem product: this
 repository holds the multi-tenant control plane (Python / FastAPI), the
 customer-deployed runtime agent (Go), pluggable ONNX classifiers, a Next.js
 admin UI, and supporting SDKs for OpenAI / Anthropic.
 
-> **Status:** Tier 1 → Tier 3 engineering complete. Tier 4 (legal / marketing
-> / sales artefacts) and a production hardening pass remain. See
-> [`docs/ROADMAP.md`](docs/ROADMAP.md) for the original sprint sequence and
-> [`docs/OPERATOR-RUNBOOK.md`](docs/OPERATOR-RUNBOOK.md) for day-2 ops.
+> **Status:** Tier 1 → Tier 3 engineering complete; Tier 4 (legal / marketing
+> / sales artefacts) and a production hardening pass remain. This is an
+> early-stage, single-maintainer project: it has **not** had an independent
+> security audit or penetration test, and has no production deployments or
+> reference customers yet. Compliance outputs are audit-supporting evidence,
+> not third-party certification. See [`docs/ROADMAP.md`](docs/ROADMAP.md) for
+> the sprint sequence and [`docs/OPERATOR-RUNBOOK.md`](docs/OPERATOR-RUNBOOK.md)
+> for day-2 ops.
 
 ---
 
@@ -30,7 +34,7 @@ admin UI, and supporting SDKs for OpenAI / Anthropic.
 | **Anomaly detection** | Per-asset attack graph + statistical detector (volume spike / novel transition / risk inflation) |
 | **Threat intel** | Opt-in cross-tenant clustering; STIX 2.1 export |
 | **SOAR** | PagerDuty / Opsgenie / generic-webhook incident sinks |
-| **Compliance** | Evidence-pack ZIP for SOC 2, ISO 27001, FedRAMP Moderate |
+| **Compliance** | Evidence-pack ZIP scaffolding to support SOC 2 / ISO 27001 / FedRAMP Moderate audits — supporting evidence, not certification |
 
 ---
 
