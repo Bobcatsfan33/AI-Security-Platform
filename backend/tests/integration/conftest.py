@@ -102,3 +102,33 @@ def app_client():
 
     transport = ASGITransport(app=app)
     return AsyncClient(transport=transport, base_url="http://test")
+
+
+# ── Skip cleanly when no live database is available ─────────────────────────
+# Integration tests need a real Postgres. When one isn't reachable (e.g. a
+# laptop or CI job without `docker compose up -d postgres`), skip them with a
+# clear message instead of erroring out inside fixtures.
+import socket as _socket
+from urllib.parse import urlparse as _urlparse
+
+
+def _db_reachable() -> bool:
+    parsed = _urlparse(os.environ["DATABASE_URL"].replace("+asyncpg", ""))
+    host, port = parsed.hostname or "localhost", parsed.port or 5432
+    try:
+        with _socket.create_connection((host, port), timeout=1):
+            return True
+    except OSError:
+        return False
+
+
+_DB_AVAILABLE = _db_reachable()
+
+
+@pytest.fixture(autouse=True)
+def _require_database() -> None:
+    if not _DB_AVAILABLE:
+        pytest.skip(
+            "integration test requires a live Postgres — run "
+            "`docker compose up -d postgres` (or set DATABASE_URL)"
+        )
