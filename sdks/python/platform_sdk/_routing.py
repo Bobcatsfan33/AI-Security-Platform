@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 import os
 import urllib.request
+import warnings
 from urllib.error import URLError
 
 logger = logging.getLogger("platform_sdk")
@@ -25,9 +26,12 @@ def agent_url() -> str:
 
 def fallback_direct() -> bool:
     """Whether to fall back to a direct API call when the agent is
-    unreachable. ``PLATFORM_FALLBACK_DIRECT=false`` makes the SDK
-    fail-closed."""
-    return os.environ.get("PLATFORM_FALLBACK_DIRECT", "true").lower() == "true"
+    unreachable. ``PLATFORM_FALLBACK_DIRECT`` always wins when set; the
+    default is deny-by-default in production — when ``PLATFORM_ENV`` is
+    prod/production the SDK fails closed unless fallback is explicitly
+    enabled."""
+    default = "false" if os.environ.get("PLATFORM_ENV", "").lower() in ("prod", "production") else "true"
+    return os.environ.get("PLATFORM_FALLBACK_DIRECT", default).lower() == "true"
 
 
 def agent_reachable() -> bool:
@@ -57,6 +61,15 @@ def resolve_base_url(
     if agent_reachable():
         return agent_url() + proxy_path
     if fallback_direct():
+        # warnings.warn so the bypass is loud even when the host app never
+        # configures logging — falling back means LLM traffic is UNPROTECTED.
+        warnings.warn(
+            f"platform_sdk: runtime agent at {agent_url()!r} is unreachable — "
+            f"falling back to direct calls ({direct_default}). LLM traffic is "
+            "NOT protected. Set PLATFORM_FALLBACK_DIRECT=false to fail closed.",
+            RuntimeWarning,
+            stacklevel=3,
+        )
         logger.warning(
             "platform_sdk_agent_unreachable_falling_back_direct",
             extra={"agent_url": agent_url(), "direct": direct_default},

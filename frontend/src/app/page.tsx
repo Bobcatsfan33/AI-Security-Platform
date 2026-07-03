@@ -13,16 +13,6 @@ export default function Home() {
       desc: "Register AI assets you want to protect — models, agents, RAG systems, copilots.",
     },
     {
-      href: "/evaluations",
-      title: "Evaluations",
-      desc: "Run the test case library against your assets. See pass/fail, score, findings.",
-    },
-    {
-      href: "/findings",
-      title: "Findings",
-      desc: "Track vulnerabilities through open → remediated. Filter by severity / asset.",
-    },
-    {
       href: "/redteam",
       title: "Red Team",
       desc: "Generative adversarial campaigns. Auto-promoted regression cases on success.",
@@ -33,19 +23,9 @@ export default function Home() {
       desc: "Real-time anomalies detected on the attack graph: volume spikes, novel transitions, risk inflation.",
     },
     {
-      href: "/threat-intel",
-      title: "Threat Intel",
-      desc: "Cross-tenant attack pattern clusters and novel-technique detections. Export as STIX 2.1.",
-    },
-    {
       href: "/connectors",
       title: "Connectors",
       desc: "Register OpenAI / Anthropic / Ollama / Azure / Bedrock / custom endpoints.",
-    },
-    {
-      href: "/compliance",
-      title: "Compliance",
-      desc: "Download SOC 2 / ISO 27001 / FedRAMP evidence packs over a period.",
     },
   ];
 

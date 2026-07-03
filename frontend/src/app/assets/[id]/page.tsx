@@ -30,10 +30,13 @@ export default function AssetDetailPage({ params }: PageProps) {
   async function load(): Promise<void> {
     try {
       setError(null);
+      // Evaluations/findings routes are quarantined since the v2 pivot
+      // (see backend tests/unit/test_no_broken_imports.py). Degrade to
+      // empty lists instead of failing the whole page.
       const [a, e, f] = await Promise.all([
         api.get<Asset>(`/v1/assets/${id}`),
-        api.get<Evaluation[]>(`/v1/evaluations?asset_id=${id}`),
-        api.get<Finding[]>(`/v1/findings?asset_id=${id}`),
+        api.get<Evaluation[]>(`/v1/evaluations?asset_id=${id}`).catch(() => []),
+        api.get<Finding[]>(`/v1/findings?asset_id=${id}`).catch(() => []),
       ]);
       setAsset(a);
       setEvaluations(e);

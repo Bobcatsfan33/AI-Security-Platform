@@ -6,9 +6,10 @@ wedges only.
   Track 1: Asset Inventory + Connectors (this sprint)
   Track 2: Runtime Monitoring (already wired, untouched by the pivot)
 
-Governance modules (redteam, policy, evaluation, findings, test_cases,
-scim, aibom, mcp, idp_admin) remain on disk for git history but are
-NOT registered as routes.
+Governance modules (evaluation, findings, test_cases, scim, aibom, mcp,
+idp_admin) remain on disk for git history but are NOT registered as
+routes. Red Teaming and Policies have been revived for v2 (the latter
+feeds the runtime agent via GET /v1/policies/{id}).
 """
 
 from __future__ import annotations
@@ -22,14 +23,17 @@ from fastapi.middleware.cors import CORSMiddleware
 from app import __version__
 from app.api.middleware import CorrelationIdMiddleware
 from app.api.v1 import aiguard as aiguard_routes
+from app.api.v1 import anomalies as anomalies_routes
 from app.api.v1 import assets as assets_routes
 from app.api.v1 import auth as auth_routes
 from app.api.v1 import benchmark as benchmark_routes
 from app.api.v1 import connectors as connectors_routes
 from app.api.v1 import dashboard as dashboard_routes
+from app.api.v1 import dashboards as dashboards_routes
 from app.api.v1 import discovery as discovery_routes
 from app.api.v1 import health as health_routes
 from app.api.v1 import narratives as narratives_routes
+from app.api.v1 import policies as policies_routes
 from app.api.v1 import redteam as redteam_routes
 from app.api.v1 import remediation as remediation_routes
 from app.api.v1 import risk_index as risk_index_routes
@@ -155,9 +159,12 @@ def create_app() -> FastAPI:
     app.include_router(connectors_routes.router, prefix=f"{prefix}/connectors")
     app.include_router(assets_routes.router, prefix=f"{prefix}/assets")
     app.include_router(discovery_routes.router, prefix=f"{prefix}/discovery")
+    app.include_router(anomalies_routes.router, prefix=f"{prefix}/anomalies")
     app.include_router(dashboard_routes.router, prefix=f"{prefix}/dashboard")
+    app.include_router(dashboards_routes.router, prefix=f"{prefix}/dashboards")
     app.include_router(runtime_routes.router, prefix=f"{prefix}/runtime")
     app.include_router(narratives_routes.router, prefix=f"{prefix}/narratives")
+    app.include_router(policies_routes.router, prefix=f"{prefix}/policies")
     app.include_router(suppressions_routes.router, prefix=f"{prefix}/suppressions")
     app.include_router(validation_routes.router, prefix=f"{prefix}/validation")
     app.include_router(aiguard_routes.router, prefix=f"{prefix}/aiguard")

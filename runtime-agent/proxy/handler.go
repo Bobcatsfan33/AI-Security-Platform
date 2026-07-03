@@ -59,6 +59,14 @@ func Handler(cfg Config) http.Handler {
 	mux.HandleFunc("/proxy/", func(w http.ResponseWriter, r *http.Request) {
 		serveProxy(cfg, w, r)
 	})
+	// Liveness on the proxy port. The SDKs (sdks/*/routing) probe
+	// GET {PLATFORM_AGENT_URL}/healthz before routing LLM traffic here;
+	// the richer diagnostic surface stays on the localhost-only diag
+	// port (management.DiagnosticHandler).
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"ok"}`))
+	})
 	return mux
 }
 

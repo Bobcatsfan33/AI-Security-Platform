@@ -38,14 +38,12 @@ QUARANTINE: dict[str, str] = {
     "app.api.v1.evaluations": "app.db.models.evaluation",
     "app.api.v1.findings": "app.db.models.finding",
     "app.api.v1.mcp": "app.db.models.mcp",
-    "app.api.v1.policies": "app.db.models.policy",
     "app.api.v1.reports": "app.db.models.evaluation",
     "app.api.v1.test_cases": "app.db.models.test_case",
     "app.api.v1.threat_intel": "app.db.models.finding",
     "app.compliance.evidence_pack": "app.db.models.evaluation",
     "app.evaluation.runner": "app.connectors.registry",
     "app.mcp.service": "app.db.models.mcp",
-    "app.policy.cache": "app.db.models.policy",
     "app.threat_intel.engine": "app.db.models.finding",
 }
 
