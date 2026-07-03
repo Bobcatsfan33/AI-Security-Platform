@@ -18,6 +18,7 @@ from app.db.models.deployment import Deployment
 from app.db.models.idp_config import IdpConfig
 from app.db.models.organization import Organization
 from app.db.models.owner import Owner
+from app.db.models.policy import Policy
 from app.db.models.red_team import RedTeamCampaign, RedTeamFinding
 from app.db.models.sync_job import SyncJob
 from app.db.models.user import User
@@ -35,6 +36,7 @@ __all__ = [
     "AssetTag",
     "AssetRelationship",
     "AssetChangelog",
+    "Policy",
     "RedTeamCampaign",
     "RedTeamFinding",
 ]

@@ -6,9 +6,10 @@ wedges only.
   Track 1: Asset Inventory + Connectors (this sprint)
   Track 2: Runtime Monitoring (already wired, untouched by the pivot)
 
-Governance modules (redteam, policy, evaluation, findings, test_cases,
-scim, aibom, mcp, idp_admin) remain on disk for git history but are
-NOT registered as routes.
+Governance modules (evaluation, findings, test_cases, scim, aibom, mcp,
+idp_admin) remain on disk for git history but are NOT registered as
+routes. Red Teaming and Policies have been revived for v2 (the latter
+feeds the runtime agent via GET /v1/policies/{id}).
 """
 
 from __future__ import annotations
@@ -32,6 +33,7 @@ from app.api.v1 import dashboards as dashboards_routes
 from app.api.v1 import discovery as discovery_routes
 from app.api.v1 import health as health_routes
 from app.api.v1 import narratives as narratives_routes
+from app.api.v1 import policies as policies_routes
 from app.api.v1 import redteam as redteam_routes
 from app.api.v1 import remediation as remediation_routes
 from app.api.v1 import risk_index as risk_index_routes
@@ -162,6 +164,7 @@ def create_app() -> FastAPI:
     app.include_router(dashboards_routes.router, prefix=f"{prefix}/dashboards")
     app.include_router(runtime_routes.router, prefix=f"{prefix}/runtime")
     app.include_router(narratives_routes.router, prefix=f"{prefix}/narratives")
+    app.include_router(policies_routes.router, prefix=f"{prefix}/policies")
     app.include_router(suppressions_routes.router, prefix=f"{prefix}/suppressions")
     app.include_router(validation_routes.router, prefix=f"{prefix}/validation")
     app.include_router(aiguard_routes.router, prefix=f"{prefix}/aiguard")
