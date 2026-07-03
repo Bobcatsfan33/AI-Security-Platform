@@ -26,9 +26,12 @@ def agent_url() -> str:
 
 def fallback_direct() -> bool:
     """Whether to fall back to a direct API call when the agent is
-    unreachable. ``PLATFORM_FALLBACK_DIRECT=false`` makes the SDK
-    fail-closed."""
-    return os.environ.get("PLATFORM_FALLBACK_DIRECT", "true").lower() == "true"
+    unreachable. ``PLATFORM_FALLBACK_DIRECT`` always wins when set; the
+    default is deny-by-default in production — when ``PLATFORM_ENV`` is
+    prod/production the SDK fails closed unless fallback is explicitly
+    enabled."""
+    default = "false" if os.environ.get("PLATFORM_ENV", "").lower() in ("prod", "production") else "true"
+    return os.environ.get("PLATFORM_FALLBACK_DIRECT", default).lower() == "true"
 
 
 def agent_reachable() -> bool:

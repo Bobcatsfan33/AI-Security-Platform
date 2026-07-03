@@ -8,7 +8,10 @@ export function agentUrl(): string {
 }
 
 export function fallbackDirect(): boolean {
-  return (process.env.PLATFORM_FALLBACK_DIRECT ?? "true").toLowerCase() === "true";
+  // Deny-by-default in production: fail closed unless explicitly enabled.
+  const isProd = ["prod", "production"].includes((process.env.PLATFORM_ENV ?? "").toLowerCase());
+  const dflt = isProd ? "false" : "true";
+  return (process.env.PLATFORM_FALLBACK_DIRECT ?? dflt).toLowerCase() === "true";
 }
 
 export async function agentReachable(): Promise<boolean> {
