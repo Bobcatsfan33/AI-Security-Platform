@@ -5,7 +5,7 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -94,6 +94,17 @@ class Settings(BaseSettings):
     @property
     def is_production(self) -> bool:
         return self.environment == "production"
+
+    @model_validator(mode="after")
+    def production_cors_must_be_explicit(self) -> "Settings":
+        if self.environment != "production":
+            return self
+        origins = self.cors_origins_list
+        if not origins:
+            raise ValueError("production CORS origins must be explicitly configured")
+        if "*" in origins:
+            raise ValueError("wildcard CORS is not allowed in production")
+        return self
 
 
 @lru_cache(maxsize=1)
