@@ -33,18 +33,19 @@ import app
 pytestmark = pytest.mark.unit
 
 # module path -> the dropped-model dependency that breaks its import.
+#
+# The governance revival (migration 0008 + WS1/WS2) reintroduced the
+# Evaluation / Finding / TestCase / ConnectorConfig models and the
+# app.connectors.registry.build_connector factory, so every module that
+# depended only on those now imports cleanly and was removed from this list.
+#
+# Only the MCP page remains quarantined: its ``app.db.models.mcp`` models
+# (McpCall / McpToolProfile / McpViolation) have no revival yet, so both the
+# MCP router and its service still fail to import. Reviving MCP = reintroduce
+# those models, repoint the modules, and drop these two entries.
 QUARANTINE: dict[str, str] = {
-    "app.api.v1.compliance": "app.db.models.evaluation",
-    "app.api.v1.evaluations": "app.db.models.evaluation",
-    "app.api.v1.findings": "app.db.models.finding",
     "app.api.v1.mcp": "app.db.models.mcp",
-    "app.api.v1.reports": "app.db.models.evaluation",
-    "app.api.v1.test_cases": "app.db.models.test_case",
-    "app.api.v1.threat_intel": "app.db.models.finding",
-    "app.compliance.evidence_pack": "app.db.models.evaluation",
-    "app.evaluation.runner": "app.connectors.registry",
     "app.mcp.service": "app.db.models.mcp",
-    "app.threat_intel.engine": "app.db.models.finding",
 }
 
 

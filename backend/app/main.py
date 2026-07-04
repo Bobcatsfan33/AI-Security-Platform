@@ -27,18 +27,24 @@ from app.api.v1 import anomalies as anomalies_routes
 from app.api.v1 import assets as assets_routes
 from app.api.v1 import auth as auth_routes
 from app.api.v1 import benchmark as benchmark_routes
+from app.api.v1 import compliance as compliance_routes
 from app.api.v1 import connectors as connectors_routes
 from app.api.v1 import dashboard as dashboard_routes
 from app.api.v1 import dashboards as dashboards_routes
 from app.api.v1 import discovery as discovery_routes
+from app.api.v1 import evaluations as evaluations_routes
+from app.api.v1 import findings as findings_routes
 from app.api.v1 import health as health_routes
 from app.api.v1 import narratives as narratives_routes
 from app.api.v1 import policies as policies_routes
 from app.api.v1 import redteam as redteam_routes
 from app.api.v1 import remediation as remediation_routes
+from app.api.v1 import reports as reports_routes
 from app.api.v1 import risk_index as risk_index_routes
 from app.api.v1 import runtime as runtime_routes
 from app.api.v1 import suppressions as suppressions_routes
+from app.api.v1 import test_cases as test_cases_routes
+from app.api.v1 import threat_intel as threat_intel_routes
 from app.api.v1 import validation as validation_routes
 from app.core.config import get_settings
 from app.core.logging import configure_logging, get_logger
@@ -172,6 +178,13 @@ def create_app() -> FastAPI:
     app.include_router(risk_index_routes.router, prefix=f"{prefix}/risk-index")
     app.include_router(benchmark_routes.router, prefix=f"{prefix}/benchmark")
     app.include_router(redteam_routes.router, prefix=f"{prefix}/redteam")
+    # Governance revival (WS1/WS2) — models + tables restored in 0008.
+    app.include_router(evaluations_routes.router, prefix=f"{prefix}/evaluations")
+    app.include_router(findings_routes.router, prefix=f"{prefix}/findings")
+    app.include_router(test_cases_routes.router, prefix=f"{prefix}/test-cases")
+    app.include_router(threat_intel_routes.router, prefix=f"{prefix}/threat-intel")
+    app.include_router(compliance_routes.router, prefix=f"{prefix}/compliance")
+    app.include_router(reports_routes.router, prefix=f"{prefix}/reports")
 
     @app.get("/metrics", include_in_schema=False)
     async def metrics() -> Response:
