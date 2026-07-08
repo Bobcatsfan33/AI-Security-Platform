@@ -35,6 +35,7 @@ from app.api.v1 import discovery as discovery_routes
 from app.api.v1 import evaluations as evaluations_routes
 from app.api.v1 import findings as findings_routes
 from app.api.v1 import health as health_routes
+from app.api.v1 import mcp as mcp_routes
 from app.api.v1 import narratives as narratives_routes
 from app.api.v1 import policies as policies_routes
 from app.api.v1 import redteam as redteam_routes
@@ -185,6 +186,7 @@ def create_app() -> FastAPI:
     app.include_router(threat_intel_routes.router, prefix=f"{prefix}/threat-intel")
     app.include_router(compliance_routes.router, prefix=f"{prefix}/compliance")
     app.include_router(reports_routes.router, prefix=f"{prefix}/reports")
+    app.include_router(mcp_routes.router, prefix=f"{prefix}/mcp")
 
     @app.get("/metrics", include_in_schema=False)
     async def metrics() -> Response:
