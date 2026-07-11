@@ -37,12 +37,19 @@ export default function RootLayout({
               <Link href="/" className="font-semibold text-slate-900">
                 AI Security Platform
               </Link>
-              <ul className="flex items-center gap-1">
+              <ul className="flex flex-wrap items-center gap-1">
                 <NavLink href="/assets" label="Assets" />
                 <NavLink href="/narratives" label="Workbench" />
                 <NavLink href="/aiguard" label="AI Guard" />
                 <NavLink href="/posture" label="Risk Posture" />
                 <NavLink href="/redteam" label="Red Team" />
+                <NavLink href="/evaluations" label="Evaluations" />
+                <NavLink href="/findings" label="Findings" />
+                <NavLink href="/test-cases" label="Test Cases" />
+                <NavLink href="/reports" label="Reports" />
+                <NavLink href="/threat-intel" label="Threat Intel" />
+                <NavLink href="/compliance" label="Compliance" />
+                <NavLink href="/mcp" label="MCP" />
                 <NavLink href="/connectors" label="Connectors" />
               </ul>
             </div>

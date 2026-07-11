@@ -81,8 +81,37 @@ async function request<T>(
   return parsed as T;
 }
 
+// Raw-text fetch for endpoints that return non-JSON (e.g. the reports API
+// serves text/markdown). Same auth + error handling as request(), but returns
+// the untouched body instead of JSON-parsing it.
+async function requestText(path: string, init: RequestInit = {}): Promise<string> {
+  const token = getToken();
+  const headers: Record<string, string> = {
+    ...((init.headers as Record<string, string>) || {}),
+  };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const resp = await fetch(`${API_BASE}${path}`, { ...init, headers });
+  const body = await resp.text();
+  if (!resp.ok) {
+    let detail: unknown = body;
+    try {
+      detail = body ? JSON.parse(body) : undefined;
+    } catch {
+      // non-JSON error body — keep the raw text
+    }
+    const message =
+      typeof (detail as { detail?: unknown })?.detail === "string"
+        ? (detail as { detail: string }).detail
+        : `${resp.status} ${resp.statusText}`;
+    throw new ApiError(resp.status, detail, message);
+  }
+  return body;
+}
+
 export const api = {
   get: <T>(path: string) => request<T>(path),
+  getText: (path: string) => requestText(path),
   post: <T>(path: string, body: unknown) =>
     request<T>(path, { method: "POST", body: JSON.stringify(body) }),
   patch: <T>(path: string, body: unknown) =>
@@ -241,6 +270,53 @@ export type ComplianceFramework = {
   name: string;
   control_count: number;
   controls: Array<{ id: string; title: string }>;
+};
+
+export type TestCase = {
+  id: string;
+  name: string;
+  description: string | null;
+  category: string;
+  sub_category: string | null;
+  severity: string;
+  attack_type: string;
+  prompts: Array<Record<string, unknown>>;
+  expected_behavior: string;
+  success_criteria: Record<string, unknown>;
+  failure_indicators: string[];
+  tags: string[];
+  control_mappings: string[];
+  mitre_atlas_id: string | null;
+  source: string;
+  is_global: boolean;
+  effectiveness_score: number;
+  is_regression: boolean;
+  created_at: string;
+};
+
+export type McpToolProfile = {
+  id: string;
+  tool_name: string;
+  access_mode: string;
+  description: string;
+  allowed_params: string[];
+  forbidden_params: string[];
+  param_constraints: Record<string, Record<string, unknown>>;
+  is_builtin: boolean;
+};
+
+export type McpViolation = {
+  id: string;
+  session_id: string;
+  tool_name: string;
+  recommendation: string;
+  risk_score: number;
+  violations: Array<Record<string, unknown>>;
+  chain_matches: Array<Record<string, unknown>>;
+  resolution_status: string;
+  resolution_notes: string | null;
+  resolved_at: string | null;
+  created_at: string;
 };
 
 export type NarrativeStatus =
