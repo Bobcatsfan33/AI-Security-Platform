@@ -53,6 +53,18 @@ def test_expected_models_are_scoped():
     assert expected <= scoped
 
 
+def test_test_case_is_the_only_global_readable_model():
+    """``__tenant_global_readable__`` relaxes the Wall-1 guard to also expose a
+    model's shared ``org_id IS NULL`` rows. Only TestCase's global library needs
+    that today — this ratchet forces any future addition to be deliberate."""
+    global_readable = {
+        m.__name__
+        for m in Base.__subclasses__()
+        if issubclass(m, TenantScoped) and getattr(m, "__tenant_global_readable__", False)
+    }
+    assert global_readable == {"TestCase"}, global_readable
+
+
 def test_organization_is_not_scoped():
     """The tenant root must NOT be guarded (it has no org_id)."""
     from app.db.models.organization import Organization

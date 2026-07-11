@@ -25,6 +25,9 @@ from sqlalchemy.pool import NullPool
 
 from app.db.models.connector import Connector
 from app.db.models.organization import Organization
+# Aliased: the model's name starts with "Test", which pytest would otherwise
+# try (and warn it cannot) to collect as a test class.
+from app.db.models.test_case import TestCase as GovTestCase
 from app.db.session import SessionLocal
 from app.db.tenancy import _tenant_guard, current_org_id, install_tenant_guard
 
@@ -129,6 +132,84 @@ async def test_orm_guard_blocks_cross_tenant_update(guard_installed, org_a, org_
     async with SessionLocal() as db:
         row = (await db.execute(select(Connector).where(Connector.id == cid_b))).scalar_one()
         assert row.name == "original"
+
+
+@pytest_asyncio.fixture
+async def clean_global_test_cases() -> AsyncIterator[None]:
+    """Purge global (org_id IS NULL) test cases before and after the test.
+
+    Org-scoped rows are cleaned via the org fixtures' CASCADE delete, but
+    shared org_id-IS-NULL rows have no owning org, so they would otherwise leak
+    across tests. Raw SQL — the loader-criteria guard does not touch text()."""
+
+    async def _purge() -> None:
+        async with SessionLocal() as db:
+            await db.execute(text("DELETE FROM test_cases WHERE org_id IS NULL"))
+            await db.commit()
+
+    await _purge()
+    yield
+    await _purge()
+
+
+async def _make_test_case(org_id: uuid.UUID | None, name: str) -> uuid.UUID:
+    """Insert a test case. ``org_id=None`` = the global/shared library row.
+
+    INSERT is not filtered by the Wall-1 guard (SELECT/UPDATE/DELETE only), and
+    SessionLocal connects as the superuser owner, which bypasses RLS — so this
+    seeds rows regardless of the current org context.
+    """
+    tcid = uuid.uuid4()
+    async with SessionLocal() as db:
+        db.add(
+            GovTestCase(
+                id=tcid,
+                org_id=org_id,
+                name=name,
+                category="prompt_injection",
+                expected_behavior="refuse",
+            )
+        )
+        await db.commit()
+    return tcid
+
+
+@pytest.mark.asyncio
+async def test_global_readable_model_exposes_shared_rows_with_org(
+    guard_installed, clean_global_test_cases, org_a, org_b
+):
+    """TestCase is ``__tenant_global_readable__``: with an org in context, a
+    tenant sees its own rows AND the shared org_id-IS-NULL library, but never
+    another tenant's private rows."""
+    global_tc = await _make_test_case(None, "global-lib")
+    own_tc = await _make_test_case(org_a, "org-a-own")
+    other_tc = await _make_test_case(org_b, "org-b-private")
+
+    current_org_id.set(org_a)
+    async with SessionLocal() as db:
+        ids = {r.id for r in (await db.execute(select(GovTestCase))).scalars().all()}
+
+    assert global_tc in ids  # shared library visible
+    assert own_tc in ids  # own row visible
+    assert other_tc not in ids  # other tenant's private row hidden
+
+
+@pytest.mark.asyncio
+async def test_global_readable_model_with_no_context_shows_only_shared_rows(
+    guard_installed, clean_global_test_cases, org_a
+):
+    """With no org in context the guard still fails closed for private rows, but
+    a global-readable model's shared org_id-IS-NULL rows stay visible (they hold
+    no tenant data)."""
+    global_tc = await _make_test_case(None, "global-lib-2")
+    private_tc = await _make_test_case(org_a, "org-a-private")
+
+    current_org_id.set(None)
+    async with SessionLocal() as db:
+        ids = {r.id for r in (await db.execute(select(GovTestCase))).scalars().all()}
+
+    assert global_tc in ids  # shared library still visible
+    assert private_tc not in ids  # a tenant's private row is NOT
 
 
 @pytest.mark.asyncio

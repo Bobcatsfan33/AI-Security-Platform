@@ -24,7 +24,7 @@ from __future__ import annotations
 import uuid
 from contextvars import ContextVar
 
-from sqlalchemy import ForeignKey, event, false
+from sqlalchemy import ForeignKey, event, false, or_
 from sqlalchemy.orm import Mapped, Session, declared_attr, mapped_column, with_loader_criteria
 
 # The authenticated org for the current request/task. None outside a request,
@@ -46,6 +46,17 @@ class TenantScoped:
 
     __abstract__ = True
 
+    # Most tenant models are strictly per-tenant: every row has a non-null
+    # ``org_id`` and is visible only to that org. A few carry a shared,
+    # cross-tenant library alongside per-tenant rows, encoded as ``org_id IS
+    # NULL`` (e.g. TestCase's global attack library — see the nullable
+    # ``org_id`` in ``app/db/models/test_case.py`` and the NULL-tolerant RLS
+    # policy in migration 0008). Those models set this True so the Wall-1 guard
+    # keeps their shared rows visible instead of filtering them out. NULL-org
+    # rows hold no tenant data, so exposing them across tenants is intentional,
+    # not a leak; the matching RLS policy admits them too.
+    __tenant_global_readable__: bool = False
+
     @declared_attr
     def org_id(cls) -> Mapped[uuid.UUID]:  # noqa: N805 - SQLAlchemy mixin convention
         return mapped_column(
@@ -62,16 +73,23 @@ def _tenant_guard(execute_state) -> None:
         return  # sanctioned bypass — see module docstring
 
     org = current_org_id.get()
-    if org is None:
-        # Fail closed: tenant entities become invisible; non-tenant tables
-        # (e.g. organizations, global metadata) are unaffected.
-        execute_state.statement = execute_state.statement.options(
-            with_loader_criteria(TenantScoped, lambda cls: false(), include_aliases=True)
-        )
-        return
+
+    def _criteria(cls):
+        # ``with_loader_criteria`` invokes this once per TenantScoped entity in
+        # the statement, so the rule can vary per model. Global-readable models
+        # keep their shared ``org_id IS NULL`` rows visible.
+        global_readable = getattr(cls, "__tenant_global_readable__", False)
+        if org is None:
+            # Fail closed: a request with no org sees nothing tenant-owned —
+            # except a global-readable model's shared rows, which hold no
+            # tenant data (never a tenant's private rows).
+            return cls.org_id.is_(None) if global_readable else false()
+        if global_readable:
+            return or_(cls.org_id == org, cls.org_id.is_(None))
+        return cls.org_id == org
 
     execute_state.statement = execute_state.statement.options(
-        with_loader_criteria(TenantScoped, lambda cls: cls.org_id == org, include_aliases=True)
+        with_loader_criteria(TenantScoped, _criteria, include_aliases=True)
     )
 
 

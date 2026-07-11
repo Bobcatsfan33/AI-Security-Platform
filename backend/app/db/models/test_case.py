@@ -35,6 +35,10 @@ from app.db.tenancy import TenantScoped
 class TestCase(Base, TenantScoped):
     __tablename__ = "test_cases"
 
+    # org_id IS NULL rows are the global/shared library; the Wall-1 guard keeps
+    # them visible to every tenant instead of filtering to org_id == <org>.
+    __tenant_global_readable__ = True
+
     id: Mapped[UUIDPk]
     # Restated as nullable: the shared/global library carries org_id IS NULL.
     # This overrides the TenantScoped mixin's non-null org_id.
