@@ -1,24 +1,24 @@
-"""Import guard — every module under ``app/`` must import cleanly, except the
-explicitly documented v1-pivot quarantine set.
+"""Import guard — every module under ``app/`` must import cleanly.
 
 Background: the v2.0 pivot (see ``app/db/models/__init__.py``) dropped the
 governance models — ``connector_config``, ``evaluation``, ``finding``,
 ``test_case``, ``policy``, ``mcp`` — and their tables. A cluster of
-governance/red-team modules still import those dropped models, so they fail on
-import. None are registered as routes; they sit on disk pending deliberate v2
-revival (Red Teaming is the first — see the Phase-2 work).
+governance/red-team modules imported those dropped models, so they failed on
+import and were quarantined here (they were invisible to the rest of the suite
+because nothing imports them, so their breakage never surfaced otherwise).
 
-The problem this test fixes: those modules are invisible to the rest of the
-suite (nothing imports them), so their breakage never surfaced. This guard
-imports *every* module under ``app/`` and pins the broken set:
+The governance revival brought every one of those models back (policies in
+migration 0007; evaluations/findings/test_cases/connector_configs in 0008; the
+MCP tables in 0009) plus the ``app.connectors.registry.build_connector``
+factory, so the whole governance surface imports cleanly again and the
+quarantine is now **empty**.
 
-* a NEW broken import (a live module that stops importing) fails the test, and
-* a quarantined module that gets *revived* must be removed from the list, or
-  the staleness test fails — keeping the manifest honest.
+This guard still earns its keep as a ratchet:
 
-Each quarantine entry records the dropped model it depends on. Reviving a
-feature = reintroduce its v2 model(s), repoint the module, drop it from
-``QUARANTINE`` here.
+* a NEW broken import (any live module that stops importing) fails the test, and
+* if a module ever needs to be re-quarantined, add it to ``QUARANTINE`` with the
+  dropped dependency as its reason — and the staleness test forces it back out
+  the moment the dependency returns.
 """
 
 from __future__ import annotations
@@ -33,19 +33,10 @@ import app
 pytestmark = pytest.mark.unit
 
 # module path -> the dropped-model dependency that breaks its import.
-QUARANTINE: dict[str, str] = {
-    "app.api.v1.compliance": "app.db.models.evaluation",
-    "app.api.v1.evaluations": "app.db.models.evaluation",
-    "app.api.v1.findings": "app.db.models.finding",
-    "app.api.v1.mcp": "app.db.models.mcp",
-    "app.api.v1.reports": "app.db.models.evaluation",
-    "app.api.v1.test_cases": "app.db.models.test_case",
-    "app.api.v1.threat_intel": "app.db.models.finding",
-    "app.compliance.evidence_pack": "app.db.models.evaluation",
-    "app.evaluation.runner": "app.connectors.registry",
-    "app.mcp.service": "app.db.models.mcp",
-    "app.threat_intel.engine": "app.db.models.finding",
-}
+# Empty: the governance revival (migrations 0007/0008/0009) restored every model
+# the quarantined modules depended on. Keep this the last line of defence — a
+# regression that breaks an import must be fixed, not re-added here without cause.
+QUARANTINE: dict[str, str] = {}
 
 
 def _all_app_modules() -> list[str]:

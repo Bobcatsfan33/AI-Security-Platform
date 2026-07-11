@@ -6,6 +6,14 @@ were dropped. The v2 surface is the asset graph: connectors,
 ai_assets, owners, deployments, sync_jobs, asset_tags,
 asset_relationships, asset_changelog. Auth-side models (Organization,
 User, ApiKey, IdpConfig) are preserved.
+
+Governance revival — ``Policy`` (migration 0007), the four ``Evaluation`` /
+``Finding`` / ``TestCase`` / ``ConnectorConfig`` governance models
+(migration 0008), and the three ``McpToolProfile`` / ``McpCall`` /
+``McpViolation`` models (migration 0009) are all back, reintroduced against the
+v1 DDL from migrations 0001/0002 and marked TenantScoped. The full governance
+schema is once again live; the quarantine manifest in
+``tests/unit/test_no_broken_imports.py`` is empty.
 """
 
 from app.db.models.ai_asset import AIAsset
@@ -14,13 +22,18 @@ from app.db.models.asset_changelog import AssetChangelog
 from app.db.models.asset_relationship import AssetRelationship
 from app.db.models.asset_tag import AssetTag
 from app.db.models.connector import Connector
+from app.db.models.connector_config import ConnectorConfig
 from app.db.models.deployment import Deployment
+from app.db.models.evaluation import Evaluation
+from app.db.models.finding import Finding
 from app.db.models.idp_config import IdpConfig
+from app.db.models.mcp import McpCall, McpToolProfile, McpViolation
 from app.db.models.organization import Organization
 from app.db.models.owner import Owner
 from app.db.models.policy import Policy
 from app.db.models.red_team import RedTeamCampaign, RedTeamFinding
 from app.db.models.sync_job import SyncJob
+from app.db.models.test_case import TestCase
 from app.db.models.user import User
 
 __all__ = [
@@ -29,6 +42,7 @@ __all__ = [
     "ApiKey",
     "IdpConfig",
     "Connector",
+    "ConnectorConfig",
     "Owner",
     "AIAsset",
     "Deployment",
@@ -37,6 +51,12 @@ __all__ = [
     "AssetRelationship",
     "AssetChangelog",
     "Policy",
+    "Evaluation",
+    "Finding",
+    "TestCase",
+    "McpToolProfile",
+    "McpCall",
+    "McpViolation",
     "RedTeamCampaign",
     "RedTeamFinding",
 ]
