@@ -65,7 +65,7 @@ jobs:
         run: |
           pip install uv==0.11.29
           uv pip compile pyproject.toml --all-extras --universal --generate-hashes \
-            -o /tmp/requirements.check 2>/dev/null
+            --python-version 3.11 -o /tmp/requirements.check 2>/dev/null
           if ! diff -u requirements.lock /tmp/requirements.check; then
             echo "::error::requirements.lock is out of sync with pyproject.toml — run scripts/lock.sh"
             exit 1

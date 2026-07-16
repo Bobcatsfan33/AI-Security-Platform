@@ -22,11 +22,24 @@
 # Universal resolution (--universal) so ONE file serves every interpreter in
 # requires-python (>=3.11) and both linux CI and macOS dev, rather than a
 # per-platform lock that is only true where it was generated.
+#
+# --python-version is pinned to the requires-python FLOOR, and that is
+# load-bearing rather than cosmetic: without it, uv annotates the "# via"
+# comments using the markers of whichever interpreter runs the tool, so the same
+# command produced different bytes on macOS/3.14 than in CI/3.12 (anyio,
+# starlette and pytest-asyncio need typing-extensions on 3.12 but not 3.14). The
+# resolution was identical; the file was not — and a byte-diff drift check
+# cannot tell those apart. Pinning makes the output a function of the FLAG, not
+# of the machine, which is the same property the lock itself exists to give the
+# dependency tree.
 set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/../backend"
 
 UV_VERSION="0.11.29"
+# Must match requires-python's floor in backend/pyproject.toml, and the
+# --python-version in .github/workflows/ci.yml's sync check.
+PYTHON_FLOOR="3.11"
 
 if ! command -v uv >/dev/null 2>&1; then
   echo "uv is not installed. Install it with:  pip install uv==${UV_VERSION}" >&2
@@ -38,6 +51,7 @@ uv pip compile pyproject.toml \
   --all-extras \
   --universal \
   --generate-hashes \
+  --python-version "$PYTHON_FLOOR" \
   -o requirements.lock
 
 echo ""
