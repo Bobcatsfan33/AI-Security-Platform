@@ -41,11 +41,36 @@ jobs:
           cache-dependency-path: backend/pyproject.toml
       - name: Install system deps for python3-saml
         run: sudo apt-get update && sudo apt-get install -y libxml2-dev libxmlsec1-dev libxmlsec1-openssl pkg-config
-      - name: Install Python deps
+      - name: Install Python deps (from the lock, hashes enforced)
         working-directory: backend
+        # --require-hashes is the point: every artifact must match a hash
+        # committed to the repo, so a compromised or swapped upstream package
+        # fails the build instead of executing in it. Two steps because pip
+        # refuses to mix an editable install with hashed requirements — deps
+        # come from the lock, the app itself goes in --no-deps on top.
+        #
+        # Locally: pip install --require-hashes -r requirements.lock, same file.
+        # That equality is the whole point of GAP-016 — "green locally" was
+        # worth less than it looked while local and CI resolved different
+        # libraries (fastapi 0.136 vs 0.139, which cost us a real CI break).
         run: |
           pip install --upgrade pip
-          pip install -e ".[dev]"
+          pip install --require-hashes -r requirements.lock
+          pip install -e . --no-deps
+      - name: Lock is in sync with pyproject
+        working-directory: backend
+        # A lock that has drifted from pyproject is worse than none: it reports
+        # a resolution nobody asked for while looking authoritative. Regenerate
+        # with scripts/lock.sh if this fails.
+        run: |
+          pip install uv==0.11.29
+          uv pip compile pyproject.toml --all-extras --universal --generate-hashes \
+            -o /tmp/requirements.check 2>/dev/null
+          if ! diff -u requirements.lock /tmp/requirements.check; then
+            echo "::error::requirements.lock is out of sync with pyproject.toml — run scripts/lock.sh"
+            exit 1
+          fi
+
       - name: pip-audit (dependency vulns)
         working-directory: backend
         run: |

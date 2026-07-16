@@ -1,0 +1,75 @@
+# Dependency updates.
+#
+# The lock (backend/requirements.lock) pins every artifact by hash, which is
+# what makes builds reproducible — and also what makes them go stale silently.
+# A pinned dependency with a CVE stays pinned. Dependabot is the other half of
+# the deal: pinning without a mechanism to move the pins is how a supply chain
+# ends up frozen at a known-vulnerable version because nobody dared touch it.
+#
+# Part of the supply-chain story alongside CodeQL, Trivy, the CycloneDX SBOM,
+# cosign signing and SLSA provenance (.github/workflows/security.yml). Those
+# describe and attest what we ship; the lock makes it reproducible; this keeps
+# it current. pip-audit in CI is the backstop that fails the build if a known
+# vuln lands anyway.
+version: 2
+updates:
+  # Backend Python. Dependabot updates pyproject.toml; regenerate the lock with
+  # scripts/lock.sh — CI's sync check will fail the PR until you do, which is
+  # the intended forcing function rather than an annoyance.
+  - package-ecosystem: pip
+    directory: /backend
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      # One PR for routine dev-tooling bumps rather than five: they are noise
+      # individually and reviewed as a batch in practice.
+      dev-tooling:
+        patterns:
+          - pytest*
+          - ruff
+          - black
+          - mypy
+          - bandit
+          - factory-boy
+          - freezegun
+    labels:
+      - dependencies
+      - backend
+
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - frontend
+
+  - package-ecosystem: npm
+    directory: /sdks/node
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
+    labels:
+      - dependencies
+      - sdk
+
+  - package-ecosystem: gomod
+    directory: /runtime-agent
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - runtime-agent
+
+  # The actions themselves are supply chain too — a compromised action runs with
+  # the workflow's credentials.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    labels:
+      - dependencies
+      - ci
