@@ -92,6 +92,25 @@ def test_shared_decision_table(case: dict, monkeypatch: pytest.MonkeyPatch) -> N
     assert _routing.fallback_direct() is case["fallback"], case.get("why", case["name"])
 
 
+def test_the_shared_table_has_no_duplicate_cases() -> None:
+    """Two cases asserting the same env combination are noise, not coverage.
+
+    The table already grew a pair ("explicit false overrides a dev environment"
+    vs "explicit false in a dev environment still fails closed") that tested one
+    behaviour twice under two names. Harmless, but a table read by two languages
+    should not make either of them wonder whether it missed a distinction.
+    """
+    seen: dict[str, str] = {}
+    duplicates: list[str] = []
+    for case in SHARED_CASES:
+        key = json.dumps(case["env"], sort_keys=True)
+        if key in seen:
+            duplicates.append(f"{seen[key]!r} and {case['name']!r} both assert env {key}")
+        seen[key] = case["name"]
+
+    assert not duplicates, "\n".join(duplicates)
+
+
 def test_the_shared_table_covers_the_dangerous_default() -> None:
     """A guard on the table itself: the case that matters most must be in it.
 

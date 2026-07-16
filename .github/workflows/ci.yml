@@ -58,6 +58,13 @@ jobs:
         working-directory: backend
         run: pytest --cov=app --cov-report=term-missing
 
+      - name: Mutation check — prove the SIEM tier gate suite bites
+        # Same rule as the SDK job, applied to the other branch this repo has
+        # already shipped a hole in: the exporter tier gate. Runs here rather
+        # than in the SDK job because it needs the backend environment.
+        working-directory: .
+        run: scripts/mutation_check.sh backend
+
   runtime-agent:
     name: Runtime agent (Go)
     runs-on: ubuntu-latest
@@ -132,7 +139,7 @@ jobs:
         # unprotected LLM traffic ships, that difference is the point. This
         # reintroduces the exact regression the reviewers caught and fails the
         # build if either suite stays green against it.
-        run: sdks/mutation_check.sh
+        run: scripts/mutation_check.sh sdk
 
   security:
     name: Security gates

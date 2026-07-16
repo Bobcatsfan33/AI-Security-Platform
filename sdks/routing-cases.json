@@ -29,109 +29,194 @@
     },
     {
       "name": "empty environment fails closed",
-      "env": { "PLATFORM_ENV": "" },
+      "env": {
+        "PLATFORM_ENV": ""
+      },
       "fallback": false
     },
     {
       "name": "whitespace-only environment fails closed",
-      "env": { "PLATFORM_ENV": "   " },
+      "env": {
+        "PLATFORM_ENV": "   "
+      },
       "fallback": false
     },
     {
       "name": "unrecognised environment fails closed",
       "why": "A typo is the most likely way this is reached. 'porduction' must not resolve to the permissive branch.",
-      "env": { "PLATFORM_ENV": "porduction" },
+      "env": {
+        "PLATFORM_ENV": "porduction"
+      },
       "fallback": false
     },
     {
       "name": "another unrecognised environment fails closed",
-      "env": { "PLATFORM_ENV": "anything-else" },
+      "env": {
+        "PLATFORM_ENV": "anything-else"
+      },
       "fallback": false
     },
     {
       "name": "production fails closed",
-      "env": { "PLATFORM_ENV": "production" },
+      "env": {
+        "PLATFORM_ENV": "production"
+      },
       "fallback": false
     },
     {
       "name": "prod shorthand fails closed",
-      "env": { "PLATFORM_ENV": "prod" },
+      "env": {
+        "PLATFORM_ENV": "prod"
+      },
       "fallback": false
     },
     {
       "name": "production is case-insensitive",
-      "env": { "PLATFORM_ENV": "PrOdUcTiOn" },
+      "env": {
+        "PLATFORM_ENV": "PrOdUcTiOn"
+      },
       "fallback": false
     },
     {
       "name": "development falls back",
       "why": "A laptop with no agent running must still work, or nobody adopts this.",
-      "env": { "PLATFORM_ENV": "development" },
+      "env": {
+        "PLATFORM_ENV": "development"
+      },
       "fallback": true
     },
-    { "name": "dev shorthand falls back", "env": { "PLATFORM_ENV": "dev" }, "fallback": true },
-    { "name": "staging falls back", "env": { "PLATFORM_ENV": "staging" }, "fallback": true },
-    { "name": "stage falls back", "env": { "PLATFORM_ENV": "stage" }, "fallback": true },
-    { "name": "test falls back", "env": { "PLATFORM_ENV": "test" }, "fallback": true },
-    { "name": "testing falls back", "env": { "PLATFORM_ENV": "testing" }, "fallback": true },
-    { "name": "ci falls back", "env": { "PLATFORM_ENV": "ci" }, "fallback": true },
-    { "name": "local falls back", "env": { "PLATFORM_ENV": "local" }, "fallback": true },
-    { "name": "sandbox falls back", "env": { "PLATFORM_ENV": "sandbox" }, "fallback": true },
+    {
+      "name": "dev shorthand falls back",
+      "env": {
+        "PLATFORM_ENV": "dev"
+      },
+      "fallback": true
+    },
+    {
+      "name": "staging falls back",
+      "env": {
+        "PLATFORM_ENV": "staging"
+      },
+      "fallback": true
+    },
+    {
+      "name": "stage falls back",
+      "env": {
+        "PLATFORM_ENV": "stage"
+      },
+      "fallback": true
+    },
+    {
+      "name": "test falls back",
+      "env": {
+        "PLATFORM_ENV": "test"
+      },
+      "fallback": true
+    },
+    {
+      "name": "testing falls back",
+      "env": {
+        "PLATFORM_ENV": "testing"
+      },
+      "fallback": true
+    },
+    {
+      "name": "ci falls back",
+      "env": {
+        "PLATFORM_ENV": "ci"
+      },
+      "fallback": true
+    },
+    {
+      "name": "local falls back",
+      "env": {
+        "PLATFORM_ENV": "local"
+      },
+      "fallback": true
+    },
+    {
+      "name": "sandbox falls back",
+      "env": {
+        "PLATFORM_ENV": "sandbox"
+      },
+      "fallback": true
+    },
     {
       "name": "dev environment is case-insensitive",
-      "env": { "PLATFORM_ENV": "DEVELOPMENT" },
+      "env": {
+        "PLATFORM_ENV": "DEVELOPMENT"
+      },
       "fallback": true
     },
     {
       "name": "explicit false overrides a dev environment",
-      "env": { "PLATFORM_ENV": "development", "PLATFORM_FALLBACK_DIRECT": "false" },
+      "env": {
+        "PLATFORM_ENV": "development",
+        "PLATFORM_FALLBACK_DIRECT": "false"
+      },
       "fallback": false
     },
     {
       "name": "explicit true overrides production",
       "why": "An operator who explicitly opts out of protection gets what they asked for. Their call — but it must be explicit, never a default.",
-      "env": { "PLATFORM_ENV": "production", "PLATFORM_FALLBACK_DIRECT": "true" },
+      "env": {
+        "PLATFORM_ENV": "production",
+        "PLATFORM_FALLBACK_DIRECT": "true"
+      },
       "fallback": true
     },
     {
       "name": "explicit true overrides an unset environment",
-      "env": { "PLATFORM_FALLBACK_DIRECT": "true" },
+      "env": {
+        "PLATFORM_FALLBACK_DIRECT": "true"
+      },
       "fallback": true
     },
     {
       "name": "explicit true is case-insensitive",
-      "env": { "PLATFORM_FALLBACK_DIRECT": "TRUE" },
+      "env": {
+        "PLATFORM_FALLBACK_DIRECT": "TRUE"
+      },
       "fallback": true
     },
     {
       "name": "explicit true tolerates surrounding whitespace",
-      "env": { "PLATFORM_FALLBACK_DIRECT": "  true  " },
+      "env": {
+        "PLATFORM_FALLBACK_DIRECT": "  true  "
+      },
       "fallback": true
     },
     {
       "name": "yes does not mean true",
       "why": "The safe reading of an ambiguous value is the protected one. Only the literal 'true' disables protection.",
-      "env": { "PLATFORM_ENV": "production", "PLATFORM_FALLBACK_DIRECT": "yes" },
+      "env": {
+        "PLATFORM_ENV": "production",
+        "PLATFORM_FALLBACK_DIRECT": "yes"
+      },
       "fallback": false
     },
     {
       "name": "1 does not mean true",
-      "env": { "PLATFORM_ENV": "production", "PLATFORM_FALLBACK_DIRECT": "1" },
+      "env": {
+        "PLATFORM_ENV": "production",
+        "PLATFORM_FALLBACK_DIRECT": "1"
+      },
       "fallback": false
     },
     {
       "name": "on does not mean true",
-      "env": { "PLATFORM_ENV": "production", "PLATFORM_FALLBACK_DIRECT": "on" },
+      "env": {
+        "PLATFORM_ENV": "production",
+        "PLATFORM_FALLBACK_DIRECT": "on"
+      },
       "fallback": false
     },
     {
       "name": "an empty explicit value does not mean true",
-      "env": { "PLATFORM_ENV": "development", "PLATFORM_FALLBACK_DIRECT": "" },
-      "fallback": false
-    },
-    {
-      "name": "explicit false in a dev environment still fails closed",
-      "env": { "PLATFORM_ENV": "dev", "PLATFORM_FALLBACK_DIRECT": "false" },
+      "env": {
+        "PLATFORM_ENV": "development",
+        "PLATFORM_FALLBACK_DIRECT": ""
+      },
       "fallback": false
     }
   ]
