@@ -57,6 +57,11 @@ type config struct {
 	stage3Timeout  time.Duration
 	// Run the full AI Guard 18-detector suite inline at Stage 2.
 	useDetectorSuite bool
+
+	// Cold-start posture: what to do when NO policy is cached and the control
+	// plane is unreachable. "" → resolved from environment (see
+	// proxy.ResolveNoPolicyBehavior). GAP-003.
+	noPolicyBehavior string
 }
 
 func loadConfig() config {
@@ -69,6 +74,7 @@ func loadConfig() config {
 		policyID:             os.Getenv("AGENT_POLICY_ID"),
 		agentID:              envOr("AGENT_ID", "agent-default"),
 		environment:          envOr("AGENT_ENVIRONMENT", "production"),
+		noPolicyBehavior:     os.Getenv("AGENT_NO_POLICY_BEHAVIOR"),
 		platformAPIKey:       os.Getenv("AGENT_API_KEY"),
 		staleGracePeriod:     parseDuration(envOr("AGENT_STALE_GRACE", "5m")),
 		controlPlaneCAPath:   os.Getenv("CONTROL_PLANE_CA_PATH"),
@@ -253,6 +259,18 @@ func main() {
 		proxy.ProviderBedrock:   cfg.upstreamBedrock,
 	}
 
+	// Cold-start posture (GAP-003). Resolved once, here, so a bad value stops
+	// the agent at startup rather than being discovered on the hot path — the
+	// same refusal-to-guess as the mTLS partial-config check above.
+	noPolicyBehavior, err := proxy.ResolveNoPolicyBehavior(cfg.noPolicyBehavior, cfg.environment)
+	if err != nil {
+		log.Fatal().Err(err).Msg("invalid AGENT_NO_POLICY_BEHAVIOR")
+	}
+	log.Info().
+		Str("no_policy_behavior", string(noPolicyBehavior)).
+		Str("environment", cfg.environment).
+		Msg("cold_start_posture_resolved")
+
 	proxyHandler := proxy.Handler(proxy.Config{
 		Log:                        log,
 		Cache:                      cache,
@@ -265,6 +283,7 @@ func main() {
 		PolicyID:                   cfg.policyID,
 		UpstreamMap:                upstreams,
 		PassthroughOnUnknownFormat: true,
+		NoPolicyBehavior:           noPolicyBehavior,
 	})
 
 	diagHandler := management.DiagnosticHandler(cache, buf, cfg.policyID, agentVersion)

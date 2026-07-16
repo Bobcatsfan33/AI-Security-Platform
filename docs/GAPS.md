@@ -12,65 +12,66 @@ Severity is about what a design partner discovers, not what is hard:
 
 ---
 
-## P0
+## P0 — all closed in Phase 1
 
-### GAP-005 — The SDK fail-closed branch is untested
-**What:** `PLATFORM_ENV=prod` makes both SDKs refuse to send LLM traffic when
-the runtime agent is unreachable ([`_routing.py:27`](../sdks/python/platform_sdk/_routing.py),
-[`routing.ts:10`](../sdks/node/src/routing.ts)). This is the product's core
-promise — traffic is protected or it does not flow. It has **zero tests in
-either language and no CI job**. `sdks/node/package.json` declares a `test`
-script pointing at test files that do not exist.
-**Why it matters:** guardrail 3 (deny-by-default) is asserted in prose and
-implemented in a branch nobody exercises. A regression here fails open silently
-and a customer discovers it. It is also the cheapest gap on this list to close.
-**Unblocks:** nothing external. **Phase 1, first item** — tests for both
-languages plus a CI job that runs them.
+Kept rather than deleted: what was wrong, and what closed it, is the useful
+record. Phase 2 verifies the whole class under fault injection.
 
-### GAP-003 — Agent cold start with no policy is unconditionally fail-open
-**What:** [`proxy/handler.go:127`](../runtime-agent/proxy/handler.go) — when no
-policy is cached (control plane unreachable at startup), every request passes
-uninspected. The comment says "production deployments configure fail-closed",
-but **no such setting exists**: `fail_behavior` is read from the policy, and
-there is no policy. The path is untested.
-**Why it matters:** the single highest-consequence path in the agent. An
-evaluator who starts the agent before the control plane is reachable gets an
-open proxy and no signal that it is open. Directly contradicts guardrail 3.
-**Unblocks:** nothing — **decided, Phase 1.** Add `AGENT_NO_POLICY_BEHAVIOR`
-mirroring the SDK fail-closed pattern exactly, so the platform has one
-convention rather than two:
+### GAP-005 — The SDK fail-closed branch is untested ✅ CLOSED (Phase 1)
+**Was:** `PLATFORM_ENV=prod` makes both SDKs refuse to send LLM traffic when the
+runtime agent is unreachable — the product's core promise — with **zero tests in
+either language and no CI job**.
+**Closed by:** `sdks/python/tests/test_routing.py` (38 tests) and
+`sdks/node/src/routing.test.ts` (36 tests), covering the same contract case for
+case so the two SDKs cannot drift apart; plus the `SDKs (fail-closed)` job in
+`.github/workflows/ci.yml`, which is what makes them binding.
+**Verified, not assumed:** both suites were mutation-tested — removing the
+fail-closed default kills 8 Python tests and 7 Node tests. A suite that passes
+against a broken implementation is decoration.
 
-* an explicit setting always wins;
-* unset resolves by environment — prod → closed, dev/test → open.
+### GAP-003 — Agent cold start with no policy is unconditionally fail-open ✅ CLOSED (Phase 1)
+**Was:** with no policy cached (control plane unreachable at startup) every
+request passed uninspected. The code comment claimed "production deployments
+configure fail-closed" for a setting that **did not exist**.
+**Closed by:** `AGENT_NO_POLICY_BEHAVIOR` (`runtime-agent/proxy/nopolicy.go`),
+mirroring the SDK convention so the platform documents one shape:
 
-Two requirements on top of the setting:
+* explicit always wins;
+* unset resolves by `AGENT_ENVIRONMENT` — production → closed, otherwise open;
+* an *unspecified* environment resolves **closed** (absence of information is
+  not evidence of a dev box);
+* an unrecognised value is a **startup error**, not a fallback — the same
+  refusal-to-guess as the agent's partial-mTLS check.
 
-1. **Whichever behaviour fires on cold start must be loud** — a log line *and* a
-   telemetry event. A fail-closed outage must be diagnosable in seconds, and a
-   fail-open in dev must be visible rather than assumed. (Today this path logs
-   `proxy_no_policy_cached` at warn and emits nothing.)
-2. **Phase 2's `AGENT-FAILURE-MODES.md` must cover the operational
-   consequence**, not just the behaviour: a fail-closed cold start makes deploy
-   ordering matter, so it documents the retry/backoff story for "agent up
-   before control plane."
+Both branches are loud: a log line (`proxy_no_policy_fail_closed` /
+`proxy_no_policy_fail_open`, naming the `policy_id` to go fix) and a distinct
+telemetry `ActionTaken` (`blocked_no_policy` / `passthrough_no_policy`).
+Tested in `runtime-agent/proxy/nopolicy_test.go`.
+**Note the behaviour change:** `AGENT_ENVIRONMENT` defaults to `production`, so
+the agent now **fails closed on cold start by default**. That is deliberate
+(guardrail 3) and it means **deploy ordering matters** — a control-plane outage
+now becomes a traffic outage rather than a silent lapse in protection.
+**Still open:** the retry/backoff contract for "agent up before control plane"
+is undocumented. Phase 2 covers it in `docs/AGENT-FAILURE-MODES.md` and verifies
+it under fault injection.
 
-### GAP-004 — Stage 2 fail-open is hardcoded, ignoring `fail_behavior`
-**What:** [`stage2_http.go:67`](../runtime-agent/policy/stage2_http.go) returns
-`stage2Miss` on transport error, non-200 and decode error alike; the policy
-argument is discarded (`_ *CompiledPolicy`). A policy with
-`fail_behavior: "closed"` **does not make Stage 2 fail closed**. Worse, a down
-ONNX sidecar is indistinguishable from a clean verdict: both yield
-`Matched:false`, with no log line and no telemetry marking the degradation.
-**Why it matters:** `runtime-agent/README.md` claimed "fail-open vs fail-closed
-per policy ✅". That is true for Stage 3 only — corrected in the Phase 0 PR
-rather than left to ride, since a knowingly-false claim is the same guardrail-1
-violation as the two Phase 0 already fixed, just found later.
-**Unblocks:** nothing external. **Phase 1, early** — honour `fail_behavior`, and
-emit a distinct telemetry signal for "unreachable" vs "clean". Taken alongside
-GAP-005: both are the same finding in different clothes — the deny-by-default
-promise is unimplemented (here) or unverified (SDK) at exactly the branches that
-matter. Phase 2's failure-mode matrix then verifies the class under fault
-injection rather than discovering it.
+### GAP-004 — Stage 2 fail-open is hardcoded, ignoring `fail_behavior` ✅ CLOSED (Phase 1)
+**Was:** `stage2_http.go` discarded the policy argument (`_ *CompiledPolicy`) and
+returned fail-open on transport error, non-200 and decode error alike. A policy
+with `fail_behavior: "closed"` **did not** make Stage 2 fail closed, and a down
+ONNX sidecar was indistinguishable from a clean verdict (both `Matched:false`,
+no `Mode` set), so `comprehensive` silently degraded to Stage-1-only.
+**Closed by:** Stage 2 now honours `fail_behavior` exactly as Stage 3 does, via
+a single `stage2Fail` exit mirroring `stage3Fail`. Every failure mode is
+covered: unreachable, malformed response, 5xx, timeout.
+
+The "unreachable vs clean" signal reuses the existing `Mode` honesty field
+(`types.go`: *"names how the verdict was ACTUALLY computed"*) rather than
+inventing a parallel mechanism — a real classification reports
+`Mode=stage2_http`, a backend that never answered reports
+`Mode=stage2_unavailable`. Same instinct as Stage 3's `"disabled"`: never label
+a non-verdict as a verdict.
+Tested in `runtime-agent/policy/stage2_failbehavior_test.go`.
 
 ---
 

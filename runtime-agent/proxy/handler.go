@@ -51,6 +51,14 @@ type Config struct {
 	// Default true — better to forward an unrecognized request than
 	// break the customer's app.
 	PassthroughOnUnknownFormat bool
+
+	// NoPolicyBehavior governs the cold-start case: no policy cached and the
+	// control plane unreachable, so there is no policy to read a fail_behavior
+	// from. Resolved once at startup by ResolveNoPolicyBehavior (see
+	// nopolicy.go). The zero value is the empty string, which is NOT
+	// NoPolicyClosed — cmd/agent resolves it explicitly so a deployment cannot
+	// reach the hot path with this unset.
+	NoPolicyBehavior NoPolicyBehavior
 }
 
 // Handler returns an http.Handler that runs the proxy.
@@ -125,9 +133,26 @@ func serveProxy(cfg Config, w http.ResponseWriter, r *http.Request) {
 	}
 
 	if compiled == nil {
-		// No policy available. Per blueprint: fail-open by default for
-		// dev. Production deployments configure fail-closed.
-		cfg.Log.Warn().Str("policy_id", cfg.PolicyID).Msg("proxy_no_policy_cached")
+		// No policy at all — the control plane was unreachable and nothing is
+		// cached. There is no fail_behavior to read (that lives ON a policy),
+		// so this is governed by NoPolicyBehavior. See proxy/nopolicy.go.
+		//
+		// Both branches are LOUD: a fail-closed cold start is an outage that
+		// must be diagnosable in seconds, and a fail-open one must never look
+		// identical to a protected request.
+		if cfg.NoPolicyBehavior == NoPolicyClosed {
+			cfg.Log.Error().
+				Str("policy_id", cfg.PolicyID).
+				Str("no_policy_behavior", string(NoPolicyClosed)).
+				Msg("proxy_no_policy_fail_closed")
+			writeBlocked(w, "no_policy_available_fail_closed", policy.SeverityCritical)
+			emitEvent(cfg, &extracted, nil, nil, body, nil, start, "blocked_no_policy", r.Header)
+			return
+		}
+		cfg.Log.Warn().
+			Str("policy_id", cfg.PolicyID).
+			Str("no_policy_behavior", string(NoPolicyOpen)).
+			Msg("proxy_no_policy_fail_open")
 		emitEvent(cfg, &extracted, nil, nil, body, nil, start, "passthrough_no_policy", r.Header)
 		forward(cfg, w, r, provider, upstreamPath, body)
 		return
