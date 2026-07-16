@@ -51,6 +51,17 @@ type Config struct {
 	// Default true — better to forward an unrecognized request than
 	// break the customer's app.
 	PassthroughOnUnknownFormat bool
+
+	// NoPolicyBehavior governs the cold-start case: no policy cached and the
+	// control plane unreachable, so there is no policy to read a fail_behavior
+	// from. cmd/agent resolves it at startup via ResolveNoPolicyBehavior (see
+	// nopolicy.go).
+	//
+	// The zero value ("") is not a branch. The hot path calls Resolve(), which
+	// maps anything that is not an explicit NoPolicyOpen to NoPolicyClosed — so
+	// a Config built without this field is a CLOSED proxy, not an open one. The
+	// permissive branch can only be reached by asking for it.
+	NoPolicyBehavior NoPolicyBehavior
 }
 
 // Handler returns an http.Handler that runs the proxy.
@@ -125,9 +136,33 @@ func serveProxy(cfg Config, w http.ResponseWriter, r *http.Request) {
 	}
 
 	if compiled == nil {
-		// No policy available. Per blueprint: fail-open by default for
-		// dev. Production deployments configure fail-closed.
-		cfg.Log.Warn().Str("policy_id", cfg.PolicyID).Msg("proxy_no_policy_cached")
+		// No policy at all — the control plane was unreachable and nothing is
+		// cached. There is no fail_behavior to read (that lives ON a policy),
+		// so this is governed by NoPolicyBehavior. See proxy/nopolicy.go.
+		//
+		// Both branches are LOUD: a fail-closed cold start is an outage that
+		// must be diagnosable in seconds, and a fail-open one must never look
+		// identical to a protected request.
+		// Resolve() so that an unset field is CLOSED, not open: the zero value
+		// of NoPolicyBehavior is "", and a constructor that omits it must not
+		// get an open proxy by omission.
+		behavior := cfg.NoPolicyBehavior.Resolve()
+		if behavior == NoPolicyClosed {
+			cfg.Log.Error().
+				Str("policy_id", cfg.PolicyID).
+				Str("no_policy_behavior", string(behavior)).
+				Msg("proxy_no_policy_fail_closed")
+			writeBlocked(w, "no_policy_available_fail_closed", policy.SeverityCritical)
+			emitEvent(cfg, &extracted, nil, nil, body, nil, start, "blocked_no_policy", r.Header)
+			return
+		}
+		cfg.Log.Warn().
+			Str("policy_id", cfg.PolicyID).
+			// The RESOLVED value, not a hardcoded "open" — a log line that
+			// states configuration it did not read is how you debug the wrong
+			// system for an hour.
+			Str("no_policy_behavior", string(behavior)).
+			Msg("proxy_no_policy_fail_open")
 		emitEvent(cfg, &extracted, nil, nil, body, nil, start, "passthrough_no_policy", r.Header)
 		forward(cfg, w, r, provider, upstreamPath, body)
 		return

@@ -91,6 +91,49 @@ jobs:
         working-directory: frontend
         run: npm run build
 
+  sdks:
+    name: SDKs (fail-closed)
+    runs-on: ubuntu-latest
+    # The SDKs decide whether unprotected LLM traffic ships (GAP-005). That
+    # branch had no tests and no CI job until Phase 1 — the least-covered code
+    # in the repo was also the most security-load-bearing. Both languages are
+    # gated here because they make the same promise and must not drift apart.
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Python SDK — install
+        working-directory: sdks/python
+        run: pip install -e ".[dev]"
+      - name: Python SDK — test
+        working-directory: sdks/python
+        run: pytest -q
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Node SDK — install
+        working-directory: sdks/node
+        run: npm ci
+      - name: Node SDK — build
+        # dist/ is gitignored, and `npm test` runs the compiled dist/*.test.js,
+        # so the build is a prerequisite of the test step, not a separate gate.
+        working-directory: sdks/node
+        run: npm run build
+      - name: Node SDK — test
+        working-directory: sdks/node
+        run: npm test
+
+      - name: Mutation check — prove the fail-closed suites bite
+        # Green tests say the code passes; they do not say the tests would
+        # notice if the code were wrong. For the branch that decides whether
+        # unprotected LLM traffic ships, that difference is the point. This
+        # reintroduces the exact regression the reviewers caught and fails the
+        # build if either suite stays green against it.
+        run: sdks/mutation_check.sh
+
   security:
     name: Security gates
     runs-on: ubuntu-latest

@@ -71,7 +71,7 @@ PLATFORM_URL=http://localhost:8000 \
 | Stage 2 ML classifier (CGo Rust) | ⏸️ follow-on |
 | Stage 3 LLM judge | ⏸️ follow-on |
 | Redis pub/sub policy cache + stale grace | ✅ |
-| Fail-open vs fail-closed per policy | ⚠️ **Stage 3 only** — see below |
+| Fail-open vs fail-closed per policy | ✅ Stages 2 and 3; cold start via `AGENT_NO_POLICY_BEHAVIOR` — see below |
 | Telemetry buffer + HTTP upload | ✅ (HTTP upload stubbed to stdout) |
 | Kill switch via WebSocket | ⏸️ follow-on |
 | Heartbeat to control plane | ⏸️ follow-on |
@@ -79,22 +79,57 @@ PLATFORM_URL=http://localhost:8000 \
 | Helm chart / K8s manifests | ⏸️ follow-on |
 | Python + Node SDK wrappers | ⏸️ follow-on |
 
-### Fail-behavior: what is actually true today
+### Fail behaviour
 
-The table above claimed a blanket ✅. It is narrower than that, and the
-difference is load-bearing, so it is spelled out rather than left to the
-reader:
+A blanket ✅ was too generous before Phase 1 (it was true of Stage 3 only), so
+the surface is spelled out per stage rather than left to the reader:
 
-| Stage | Honours `fail_behavior`? | Actual behaviour when it cannot reach its backend |
+| Stage | Honours `fail_behavior`? | Behaviour when its backend cannot answer |
 |---|---|---|
 | Stage 1 | n/a | Cannot fail — no I/O; always produces a verdict. |
-| Stage 2 | ❌ **No** | **Always fail-open**, regardless of policy. The policy argument is discarded (`stage2_http.go`). A down ONNX sidecar is indistinguishable from a clean verdict — both yield `Matched:false` — so `comprehensive` silently degrades to Stage-1-only. Tracked as **GAP-004**; fix queued for Phase 1. |
-| Stage 3 | ✅ Yes | `fail_behavior: "closed"` blocks with `judge unavailable; fail-closed`; `"open"` allows. |
-| No policy cached at all | ❌ **No** | **Always fail-open** — every request passes uninspected. There is no setting to change this today. Tracked as **GAP-003**; `AGENT_NO_POLICY_BEHAVIOR` lands in Phase 1. |
+| Stage 2 | ✅ Yes | `closed` → blocks; `open` (or a nil policy) → allows. Either way the result carries `Mode=stage2_unavailable`, so a degraded classifier is never mistaken for a clean verdict. |
+| Stage 3 | ✅ Yes | `closed` → blocks with `judge unavailable; fail-closed`; `open` → allows. |
+| No policy cached at all | via `AGENT_NO_POLICY_BEHAVIOR` | There is no policy to read a `fail_behavior` from, so this has its own setting (below). |
 
-See [`docs/GAPS.md`](../docs/GAPS.md). Do not rely on `fail_behavior: "closed"`
-as a deny-by-default guarantee until GAP-003 and GAP-004 are closed — today it
-covers one stage of three.
+`fail_behavior` covers *failure*, not verdicts: a reachable backend's answer is
+the answer under either setting.
+
+### Cold start — `AGENT_NO_POLICY_BEHAVIOR`
+
+What the proxy does when it has **no policy at all**: control plane unreachable,
+cache empty. Mirrors the SDKs' fail-closed convention
+(`sdks/python/platform_sdk/_routing.py`, `sdks/node/src/routing.ts`) so the
+platform has one shape to learn, not two:
+
+| `AGENT_NO_POLICY_BEHAVIOR` | `AGENT_ENVIRONMENT` | Result |
+|---|---|---|
+| `closed` | *(any)* | Refuse with 451 |
+| `open` | *(any)* | Forward uninspected |
+| *(unset)* | `production` / `prod` / *unset* | **Refuse** — deny by default |
+| *(unset)* | `development` / `staging` / `test` / … | Forward uninspected |
+
+Explicit always wins. Unset resolves by environment, and an *unspecified*
+environment resolves closed — absence of information is not evidence of a dev
+box. An unrecognised value is a **startup error**, not a fallback: the agent
+refuses to start rather than guess at a security setting (the same posture as
+its partial-mTLS check).
+
+Both branches are loud — a log line and a telemetry event on every request that
+takes them (`proxy_no_policy_fail_closed` / `proxy_no_policy_fail_open`;
+`ActionTaken` of `blocked_no_policy` / `passthrough_no_policy`). A fail-closed
+cold start is an outage and must be diagnosable in seconds; a fail-open one must
+never look identical to a protected request.
+
+**Operational consequence:** `closed` is the default in production, so **deploy
+ordering matters** — an agent that starts before the control plane is reachable
+refuses traffic until it can load a policy. Bring the control plane up first, or
+accept the agent's retry window. The full retry/backoff story does not exist yet
+— Phase 2 lands it in `docs/AGENT-FAILURE-MODES.md` alongside the fault-injection
+matrix that verifies it. Until then, treat deploy ordering as an operator
+responsibility with no documented backoff contract.
+
+See [`docs/GAPS.md`](../docs/GAPS.md) for the gaps this closed (GAP-003,
+GAP-004).
 
 ## Wire compatibility with the Python control plane
 

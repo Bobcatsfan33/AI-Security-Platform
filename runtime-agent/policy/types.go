@@ -47,6 +47,12 @@ const (
 	ExitStage2ML    PipelineExitStage = "stage2_ml"
 	ExitStage3Judge PipelineExitStage = "stage3_judge"
 	ExitNoMatch     PipelineExitStage = "no_match"
+	// ExitStage2Unavailable — Stage 2 was asked for a verdict and could not
+	// give one, so the policy's fail_behavior decided instead of the model.
+	// Distinct from ExitNoMatch on purpose: "the model found nothing" and "there
+	// was no model" are different facts, and an exit label that cannot tell them
+	// apart is how a degraded pipeline looks healthy.
+	ExitStage2Unavailable PipelineExitStage = "stage2_unavailable"
 )
 
 // Severity ranks finding criticality. Ordering matters: higher index =

@@ -1,0 +1,138 @@
+{
+  "_comment": [
+    "The fail-closed decision table, shared by both SDKs.",
+    "",
+    "The Python and Node suites load THIS FILE and iterate it, rather than each",
+    "hand-maintaining its own copy. The two SDKs make the same promise — LLM",
+    "traffic is protected or it does not flow — so the table that decides it is",
+    "one artifact. An earlier version claimed the suites mirrored each other",
+    "'case for case' and they already did not: Python had malformed-URL and",
+    "transport-failure cases Node lacked, Node had a default-URL case Python",
+    "lacked. Prose cannot hold two lists in sync; a shared table can.",
+    "",
+    "Scope: this covers the ENV -> fallback decision only. Transport-level",
+    "behaviour (urllib vs fetch, what counts as 'down') is legitimately",
+    "language-specific and is tested separately in each suite.",
+    "",
+    "Reading a case: given this env, does the SDK fall back to calling the",
+    "provider directly when the runtime agent is unreachable? false = refuse to",
+    "send (fail closed). PLATFORM_FALLBACK_DIRECT is explicit and always wins;",
+    "otherwise PLATFORM_ENV decides, and only a RECOGNISED non-production",
+    "environment buys fallback."
+  ],
+  "cases": [
+    {
+      "name": "unset environment fails closed",
+      "why": "A prod deployment that forgets PLATFORM_ENV must not ship unprotected traffic behind a warning. Absence of information is not evidence of a dev box — the same rule the agent applies to AGENT_ENVIRONMENT.",
+      "env": {},
+      "fallback": false
+    },
+    {
+      "name": "empty environment fails closed",
+      "env": { "PLATFORM_ENV": "" },
+      "fallback": false
+    },
+    {
+      "name": "whitespace-only environment fails closed",
+      "env": { "PLATFORM_ENV": "   " },
+      "fallback": false
+    },
+    {
+      "name": "unrecognised environment fails closed",
+      "why": "A typo is the most likely way this is reached. 'porduction' must not resolve to the permissive branch.",
+      "env": { "PLATFORM_ENV": "porduction" },
+      "fallback": false
+    },
+    {
+      "name": "another unrecognised environment fails closed",
+      "env": { "PLATFORM_ENV": "anything-else" },
+      "fallback": false
+    },
+    {
+      "name": "production fails closed",
+      "env": { "PLATFORM_ENV": "production" },
+      "fallback": false
+    },
+    {
+      "name": "prod shorthand fails closed",
+      "env": { "PLATFORM_ENV": "prod" },
+      "fallback": false
+    },
+    {
+      "name": "production is case-insensitive",
+      "env": { "PLATFORM_ENV": "PrOdUcTiOn" },
+      "fallback": false
+    },
+    {
+      "name": "development falls back",
+      "why": "A laptop with no agent running must still work, or nobody adopts this.",
+      "env": { "PLATFORM_ENV": "development" },
+      "fallback": true
+    },
+    { "name": "dev shorthand falls back", "env": { "PLATFORM_ENV": "dev" }, "fallback": true },
+    { "name": "staging falls back", "env": { "PLATFORM_ENV": "staging" }, "fallback": true },
+    { "name": "stage falls back", "env": { "PLATFORM_ENV": "stage" }, "fallback": true },
+    { "name": "test falls back", "env": { "PLATFORM_ENV": "test" }, "fallback": true },
+    { "name": "testing falls back", "env": { "PLATFORM_ENV": "testing" }, "fallback": true },
+    { "name": "ci falls back", "env": { "PLATFORM_ENV": "ci" }, "fallback": true },
+    { "name": "local falls back", "env": { "PLATFORM_ENV": "local" }, "fallback": true },
+    { "name": "sandbox falls back", "env": { "PLATFORM_ENV": "sandbox" }, "fallback": true },
+    {
+      "name": "dev environment is case-insensitive",
+      "env": { "PLATFORM_ENV": "DEVELOPMENT" },
+      "fallback": true
+    },
+    {
+      "name": "explicit false overrides a dev environment",
+      "env": { "PLATFORM_ENV": "development", "PLATFORM_FALLBACK_DIRECT": "false" },
+      "fallback": false
+    },
+    {
+      "name": "explicit true overrides production",
+      "why": "An operator who explicitly opts out of protection gets what they asked for. Their call — but it must be explicit, never a default.",
+      "env": { "PLATFORM_ENV": "production", "PLATFORM_FALLBACK_DIRECT": "true" },
+      "fallback": true
+    },
+    {
+      "name": "explicit true overrides an unset environment",
+      "env": { "PLATFORM_FALLBACK_DIRECT": "true" },
+      "fallback": true
+    },
+    {
+      "name": "explicit true is case-insensitive",
+      "env": { "PLATFORM_FALLBACK_DIRECT": "TRUE" },
+      "fallback": true
+    },
+    {
+      "name": "explicit true tolerates surrounding whitespace",
+      "env": { "PLATFORM_FALLBACK_DIRECT": "  true  " },
+      "fallback": true
+    },
+    {
+      "name": "yes does not mean true",
+      "why": "The safe reading of an ambiguous value is the protected one. Only the literal 'true' disables protection.",
+      "env": { "PLATFORM_ENV": "production", "PLATFORM_FALLBACK_DIRECT": "yes" },
+      "fallback": false
+    },
+    {
+      "name": "1 does not mean true",
+      "env": { "PLATFORM_ENV": "production", "PLATFORM_FALLBACK_DIRECT": "1" },
+      "fallback": false
+    },
+    {
+      "name": "on does not mean true",
+      "env": { "PLATFORM_ENV": "production", "PLATFORM_FALLBACK_DIRECT": "on" },
+      "fallback": false
+    },
+    {
+      "name": "an empty explicit value does not mean true",
+      "env": { "PLATFORM_ENV": "development", "PLATFORM_FALLBACK_DIRECT": "" },
+      "fallback": false
+    },
+    {
+      "name": "explicit false in a dev environment still fails closed",
+      "env": { "PLATFORM_ENV": "dev", "PLATFORM_FALLBACK_DIRECT": "false" },
+      "fallback": false
+    }
+  ]
+}
