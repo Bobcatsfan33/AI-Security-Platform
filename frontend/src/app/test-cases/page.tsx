@@ -1,5 +1,6 @@
 "use client";
 
+import { PreviewBadge } from "@/components/PreviewBadge";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 
@@ -43,7 +44,10 @@ export default function TestCasesPage() {
   return (
     <div>
       <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Test Cases</h1>
+        <div className="flex items-center gap-2">
+          <h1 className="text-2xl font-semibold">Test Cases</h1>
+          <PreviewBadge variant="heading" />
+        </div>
         <div className="flex items-center gap-3 text-sm">
           <label className="flex items-center gap-1.5 text-slate-600">
             <input

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { PreviewBadge, isPreviewRoute } from "@/components/PreviewBadge";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -17,9 +18,10 @@ function NavLink({ href, label }: NavLinkProps) {
     <li>
       <Link
         href={href}
-        className="rounded-md px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-100"
+        className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-100"
       >
         {label}
+        {isPreviewRoute(href) && <PreviewBadge />}
       </Link>
     </li>
   );
@@ -47,7 +49,10 @@ export default function RootLayout({
                 <NavLink href="/findings" label="Findings" />
                 <NavLink href="/test-cases" label="Test Cases" />
                 <NavLink href="/reports" label="Reports" />
-                <NavLink href="/threat-intel" label="Threat Intel" />
+                {/* Threat Intel is Tier C (frozen): cross-tenant clustering
+                    needs cross-tenant data, so with one tenant it is a claim
+                    with nothing behind it. The page and its API remain on disk
+                    behind PLATFORM_ENABLE_THREAT_INTEL. See docs/TIERS.md. */}
                 <NavLink href="/compliance" label="Compliance" />
                 <NavLink href="/mcp" label="MCP" />
                 <NavLink href="/connectors" label="Connectors" />

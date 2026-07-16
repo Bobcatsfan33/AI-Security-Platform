@@ -1,5 +1,6 @@
 "use client";
 
+import { PreviewBadge } from "@/components/PreviewBadge";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 
@@ -67,7 +68,10 @@ export default function ReportsPage() {
 
   return (
     <div>
-      <h1 className="mb-6 text-2xl font-semibold">Reports</h1>
+      <div className="mb-6 flex items-center gap-2">
+        <h1 className="text-2xl font-semibold">Reports</h1>
+        <PreviewBadge variant="heading" />
+      </div>
 
       <div className="mb-4 flex flex-wrap items-end gap-3 text-sm">
         <label className="flex flex-col gap-1">

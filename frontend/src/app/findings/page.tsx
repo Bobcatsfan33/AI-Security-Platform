@@ -1,5 +1,6 @@
 "use client";
 
+import { PreviewBadge } from "@/components/PreviewBadge";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 
@@ -47,7 +48,10 @@ export default function FindingsPage() {
   return (
     <div>
       <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Findings</h1>
+        <div className="flex items-center gap-2">
+          <h1 className="text-2xl font-semibold">Findings</h1>
+          <PreviewBadge variant="heading" />
+        </div>
         <div className="flex items-center gap-2 text-sm">
           <select
             value={severity}

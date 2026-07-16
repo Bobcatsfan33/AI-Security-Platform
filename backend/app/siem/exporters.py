@@ -36,6 +36,45 @@ ExporterType = Literal[
     "webhook",
 ]
 
+# Tier B — ship by default, labelled preview (see docs/TIERS.md). A SOC that
+# cannot see the platform's events will not run it inline, so these two are
+# table stakes rather than a Tier C nice-to-have.
+TIER_B_EXPORTER_TYPES: frozenset[str] = frozenset({"splunk_hec", "elastic"})
+
+# Tier C — frozen, dark until customer pull. The code stays and stays tested;
+# the capability requires PLATFORM_ENABLE_SIEM_EXTENDED=true.
+TIER_C_EXPORTER_TYPES: frozenset[str] = frozenset(
+    {"sentinel", "datadog", "chronicle", "webhook"}
+)
+
+
+def extended_siem_enabled() -> bool:
+    """Whether the Tier C exporter types are pulled forward.
+
+    Read at call time, not import time, so tests and a restarted process both
+    observe the current setting.
+    """
+    from app.core.config import get_settings
+
+    return get_settings().platform_enable_siem_extended
+
+
+def exporter_type_allowed(etype: str) -> bool:
+    """Deny-by-default gate for exporter types.
+
+    Enforced in :func:`_build_one`, which is the single chokepoint for *both*
+    paths that matter: the admin route validating a new config, and the
+    forwarder's cache rebuilding exporters to send. Gating only the write path
+    would leave a config written before the flag landed quietly forwarding to a
+    dark backend for the life of the process — the flag has to bite where the
+    bytes leave.
+    """
+    if etype in TIER_B_EXPORTER_TYPES:
+        return True
+    if etype in TIER_C_EXPORTER_TYPES:
+        return extended_siem_enabled()
+    return False
+
 
 @dataclass(frozen=True)
 class SiemEvent:
@@ -568,6 +607,19 @@ def _build_one(entry: dict[str, Any]) -> SiemExporter | None:
     etype = entry.get("type")
     name = entry.get("name") or etype or "siem"
     config = entry.get("config") or {}
+    if not exporter_type_allowed(str(etype)):
+        # Not an error: a dark exporter type is *inert*, exactly like an
+        # unmounted Tier C router. Logged so an operator who set a config and
+        # sees no events has a breadcrumb rather than silence.
+        logger.warning(
+            "siem_exporter_type_disabled",
+            extra={
+                "exporter_type": etype,
+                "exporter_name": name,
+                "flag": "PLATFORM_ENABLE_SIEM_EXTENDED",
+            },
+        )
+        return None
     try:
         if etype == "splunk_hec":
             return SplunkHECExporter(name=name, **config)

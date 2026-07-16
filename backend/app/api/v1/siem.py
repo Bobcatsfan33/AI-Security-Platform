@@ -27,6 +27,7 @@ from app.db.session import get_db
 from app.identity.types import IdentityContext
 from app.security.audit_log import AuditEventType, AuditOutcome, log_event
 from app.security.secrets import get_resolver
+from app.siem.exporters import TIER_B_EXPORTER_TYPES, exporter_type_allowed
 from app.siem.forwarder import get_forwarder
 
 router = APIRouter(tags=["admin", "siem"])
@@ -67,6 +68,26 @@ _SECRET_FIELDS: dict[str, set[str]] = {
     "chronicle": {"bearer_token"},
     "webhook": {"bearer_token"},  # optional
 }
+
+
+def _validate_exporter_tier(exporter: ExporterCreate) -> None:
+    """Reject Tier C exporter types unless they have been pulled forward.
+
+    This is the write-path half of the gate; :func:`app.siem.exporters._build_one`
+    is the read/forward-path half. Both are needed: this one gives an operator a
+    clear 400 instead of a config that saves and then silently never delivers,
+    and that one ensures a config predating the flag cannot keep forwarding.
+    """
+    if exporter_type_allowed(exporter.type):
+        return
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail=(
+            f"exporter type '{exporter.type}' is not enabled on this deployment. "
+            "Set PLATFORM_ENABLE_SIEM_EXTENDED=true to enable it "
+            f"(enabled by default: {', '.join(sorted(TIER_B_EXPORTER_TYPES))})."
+        ),
+    )
 
 
 def _validate_secret_refs(exporter: ExporterCreate) -> None:
@@ -159,6 +180,7 @@ async def create_exporter(
     identity: IdentityContext = Depends(require_role("admin")),
     db: AsyncSession = Depends(get_db),
 ) -> ExporterRead:
+    _validate_exporter_tier(payload)
     _validate_secret_refs(payload)
     org = await _load_org(db, identity.org_id)
     exporters = _exporters_list(org)
@@ -195,6 +217,7 @@ async def update_exporter(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="name_mismatch",
         )
+    _validate_exporter_tier(payload)
     _validate_secret_refs(payload)
     org = await _load_org(db, identity.org_id)
     exporters = _exporters_list(org)

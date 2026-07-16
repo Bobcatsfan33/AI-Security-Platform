@@ -12,8 +12,16 @@ pipeline, and streams telemetry back to the control plane.
 
 ## Binding architectural decisions
 
-- Go 1.22+ (the blueprint forbids Python here — hot path latency budget
-  is sub-15ms for `balanced` mode; Python's GIL is incompatible).
+- Go 1.22+ (the blueprint forbids Python here — Python's GIL is
+  incompatible with the intended hot-path concurrency).
+- **Latency: sub-15ms added latency for `balanced` mode is a TARGET, and is
+  currently UNMEASURED.** Nothing in this repo benchmarks it: there is no
+  `Benchmark*` function and no load test against the proxy path. Per-stage
+  `LatencyUS` is stamped at runtime and shipped as telemetry, but no test
+  asserts a bound. Phase 2 lands `runtime-agent/bench/` with p50/p99 per stage
+  against a mock upstream and a CI regression gate; until those numbers are
+  published in `docs/BENCHMARKS.md`, treat this as an intention, not a
+  property. Tracked in [`docs/GAPS.md`](../docs/GAPS.md) as GAP-002.
 - The Rust+CGo bridge for ONNX inference lives in `classifier/` (also
   deferred to follow-on). For now, Stage 2 is wired into the pipeline
   but returns `no-match` — the Python control plane runs Stage 2 for
@@ -63,13 +71,30 @@ PLATFORM_URL=http://localhost:8000 \
 | Stage 2 ML classifier (CGo Rust) | ⏸️ follow-on |
 | Stage 3 LLM judge | ⏸️ follow-on |
 | Redis pub/sub policy cache + stale grace | ✅ |
-| Fail-open vs fail-closed per policy | ✅ |
+| Fail-open vs fail-closed per policy | ⚠️ **Stage 3 only** — see below |
 | Telemetry buffer + HTTP upload | ✅ (HTTP upload stubbed to stdout) |
 | Kill switch via WebSocket | ⏸️ follow-on |
 | Heartbeat to control plane | ⏸️ follow-on |
 | `/healthz` / `/readyz` / `/metrics` | ✅ |
 | Helm chart / K8s manifests | ⏸️ follow-on |
 | Python + Node SDK wrappers | ⏸️ follow-on |
+
+### Fail-behavior: what is actually true today
+
+The table above claimed a blanket ✅. It is narrower than that, and the
+difference is load-bearing, so it is spelled out rather than left to the
+reader:
+
+| Stage | Honours `fail_behavior`? | Actual behaviour when it cannot reach its backend |
+|---|---|---|
+| Stage 1 | n/a | Cannot fail — no I/O; always produces a verdict. |
+| Stage 2 | ❌ **No** | **Always fail-open**, regardless of policy. The policy argument is discarded (`stage2_http.go`). A down ONNX sidecar is indistinguishable from a clean verdict — both yield `Matched:false` — so `comprehensive` silently degrades to Stage-1-only. Tracked as **GAP-004**; fix queued for Phase 1. |
+| Stage 3 | ✅ Yes | `fail_behavior: "closed"` blocks with `judge unavailable; fail-closed`; `"open"` allows. |
+| No policy cached at all | ❌ **No** | **Always fail-open** — every request passes uninspected. There is no setting to change this today. Tracked as **GAP-003**; `AGENT_NO_POLICY_BEHAVIOR` lands in Phase 1. |
+
+See [`docs/GAPS.md`](../docs/GAPS.md). Do not rely on `fail_behavior: "closed"`
+as a deny-by-default guarantee until GAP-003 and GAP-004 are closed — today it
+covers one stage of three.
 
 ## Wire compatibility with the Python control plane
 

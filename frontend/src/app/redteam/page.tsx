@@ -1,5 +1,6 @@
 "use client";
 
+import { PreviewBadge } from "@/components/PreviewBadge";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 
@@ -30,7 +31,10 @@ const PROVIDERS = ["openai", "anthropic", "ollama", "azure_openai", "bedrock", "
 export default function RedTeamPage() {
   return (
     <div>
-      <h1 className="mb-1 text-2xl font-semibold">Red Team</h1>
+      <div className="mb-1 flex items-center gap-2">
+        <h1 className="text-2xl font-semibold">Red Team</h1>
+        <PreviewBadge variant="heading" />
+      </div>
       <p className="mb-6 max-w-3xl text-sm text-slate-600">
         Run the attack-strategy library against a target model, judge each
         response, and review the findings worth hardening against.

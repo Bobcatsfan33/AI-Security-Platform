@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 
 import pytest
 
+from app.core.config import get_settings
 from app.siem import exporters as ex
 from app.siem.exporters import (
     ChronicleExporter,
@@ -131,9 +132,26 @@ class TestSentinelSignature:
         assert sig1.startswith("SharedKey ws:")
 
 
+@pytest.fixture
+def extended_siem_enabled(monkeypatch):
+    """Pull the Tier C exporter types forward for the duration of a test."""
+    monkeypatch.setenv("PLATFORM_ENABLE_SIEM_EXTENDED", "true")
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
+
+
 # ── factory ─────────────────────────────────────────────────────────────
 class TestBuildExporters:
-    def test_builds_each_type(self):
+    def test_builds_each_type(self, extended_siem_enabled):
+        """Every type still builds when the Tier C types are pulled forward.
+
+        The flag is opted into here rather than the assertion relaxed: this
+        test's subject is the config→exporter factory, and "can it build a
+        Chronicle exporter" is a different question from "should this
+        deployment forward to Chronicle". The tier gate is tested on its own in
+        test_siem_tier_gating.py.
+        """
         configs = [
             {"type": "splunk_hec", "name": "s", "config": {"url": "http://x", "token": "t"}},
             {"type": "elastic", "name": "e", "config": {"url": "http://x", "index": "i"}},
