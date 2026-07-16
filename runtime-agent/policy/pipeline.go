@@ -107,6 +107,23 @@ func (p *Pipeline) Evaluate(
 		policy.EnforcementLevel == EnforcementComprehensive {
 		s2 := p.Stage2.Classify(ctx, in, policy)
 		results = append(results, s2)
+
+		// Stage 2 could not answer, so fail_behavior decided — not the model.
+		// Exit explicitly: a fail-closed result carries no Confidence, so it
+		// fails both gates below and would otherwise fall through to
+		// ExitNoMatch, reaching the proxy only because decide()'s
+		// max-actionRank fold happens to pick a blocked result up. A block that
+		// survives by accident and reports "no_match" is a non-verdict wearing
+		// a verdict's label.
+		//
+		// Fail-open exits here too: the request is allowed either way (Matched
+		// is false, so the gates below could not fire), but "allowed because
+		// the model was down" and "allowed because the model found nothing" are
+		// different facts and only this label distinguishes them.
+		if s2.Mode == ModeStage2Unavailable {
+			return decide(results, policy, ExitStage2Unavailable, start)
+		}
+
 		if s2.Matched && s2.Confidence >= policy.MLConfidenceThresholdHigh {
 			return decide(results, policy, ExitStage2ML, start)
 		}

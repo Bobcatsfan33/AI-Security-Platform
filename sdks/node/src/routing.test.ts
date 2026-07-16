@@ -1,19 +1,39 @@
 // The fail-closed branch (GAP-005).
 //
-// Mirrors sdks/python/tests/test_routing.py case for case. The two SDKs make
-// the same promise — LLM traffic is protected or it does not flow — so they
-// are tested against the same contract. A divergence between them is a bug in
-// whichever one drifted, and keeping the suites parallel is how that shows up.
+// The ENV -> fallback decision table is SHARED with the Python suite:
+// sdks/routing-cases.json. Both suites load that file and iterate it, so a case
+// added for one language is automatically demanded of the other.
+//
+// This replaces a prose claim that the two suites mirrored each other "case for
+// case" — which was already false when it was written (Python had
+// malformed-URL and transport-failure cases Node lacked; Node had a default-URL
+// case Python lacked). Prose cannot hold two lists in sync; a shared table can.
+//
+// Transport-level behaviour (fetch vs urllib, what counts as "down") is
+// legitimately language-specific and stays hand-written below.
 //
 // Contract:
 //   * PLATFORM_FALLBACK_DIRECT is explicit and always wins.
-//   * Unset, it resolves by environment: prod/production -> closed;
-//     anything else -> open.
-//   * Falling back is never silent.
+//   * Otherwise PLATFORM_ENV decides, and only a RECOGNISED non-production
+//     environment falls back. Unset, empty and unrecognised all fail CLOSED.
 
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, it, mock } from "node:test";
 import { agentReachable, agentUrl, fallbackDirect, resolveBaseUrl } from "./routing.js";
+
+interface SharedCase {
+  name: string;
+  why?: string;
+  env: Record<string, string>;
+  fallback: boolean;
+}
+
+// Resolved from this file's location so it works from src/ and dist/ alike.
+const CASES_FILE = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "routing-cases.json");
+const SHARED_CASES: SharedCase[] = JSON.parse(readFileSync(CASES_FILE, "utf8")).cases;
 
 const PROXY_PATH = "/proxy/v1";
 const DIRECT = "https://api.openai.com/v1";
@@ -51,57 +71,30 @@ function stubAgent(state: "up" | "down" | "unhealthy"): void {
 
 const resolve = () => resolveBaseUrl({ proxyPath: PROXY_PATH, directDefault: DIRECT });
 
-describe("fallbackDirect — the environment default", () => {
-  for (const env of ["prod", "production", "PROD", "Production", "PrOdUcTiOn"]) {
-    it(`fails closed by default in ${env}`, () => {
-      process.env.PLATFORM_ENV = env;
-      assert.equal(fallbackDirect(), false);
+describe("the shared decision table", () => {
+  for (const testCase of SHARED_CASES) {
+    it(testCase.name, () => {
+      for (const [key, value] of Object.entries(testCase.env)) {
+        process.env[key] = value;
+      }
+
+      assert.equal(fallbackDirect(), testCase.fallback, testCase.why ?? testCase.name);
     });
   }
 
-  for (const env of ["dev", "development", "staging", "test", "", "anything-else"]) {
-    it(`falls back by default in ${env || "(empty)"}`, () => {
-      process.env.PLATFORM_ENV = env;
-      assert.equal(fallbackDirect(), true);
-    });
-  }
-
-  it("falls back by default when PLATFORM_ENV is unset", () => {
-    assert.equal(fallbackDirect(), true);
+  it("covers the dangerous default", () => {
+    // A guard on the table itself. The first cut defaulted to FALLBACK on unset
+    // PLATFORM_ENV, so a production deployment that forgot the variable shipped
+    // unprotected traffic behind a console.warn. If that case ever falls out of
+    // the table, both suites would go quiet about the exact regression that
+    // motivated them.
+    const unset = SHARED_CASES.filter((c) => Object.keys(c.env).length === 0);
+    assert.ok(unset.length > 0, "the table must cover a completely unset environment");
+    assert.ok(
+      unset.every((c) => c.fallback === false),
+      "an unset environment must fail CLOSED",
+    );
   });
-});
-
-describe("fallbackDirect — explicit always wins", () => {
-  it("explicit false overrides the dev default", () => {
-    process.env.PLATFORM_ENV = "dev";
-    process.env.PLATFORM_FALLBACK_DIRECT = "false";
-    assert.equal(fallbackDirect(), false);
-  });
-
-  it("explicit true overrides the prod default", () => {
-    // An operator opting out of protection in prod gets what they asked for —
-    // but it must be explicit, never a default.
-    process.env.PLATFORM_ENV = "production";
-    process.env.PLATFORM_FALLBACK_DIRECT = "true";
-    assert.equal(fallbackDirect(), true);
-  });
-
-  for (const value of ["TRUE", "True", "tRuE"]) {
-    it(`treats ${value} as true`, () => {
-      process.env.PLATFORM_FALLBACK_DIRECT = value;
-      assert.equal(fallbackDirect(), true);
-    });
-  }
-
-  for (const value of ["yes", "1", "on", "", "  ", "truthy", "0", "no"]) {
-    it(`does not treat ${JSON.stringify(value)} as true`, () => {
-      // The safe reading of an ambiguous value is the protected one: a typo
-      // like PLATFORM_FALLBACK_DIRECT=1 must not silently unprotect traffic.
-      process.env.PLATFORM_ENV = "production";
-      process.env.PLATFORM_FALLBACK_DIRECT = value;
-      assert.equal(fallbackDirect(), false);
-    });
-  }
 });
 
 describe("resolveBaseUrl — the decision", () => {
@@ -121,27 +114,52 @@ describe("resolveBaseUrl — the decision", () => {
     // THE test: production, agent unreachable, nothing explicitly set.
     stubAgent("down");
     process.env.PLATFORM_ENV = "production";
-    await assert.rejects(resolve, /refusing to send unprotected LLM traffic/);
+    await assert.rejects(resolve, /Refusing to send LLM traffic unprotected/);
   });
 
-  it("names the escape hatch in the refusal", async () => {
-    // An error that stops a deploy must say how to proceed deliberately, or
-    // someone reaches for a worse workaround.
+  it("names exactly which variable to set in the refusal", async () => {
+    // This error WILL trip first-run developers — the accepted cost of failing
+    // closed on unset. So it has to be the most useful error in the codebase:
+    // one that stops someone without telling them how to proceed deliberately
+    // is one they route around with a worse workaround.
     stubAgent("down");
     process.env.PLATFORM_ENV = "production";
-    await assert.rejects(resolve, /PLATFORM_FALLBACK_DIRECT/);
+
+    await assert.rejects(resolve, (err: Error) => {
+      assert.match(err.message, /PLATFORM_ENV=development/, "must name the dev fix verbatim");
+      assert.match(err.message, /PLATFORM_FALLBACK_DIRECT/, "must name the opt-out");
+      assert.match(err.message, /PLATFORM_AGENT_URL/, "must name how to reach a real agent");
+      return true;
+    });
   });
 
   it("falls back to direct in dev when the agent is down", async () => {
     stubAgent("down");
+    process.env.PLATFORM_ENV = "development";
     mock.method(console, "warn", () => {});
     assert.equal(await resolve(), DIRECT);
+  });
+
+  it("refuses when the environment is unset", async () => {
+    // The behaviour change, head-on: no PLATFORM_ENV at all used to mean "fall
+    // back, unprotected, with a warning". It now refuses.
+    stubAgent("down");
+    await assert.rejects(resolve, /not a recognised non-production environment/);
+  });
+
+  it("refuses on a typo'd environment rather than falling back", async () => {
+    // "porduction" is not production, and under the old rule that made it a dev
+    // box. The allowlist means a typo fails closed.
+    stubAgent("down");
+    process.env.PLATFORM_ENV = "porduction";
+    await assert.rejects(resolve, /Refusing to send LLM traffic unprotected/);
   });
 
   it("is loud when it falls back", async () => {
     // An unprotected call that looks identical to a protected one is how this
     // fails in the field.
     stubAgent("down");
+    process.env.PLATFORM_ENV = "development";
     const warn = mock.method(console, "warn", () => {});
 
     await resolve();

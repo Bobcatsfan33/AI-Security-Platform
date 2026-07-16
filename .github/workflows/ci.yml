@@ -126,6 +126,14 @@ jobs:
         working-directory: sdks/node
         run: npm test
 
+      - name: Mutation check — prove the fail-closed suites bite
+        # Green tests say the code passes; they do not say the tests would
+        # notice if the code were wrong. For the branch that decides whether
+        # unprotected LLM traffic ships, that difference is the point. This
+        # reintroduces the exact regression the reviewers caught and fails the
+        # build if either suite stays green against it.
+        run: sdks/mutation_check.sh
+
   security:
     name: Security gates
     runs-on: ubuntu-latest

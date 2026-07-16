@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 )
 
@@ -38,9 +39,50 @@ const (
 	NoPolicyClosed NoPolicyBehavior = "closed"
 )
 
+// Resolve normalises a NoPolicyBehavior for use on the hot path.
+//
+// The zero value of the type is "", which is neither branch — and the hot path
+// must not treat "unset" as "open". A Config built by a constructor that forgot
+// this field would otherwise be an open proxy by omission, which is exactly the
+// class of bug NoPolicyBehavior exists to close. Unset resolves CLOSED here,
+// deliberately: it is the same rule as an unspecified AGENT_ENVIRONMENT, and it
+// means the permissive branch can only ever be reached by asking for it.
+//
+// cmd/agent resolves the setting explicitly at startup, so in practice this is
+// belt-and-braces — but "in practice" is a convention, and this is an
+// invariant.
+func (b NoPolicyBehavior) Resolve() NoPolicyBehavior {
+	if b == NoPolicyOpen {
+		return NoPolicyOpen
+	}
+	return NoPolicyClosed
+}
+
 // Environment values that mean "production" for the purpose of the default.
 // Matches the SDKs' prod/production pair.
 var productionEnvironments = map[string]bool{"prod": true, "production": true}
+
+// Environment values that are a deliberate statement of "not production", and
+// therefore buy the permissive branch.
+//
+// An allowlist rather than "anything that isn't production", because the else
+// branch of that test is where typos land: "porduction" is not in the
+// production set, so a negative test resolves it OPEN — a hand-typed
+// AGENT_ENVIRONMENT silently turning a production agent into an open proxy.
+// Unknown values are an error instead (see ResolveNoPolicyBehavior), which is
+// the same posture AGENT_NO_POLICY_BEHAVIOR already had; applying it to only
+// one of the two variables made the strictness claim half true.
+var nonProductionEnvironments = map[string]bool{
+	"dev":         true,
+	"development": true,
+	"staging":     true,
+	"stage":       true,
+	"test":        true,
+	"testing":     true,
+	"ci":          true,
+	"local":       true,
+	"sandbox":     true,
+}
 
 // ResolveNoPolicyBehavior turns AGENT_NO_POLICY_BEHAVIOR + AGENT_ENVIRONMENT
 // into a decision.
@@ -67,7 +109,15 @@ func ResolveNoPolicyBehavior(explicit, environment string) (NoPolicyBehavior, er
 			// this is belt-and-braces for any other caller.)
 			return NoPolicyClosed, nil
 		}
-		return NoPolicyOpen, nil
+		if nonProductionEnvironments[env] {
+			return NoPolicyOpen, nil
+		}
+		return "", fmt.Errorf(
+			"AGENT_ENVIRONMENT=%q is not recognised, so the cold-start posture cannot be "+
+				"inferred from it. Use one of production/prod, or one of %s — or set "+
+				"AGENT_NO_POLICY_BEHAVIOR explicitly to say what you mean",
+			environment, strings.Join(sortedKeys(nonProductionEnvironments), "/"),
+		)
 	default:
 		return "", fmt.Errorf(
 			"AGENT_NO_POLICY_BEHAVIOR=%q is not valid: want %q or %q (unset resolves by "+
@@ -75,4 +125,16 @@ func ResolveNoPolicyBehavior(explicit, environment string) (NoPolicyBehavior, er
 			explicit, NoPolicyOpen, NoPolicyClosed, NoPolicyClosed, NoPolicyOpen,
 		)
 	}
+}
+
+// sortedKeys keeps the error message deterministic — an error that lists its
+// options in map order is a different string every run, which makes it
+// unmatchable in tests and unrecognisable in logs.
+func sortedKeys(m map[string]bool) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
 }

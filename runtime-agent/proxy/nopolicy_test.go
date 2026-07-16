@@ -51,6 +51,7 @@ func TestResolveNoPolicyBehavior(t *testing.T) {
 		{"unset in prod shorthand", "", "prod", NoPolicyClosed},
 		{"unset is case-insensitive", "", "PRODUCTION", NoPolicyClosed},
 		{"unset in development", "", "development", NoPolicyOpen},
+		{"unset in dev shorthand", "", "dev", NoPolicyOpen},
 		{"unset in staging", "", "staging", NoPolicyOpen},
 		{"unset in test", "", "test", NoPolicyOpen},
 
@@ -73,6 +74,32 @@ func TestResolveNoPolicyBehavior(t *testing.T) {
 	}
 }
 
+// TestResolveNoPolicyBehaviorRejectsUnknownEnvironment — the strictness claim
+// has to hold for BOTH variables or it is half true.
+//
+// "porduction" is neither empty nor in the production set, so it used to fall
+// to the else branch and resolve OPEN: a typo in AGENT_ENVIRONMENT silently
+// turned a production agent into an open proxy on cold start. The one variable
+// most likely to be typed by hand was the one that failed permissively.
+func TestResolveNoPolicyBehaviorRejectsUnknownEnvironment(t *testing.T) {
+	for _, bad := range []string{"porduction", "prd", "prod1", "live", "PRODUCTIN"} {
+		if _, err := ResolveNoPolicyBehavior("", bad); err == nil {
+			t.Errorf("AGENT_ENVIRONMENT=%q must error, not resolve open", bad)
+		}
+	}
+}
+
+func TestResolveNoPolicyBehaviorExplicitBehaviorSurvivesUnknownEnvironment(t *testing.T) {
+	// An explicit behaviour answers the question outright, so the environment
+	// is never consulted and cannot invalidate it.
+	for _, explicit := range []string{"open", "closed"} {
+		if _, err := ResolveNoPolicyBehavior(explicit, "porduction"); err != nil {
+			t.Errorf("explicit %q must not be rejected for an unknown environment: %v",
+				explicit, err)
+		}
+	}
+}
+
 func TestResolveNoPolicyBehaviorRejectsGarbage(t *testing.T) {
 	// A typo must not silently resolve to the permissive branch. The agent
 	// already refuses to start on partial mTLS config rather than downgrade
@@ -82,6 +109,49 @@ func TestResolveNoPolicyBehaviorRejectsGarbage(t *testing.T) {
 		if _, err := ResolveNoPolicyBehavior(bad, "production"); err == nil {
 			t.Errorf("ResolveNoPolicyBehavior(%q, …) must error, not guess", bad)
 		}
+	}
+}
+
+// ── the zero value is not a branch ────────────────────────────────────────
+
+// TestZeroValueNoPolicyBehaviorResolvesClosed — Config's zero value used to BE
+// the permissive branch: the hot path read `if NoPolicyBehavior ==
+// NoPolicyClosed { block } else { forward }`, so any constructor that omitted
+// the field got an open proxy by omission. The comment saying "cmd/agent
+// resolves it explicitly" was a convention standing where an invariant belongs.
+func TestZeroValueNoPolicyBehaviorResolvesClosed(t *testing.T) {
+	var unset NoPolicyBehavior
+
+	if unset.Resolve() != NoPolicyClosed {
+		t.Errorf("the zero value must resolve closed, got %q — a Config that "+
+			"forgot this field must not be an open proxy", unset.Resolve())
+	}
+}
+
+func TestResolveOnlyHonoursAnExplicitOpen(t *testing.T) {
+	if NoPolicyOpen.Resolve() != NoPolicyOpen {
+		t.Error("an explicit open must survive Resolve")
+	}
+	if NoPolicyClosed.Resolve() != NoPolicyClosed {
+		t.Error("an explicit closed must survive Resolve")
+	}
+	// Anything else — a hand-assigned garbage value, a future constant nobody
+	// wired up — lands closed. The permissive branch is reachable only by
+	// asking for it by name.
+	if NoPolicyBehavior("banana").Resolve() != NoPolicyClosed {
+		t.Error("an unrecognised value must resolve closed")
+	}
+}
+
+// TestConfigWithoutNoPolicyBehaviorBlocks proves the invariant through the real
+// handler, not just the helper.
+func TestConfigWithoutNoPolicyBehaviorBlocks(t *testing.T) {
+	f := newNoPolicyFixture(t, "") // field omitted, as a careless constructor would
+
+	rec := f.post()
+
+	if rec.Code != http.StatusUnavailableForLegalReasons {
+		t.Fatalf("a Config with NoPolicyBehavior unset must fail CLOSED, got %d", rec.Code)
 	}
 }
 

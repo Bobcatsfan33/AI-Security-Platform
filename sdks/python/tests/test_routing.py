@@ -9,14 +9,20 @@ ever executed.
 The contract under test:
 
 * ``PLATFORM_FALLBACK_DIRECT`` is explicit and always wins.
-* Unset, it resolves by environment: prod/production → fail **closed**;
-  anything else → fail **open** (a laptop with no agent running must not be
-  bricked).
+* Otherwise ``PLATFORM_ENV`` decides, and ONLY a recognised non-production
+  environment falls back. Unset, empty and unrecognised all fail **closed** —
+  matching the runtime agent, so the platform has one convention.
 * Falling back is never silent — an unprotected call warns loudly.
+
+The decision table lives in ``sdks/routing-cases.json`` and is iterated by both
+this suite and the Node one. Transport-level behaviour (what counts as "down")
+is legitimately language-specific and tested separately below.
 """
 
 from __future__ import annotations
 
+import json
+import pathlib
 import warnings
 
 import pytest
@@ -29,6 +35,22 @@ DIRECT = "https://api.openai.com/v1"
 # The environment variables under test. Cleared before every test so a
 # developer's real shell config can never make a security test pass.
 _ENV_VARS = ("PLATFORM_ENV", "PLATFORM_FALLBACK_DIRECT", "PLATFORM_AGENT_URL")
+
+# The decision table is SHARED with the Node suite (sdks/routing-cases.json).
+# Both SDKs make the same promise, so the table that decides it is one artifact
+# rather than two hand-maintained lists that drift — which they already had.
+_CASES_FILE = pathlib.Path(__file__).resolve().parents[2] / "routing-cases.json"
+
+
+def _shared_cases() -> list[dict]:
+    assert _CASES_FILE.exists(), (
+        f"{_CASES_FILE} is missing — the shared decision table is what keeps the "
+        "Python and Node suites honest about being the same contract."
+    )
+    return json.loads(_CASES_FILE.read_text())["cases"]
+
+
+SHARED_CASES = _shared_cases()
 
 
 @pytest.fixture(autouse=True)
@@ -51,62 +73,40 @@ def _resolve() -> str:
     return _routing.resolve_base_url(proxy_path=PROXY_PATH, direct_default=DIRECT)
 
 
-# ─────────────────────────────────── the environment default
+# ─────────────────────────────────── the shared decision table
 
 
-@pytest.mark.parametrize("env", ["prod", "production", "PROD", "Production", "PrOdUcTiOn"])
-def test_production_fails_closed_by_default(env: str, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Case-insensitively: production means closed. A deployment that sets
-    PLATFORM_ENV and nothing else is protected."""
-    monkeypatch.setenv("PLATFORM_ENV", env)
-    assert _routing.fallback_direct() is False
+@pytest.mark.parametrize(
+    "case", SHARED_CASES, ids=[c["name"] for c in SHARED_CASES]
+)
+def test_shared_decision_table(case: dict, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Every case in sdks/routing-cases.json, driven against the Python SDK.
+
+    The Node suite iterates the same file. Neither language owns the contract;
+    a case added for one is automatically demanded of the other, which is the
+    only way two implementations of one promise stay honest.
+    """
+    for key, value in case["env"].items():
+        monkeypatch.setenv(key, value)
+
+    assert _routing.fallback_direct() is case["fallback"], case.get("why", case["name"])
 
 
-@pytest.mark.parametrize("env", ["dev", "development", "staging", "test", "", "anything-else"])
-def test_non_production_falls_back_by_default(env: str, monkeypatch: pytest.MonkeyPatch) -> None:
-    """A laptop with no agent running must still work, or nobody adopts this."""
-    monkeypatch.setenv("PLATFORM_ENV", env)
-    assert _routing.fallback_direct() is True
+def test_the_shared_table_covers_the_dangerous_default() -> None:
+    """A guard on the table itself: the case that matters most must be in it.
 
+    The first cut of this SDK defaulted to FALLBACK on unset PLATFORM_ENV, so a
+    production deployment that forgot the variable shipped unprotected traffic
+    behind a warning. If that case ever falls out of the table, this suite would
+    go quiet about the exact regression that motivated it.
+    """
+    unset_cases = [c for c in SHARED_CASES if not c["env"]]
 
-def test_unset_environment_falls_back_by_default() -> None:
-    assert _routing.fallback_direct() is True
-
-
-# ─────────────────────────────────── explicit always wins
-
-
-def test_explicit_false_overrides_dev_default(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("PLATFORM_ENV", "dev")
-    monkeypatch.setenv("PLATFORM_FALLBACK_DIRECT", "false")
-    assert _routing.fallback_direct() is False
-
-
-def test_explicit_true_overrides_prod_default(monkeypatch: pytest.MonkeyPatch) -> None:
-    """An operator who explicitly opts out of protection in prod gets what they
-    asked for. Documented, deliberate, and their call — but it must be
-    explicit, never a default."""
-    monkeypatch.setenv("PLATFORM_ENV", "production")
-    monkeypatch.setenv("PLATFORM_FALLBACK_DIRECT", "true")
-    assert _routing.fallback_direct() is True
-
-
-@pytest.mark.parametrize("value", ["TRUE", "True", "tRuE"])
-def test_explicit_true_is_case_insensitive(value: str, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("PLATFORM_FALLBACK_DIRECT", value)
-    assert _routing.fallback_direct() is True
-
-
-@pytest.mark.parametrize("value", ["yes", "1", "on", "", "  ", "truthy", "0", "no"])
-def test_only_the_literal_true_enables_fallback(
-    value: str, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Anything that is not exactly "true" fails closed. A typo like
-    PLATFORM_FALLBACK_DIRECT=1 must not silently unprotect traffic — the safe
-    reading of an ambiguous value is the protected one."""
-    monkeypatch.setenv("PLATFORM_ENV", "production")
-    monkeypatch.setenv("PLATFORM_FALLBACK_DIRECT", value)
-    assert _routing.fallback_direct() is False
+    assert unset_cases, "the table must cover a completely unset environment"
+    assert all(c["fallback"] is False for c in unset_cases), (
+        "an unset environment must fail CLOSED — absence of information is not "
+        "evidence of a dev box"
+    )
 
 
 # ─────────────────────────────────── resolve_base_url: the decision
@@ -131,33 +131,62 @@ def test_prod_with_agent_down_refuses_to_send(
     must raise rather than send a single unprotected token."""
     monkeypatch.setenv("PLATFORM_ENV", "production")
 
-    with pytest.raises(RuntimeError, match="refusing to send LLM traffic"):
+    with pytest.raises(RuntimeError, match="[Rr]efusing to send LLM traffic"):
         _resolve()
 
 
-def test_the_refusal_names_the_escape_hatch(
+def test_the_refusal_names_exactly_which_variable_to_set(
     agent_down: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """An error that stops a deploy must say how to proceed deliberately, or
-    someone will reach for a worse workaround."""
+    """This error WILL trip first-run developers — that is the accepted cost of
+    failing closed on unset. So it has to be the most useful error in the
+    codebase: an error that stops someone and does not tell them how to proceed
+    deliberately is an error they route around with a worse workaround."""
     monkeypatch.setenv("PLATFORM_ENV", "production")
 
     with pytest.raises(RuntimeError) as exc:
         _resolve()
 
-    assert "PLATFORM_FALLBACK_DIRECT" in str(exc.value)
+    message = str(exc.value)
+    assert "PLATFORM_ENV=development" in message, "must name the dev fix verbatim"
+    assert "PLATFORM_FALLBACK_DIRECT" in message, "must name the deliberate opt-out"
+    assert "PLATFORM_AGENT_URL" in message, "must name how to point at a real agent"
 
 
-def test_dev_with_agent_down_falls_back_to_direct(agent_down: None) -> None:
+def test_an_unset_environment_refuses_and_explains(agent_down: None) -> None:
+    """The behaviour change, asserted head-on: no PLATFORM_ENV at all used to
+    mean "fall back, unprotected, with a warning". It now refuses."""
+    with pytest.raises(RuntimeError) as exc:
+        _resolve()
+
+    assert "not a recognised non-production environment" in str(exc.value)
+
+
+def test_a_typo_environment_refuses_rather_than_falling_back(
+    agent_down: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """'porduction' is not production, and under the old rule that made it a
+    dev box. The allowlist means a typo fails closed."""
+    monkeypatch.setenv("PLATFORM_ENV", "porduction")
+
+    with pytest.raises(RuntimeError):
+        _resolve()
+
+
+def test_dev_with_agent_down_falls_back_to_direct(
+    agent_down: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("PLATFORM_ENV", "development")
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         assert _resolve() == DIRECT
 
 
-def test_falling_back_is_loud(agent_down: None) -> None:
+def test_falling_back_is_loud(agent_down: None, monkeypatch: pytest.MonkeyPatch) -> None:
     """warnings.warn, not just logging: the bypass has to surface even when the
     host app never configured a logger. An unprotected call that looks
     identical to a protected one is how this fails in the field."""
+    monkeypatch.setenv("PLATFORM_ENV", "development")
     with pytest.warns(RuntimeWarning, match="NOT protected"):
         _resolve()
 

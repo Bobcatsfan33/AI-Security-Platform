@@ -21,13 +21,31 @@ record. Phase 2 verifies the whole class under fault injection.
 **Was:** `PLATFORM_ENV=prod` makes both SDKs refuse to send LLM traffic when the
 runtime agent is unreachable — the product's core promise — with **zero tests in
 either language and no CI job**.
-**Closed by:** `sdks/python/tests/test_routing.py` (38 tests) and
-`sdks/node/src/routing.test.ts` (36 tests), covering the same contract case for
-case so the two SDKs cannot drift apart; plus the `SDKs (fail-closed)` job in
-`.github/workflows/ci.yml`, which is what makes them binding.
-**Verified, not assumed:** both suites were mutation-tested — removing the
-fail-closed default kills 8 Python tests and 7 Node tests. A suite that passes
-against a broken implementation is decoration.
+**Closed by:** `sdks/python/tests/test_routing.py` and
+`sdks/node/src/routing.test.ts`, both iterating ONE shared decision table
+(`sdks/routing-cases.json`) so a case added for either language is demanded of
+the other; plus the `SDKs (fail-closed)` CI job, which is what makes them
+binding.
+**Verified mechanically, not in prose:** `sdks/mutation_check.sh` runs in CI. It
+reintroduces the exact regression — the permissive default — and fails the build
+if either suite stays green against it. A hand-run mutation is a claim about a
+moment; this is the repo's rule (a claim points at something checked) applied to
+the test suite itself.
+
+**BEHAVIOUR CHANGE — unset `PLATFORM_ENV` now fails closed.** Review of the
+first cut caught that the SDKs fell back to unprotected direct calls on
+unset/empty/unrecognised `PLATFORM_ENV`, while the agent resolved unset to
+closed. The "one convention" claim was therefore false at its most dangerous
+edge: **a production deployment that simply forgot to set `PLATFORM_ENV` shipped
+unprotected traffic behind a warning** — permissive by doing nothing. Both SDKs
+now match the agent: explicit `PLATFORM_FALLBACK_DIRECT` always wins; otherwise
+only a *recognised* non-production environment (an allowlist, so
+`PLATFORM_ENV=porduction` fails closed rather than reading as "not production")
+buys the fallback. The refusal names `PLATFORM_ENV=development`,
+`PLATFORM_AGENT_URL` and `PLATFORM_FALLBACK_DIRECT` verbatim, because this trips
+first-run developers — one line of friction, once, against silent unprotected
+prod traffic. Documented in `sdks/python/README.md` and `sdks/node/README.md`
+(both new — the SDKs had no README at all, despite `package.json` listing one).
 
 ### GAP-003 — Agent cold start with no policy is unconditionally fail-open ✅ CLOSED (Phase 1)
 **Was:** with no policy cached (control plane unreachable at startup) every

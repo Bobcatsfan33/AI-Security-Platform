@@ -135,12 +135,16 @@ func (h *HTTPStage2) Classify(ctx context.Context, in *Input, p *CompiledPolicy)
 func stage2Fail(start time.Time, failClosed bool, reason string) StageResult {
 	if failClosed {
 		return StageResult{
-			Stage:     ExitStage2ML,
-			Mode:      ModeStage2Unavailable,
-			Matched:   true,
-			Action:    ActionBlocked,
-			Severity:  SeverityHigh,
-			RuleID:    "onnx-stage2",
+			Stage:    ExitStage2ML,
+			Mode:     ModeStage2Unavailable,
+			Matched:  true,
+			Action:   ActionBlocked,
+			Severity: SeverityHigh,
+			// Deliberately NO RuleID. decide() folds RuleIDs into
+			// Decision.MatchedRules — the list of rules that FIRED. A classifier
+			// that never answered fired nothing, and naming "onnx-stage2" there
+			// would tell an operator the model made a call it never made. The
+			// Mode field is where this result explains itself.
 			Reason:    reason + "; fail-closed",
 			LatencyUS: time.Since(start).Microseconds(),
 		}
