@@ -87,7 +87,10 @@ pytest -m integration               # postgres + redis must be up
 pytest --cov=app --cov-report=term-missing
 ```
 
-499 unit tests pass on the current `main`.
+The unit suite runs on every push and PR — see the `backend` job in
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) for the count and result
+on the current `main`. (A hand-maintained number here drifted from reality once
+already; CI is the only count that stays true.)
 
 ### Load test
 

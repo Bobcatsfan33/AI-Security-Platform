@@ -12,8 +12,16 @@ pipeline, and streams telemetry back to the control plane.
 
 ## Binding architectural decisions
 
-- Go 1.22+ (the blueprint forbids Python here — hot path latency budget
-  is sub-15ms for `balanced` mode; Python's GIL is incompatible).
+- Go 1.22+ (the blueprint forbids Python here — Python's GIL is
+  incompatible with the intended hot-path concurrency).
+- **Latency: sub-15ms added latency for `balanced` mode is a TARGET, and is
+  currently UNMEASURED.** Nothing in this repo benchmarks it: there is no
+  `Benchmark*` function and no load test against the proxy path. Per-stage
+  `LatencyUS` is stamped at runtime and shipped as telemetry, but no test
+  asserts a bound. Phase 2 lands `runtime-agent/bench/` with p50/p99 per stage
+  against a mock upstream and a CI regression gate; until those numbers are
+  published in `docs/BENCHMARKS.md`, treat this as an intention, not a
+  property. Tracked in [`docs/GAPS.md`](../docs/GAPS.md) as GAP-002.
 - The Rust+CGo bridge for ONNX inference lives in `classifier/` (also
   deferred to follow-on). For now, Stage 2 is wired into the pipeline
   but returns `no-match` — the Python control plane runs Stage 2 for

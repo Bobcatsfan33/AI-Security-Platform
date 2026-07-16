@@ -87,6 +87,18 @@ class Settings(BaseSettings):
     stage2_onnx_label_map: str = "0:safe,1:prompt_injection"
     stage2_onnx_threshold: float = 0.5  # min probability for a category to fire
 
+    # Tier C feature flags — deny-by-default (see app/core/tiers.py and
+    # docs/TIERS.md). Tier C is frozen, not deleted: the code stays on disk and
+    # stays tested, but the surface does not exist until a customer pulls it
+    # forward. An unflagged Tier C router is not mounted at all — it is absent
+    # from the OpenAPI schema, not a 403.
+    platform_enable_threat_intel: bool = False
+    # Gates the SIEM exporter types beyond the Tier B pair (splunk_hec,
+    # elastic). Enforced in app/siem/exporters.py at BOTH config-create and on
+    # the forward path, so a config written before the flag landed cannot keep
+    # forwarding to a dark backend.
+    platform_enable_siem_extended: bool = False
+
     @property
     def cors_origins_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]

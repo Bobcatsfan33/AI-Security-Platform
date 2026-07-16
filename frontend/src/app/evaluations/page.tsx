@@ -1,5 +1,6 @@
 "use client";
 
+import { PreviewBadge } from "@/components/PreviewBadge";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 
@@ -27,7 +28,10 @@ export default function EvaluationsPage() {
 
   return (
     <div>
-      <h1 className="mb-6 text-2xl font-semibold">Evaluations</h1>
+      <div className="mb-6 flex items-center gap-2">
+        <h1 className="text-2xl font-semibold">Evaluations</h1>
+        <PreviewBadge variant="heading" />
+      </div>
 
       {error ? (
         <p className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">

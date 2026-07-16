@@ -1,15 +1,21 @@
 """FastAPI application factory.
 
-v2.0 pivot: this is the AI Asset Intelligence Platform — two product
-wedges only.
+Every router mounts through :data:`app.core.tiers.ROUTER_TIERS`, which is the
+single source of truth for the tiering map documented in ``docs/TIERS.md``:
 
-  Track 1: Asset Inventory + Connectors (this sprint)
-  Track 2: Runtime Monitoring (already wired, untouched by the pivot)
+* Tier A mounts always and is held to reference quality.
+* Tier B mounts always, tagged ``preview`` in the OpenAPI schema.
+* Tier C is frozen and deny-by-default — it mounts only when its
+  ``PLATFORM_ENABLE_*`` flag is set, and is otherwise absent from the schema
+  entirely (not a 403).
 
-Governance modules (evaluation, findings, test_cases, scim, aibom, mcp,
-idp_admin) remain on disk for git history but are NOT registered as
-routes. Red Teaming and Policies have been revived for v2 (the latter
-feeds the runtime agent via GET /v1/policies/{id}).
+Mounting an unregistered prefix raises: a new router must be tiered first.
+
+Still on disk but NOT mounted, by design (Tier C frozen — see docs/GAPS.md
+for the promotion triggers): ``scim`` and ``idp_admin`` (enterprise
+provisioning; OIDC login covers a design-partner POC). ``siem`` and ``aibom``
+are unmounted only until Phase 1 lands their HTTP and tenant-isolation tests
+— blast radius (aibom) is Tier A and SIEM's Splunk/Elastic pair is Tier B.
 """
 
 from __future__ import annotations
@@ -17,7 +23,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Response
+from fastapi import APIRouter, FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 
 from app import __version__
@@ -49,6 +55,7 @@ from app.api.v1 import threat_intel as threat_intel_routes
 from app.api.v1 import validation as validation_routes
 from app.core.config import get_settings
 from app.core.logging import configure_logging, get_logger
+from app.core.tiers import PREVIEW_TAG, Tier, spec_for
 from app.observability.metrics import render
 from app.observability.middleware import MetricsMiddleware
 from app.observability.tracing import setup_tracing
@@ -131,6 +138,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 def create_app() -> FastAPI:
     settings = get_settings()
+    log = get_logger("startup")
     app = FastAPI(
         title="AI Asset Intelligence Platform",
         version="2.0.0",
@@ -138,6 +146,19 @@ def create_app() -> FastAPI:
             "Discover every AI system. Monitor every model. " "Know your risk before auditors ask."
         ),
         lifespan=lifespan,
+        openapi_tags=[
+            {
+                "name": PREVIEW_TAG,
+                "description": (
+                    "**Preview.** Shipped and usable, but not held to the "
+                    "hardening bar of the agent/MCP security surface: expect "
+                    "thinner tests, unbenchmarked performance, and breaking "
+                    "changes without a deprecation window. Not recommended as "
+                    "the load-bearing surface of a production integration. "
+                    "See docs/TIERS.md."
+                ),
+            }
+        ],
         openapi_url=f"{settings.api_v1_prefix}/openapi.json",
         docs_url=f"{settings.api_v1_prefix}/docs",
         redoc_url=f"{settings.api_v1_prefix}/redoc",
@@ -160,33 +181,50 @@ def create_app() -> FastAPI:
     # Optional OpenTelemetry tracing (no-op unless OTEL endpoint + packages).
     setup_tracing(app)
 
-    prefix = settings.api_v1_prefix
-    app.include_router(health_routes.router, prefix=prefix)
-    app.include_router(auth_routes.router, prefix=f"{prefix}/auth")
-    app.include_router(connectors_routes.router, prefix=f"{prefix}/connectors")
-    app.include_router(assets_routes.router, prefix=f"{prefix}/assets")
-    app.include_router(discovery_routes.router, prefix=f"{prefix}/discovery")
-    app.include_router(anomalies_routes.router, prefix=f"{prefix}/anomalies")
-    app.include_router(dashboard_routes.router, prefix=f"{prefix}/dashboard")
-    app.include_router(dashboards_routes.router, prefix=f"{prefix}/dashboards")
-    app.include_router(runtime_routes.router, prefix=f"{prefix}/runtime")
-    app.include_router(narratives_routes.router, prefix=f"{prefix}/narratives")
-    app.include_router(policies_routes.router, prefix=f"{prefix}/policies")
-    app.include_router(suppressions_routes.router, prefix=f"{prefix}/suppressions")
-    app.include_router(validation_routes.router, prefix=f"{prefix}/validation")
-    app.include_router(aiguard_routes.router, prefix=f"{prefix}/aiguard")
-    app.include_router(remediation_routes.router, prefix=f"{prefix}/remediation")
-    app.include_router(risk_index_routes.router, prefix=f"{prefix}/risk-index")
-    app.include_router(benchmark_routes.router, prefix=f"{prefix}/benchmark")
-    app.include_router(redteam_routes.router, prefix=f"{prefix}/redteam")
+    def mount(router: APIRouter, rel_prefix: str) -> None:
+        """Mount one router at its registered tier, or not at all."""
+        spec = spec_for(rel_prefix)
+        if spec.flag is not None and not getattr(settings, spec.flag):
+            log.info(
+                "router_not_mounted_tier_c",
+                prefix=rel_prefix,
+                flag=spec.flag.upper(),
+            )
+            return
+        app.include_router(
+            router,
+            prefix=f"{settings.api_v1_prefix}{rel_prefix}",
+            # Appends to the router's own tags, so a Tier B surface is
+            # self-describing in /v1/docs without touching 25 route decorators.
+            tags=[PREVIEW_TAG] if spec.tier is Tier.B else None,
+        )
+
+    mount(health_routes.router, "")
+    mount(auth_routes.router, "/auth")
+    mount(connectors_routes.router, "/connectors")
+    mount(assets_routes.router, "/assets")
+    mount(discovery_routes.router, "/discovery")
+    mount(anomalies_routes.router, "/anomalies")
+    mount(dashboard_routes.router, "/dashboard")
+    mount(dashboards_routes.router, "/dashboards")
+    mount(runtime_routes.router, "/runtime")
+    mount(narratives_routes.router, "/narratives")
+    mount(policies_routes.router, "/policies")
+    mount(suppressions_routes.router, "/suppressions")
+    mount(validation_routes.router, "/validation")
+    mount(aiguard_routes.router, "/aiguard")
+    mount(remediation_routes.router, "/remediation")
+    mount(risk_index_routes.router, "/risk-index")
+    mount(benchmark_routes.router, "/benchmark")
+    mount(redteam_routes.router, "/redteam")
     # Governance revival (WS1/WS2) — models + tables restored in 0008.
-    app.include_router(evaluations_routes.router, prefix=f"{prefix}/evaluations")
-    app.include_router(findings_routes.router, prefix=f"{prefix}/findings")
-    app.include_router(test_cases_routes.router, prefix=f"{prefix}/test-cases")
-    app.include_router(threat_intel_routes.router, prefix=f"{prefix}/threat-intel")
-    app.include_router(compliance_routes.router, prefix=f"{prefix}/compliance")
-    app.include_router(reports_routes.router, prefix=f"{prefix}/reports")
-    app.include_router(mcp_routes.router, prefix=f"{prefix}/mcp")
+    mount(evaluations_routes.router, "/evaluations")
+    mount(findings_routes.router, "/findings")
+    mount(test_cases_routes.router, "/test-cases")
+    mount(threat_intel_routes.router, "/threat-intel")
+    mount(compliance_routes.router, "/compliance")
+    mount(reports_routes.router, "/reports")
+    mount(mcp_routes.router, "/mcp")
 
     @app.get("/metrics", include_in_schema=False)
     async def metrics() -> Response:

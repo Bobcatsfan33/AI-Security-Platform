@@ -1,5 +1,6 @@
 "use client";
 
+import { PreviewBadge } from "@/components/PreviewBadge";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 
@@ -80,7 +81,10 @@ export default function CompliancePage() {
   return (
     <div className="space-y-6">
       <header>
-        <h1 className="text-2xl font-semibold text-slate-900">Compliance</h1>
+        <div className="flex items-center gap-2">
+          <h1 className="text-2xl font-semibold text-slate-900">Compliance</h1>
+          <PreviewBadge variant="heading" />
+        </div>
         <p className="text-sm text-slate-600">
           Download evidence packs for auditor review.
         </p>
