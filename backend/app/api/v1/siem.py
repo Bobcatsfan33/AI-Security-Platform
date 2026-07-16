@@ -27,7 +27,12 @@ from app.db.session import get_db
 from app.identity.types import IdentityContext
 from app.security.audit_log import AuditEventType, AuditOutcome, log_event
 from app.security.secrets import get_resolver
-from app.siem.exporters import TIER_B_EXPORTER_TYPES, exporter_type_allowed
+from app.siem.exporters import (
+    TIER_B_EXPORTER_TYPES,
+    TIER_C_EXPORTER_TYPES,
+    exporter_type_allowed,
+    exporter_type_known,
+)
 from app.siem.forwarder import get_forwarder
 
 router = APIRouter(tags=["admin", "siem"])
@@ -42,6 +47,11 @@ class ExporterCreate(BaseModel):
     type: ExporterType
     name: str = Field(min_length=1, max_length=64)
     config: dict[str, Any]
+    # Lets an operator stop forwarding without discarding the configuration.
+    # Load-bearing for the tier gate: a config for a now-gated type can always
+    # be disabled, which is the difference between "frozen" and "stuck".
+    # Defaults true, so configs written before this field existed keep working.
+    enabled: bool = True
 
     @field_validator("config")
     @classmethod
@@ -55,6 +65,9 @@ class ExporterRead(BaseModel):
     type: ExporterType
     name: str
     config_redacted: dict[str, Any]
+    # Surfaced so "why am I seeing no events?" is answerable from the API rather
+    # than from the logs. Defaults true for entries written before the field.
+    enabled: bool = True
 
 
 # Per-type secret fields that MUST be passed as a secret reference.
@@ -77,14 +90,36 @@ def _validate_exporter_tier(exporter: ExporterCreate) -> None:
     is the read/forward-path half. Both are needed: this one gives an operator a
     clear 400 instead of a config that saves and then silently never delivers,
     and that one ensures a config predating the flag cannot keep forwarding.
+
+    Two carve-outs, both about not trapping the operator:
+
+    * **Disabling is always allowed.** Gating every write to a now-gated type
+      would leave someone with a legacy Sentinel config able to delete it but
+      not to turn it off — the gate exists to stop forwarding, and disabling
+      *is* stopping forwarding. Blocking it would push operators toward
+      deleting configuration they may want back when the flag flips.
+    * **Unknown types get their own message.** "Set PLATFORM_ENABLE_SIEM_EXTENDED"
+      is actively misleading advice for a typo'd type — the flag will never
+      enable it.
     """
+    if not exporter.enabled:
+        return
     if exporter_type_allowed(exporter.type):
         return
+    if not exporter_type_known(exporter.type):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"unknown exporter type '{exporter.type}'. Known types: "
+                f"{', '.join(sorted(TIER_B_EXPORTER_TYPES | TIER_C_EXPORTER_TYPES))}."
+            ),
+        )
     raise HTTPException(
         status_code=status.HTTP_400_BAD_REQUEST,
         detail=(
             f"exporter type '{exporter.type}' is not enabled on this deployment. "
-            "Set PLATFORM_ENABLE_SIEM_EXTENDED=true to enable it "
+            "Set PLATFORM_ENABLE_SIEM_EXTENDED=true to enable it, or send "
+            "enabled=false to keep the configuration without forwarding "
             f"(enabled by default: {', '.join(sorted(TIER_B_EXPORTER_TYPES))})."
         ),
     )

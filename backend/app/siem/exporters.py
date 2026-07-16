@@ -59,6 +59,17 @@ def extended_siem_enabled() -> bool:
     return get_settings().platform_enable_siem_extended
 
 
+def exporter_type_known(etype: str) -> bool:
+    """Whether this is an exporter type at all.
+
+    Separate from :func:`exporter_type_allowed` because the two failures need
+    different words: a *gated* type is real and one flag away, an *unknown*
+    type is a typo. Telling an operator that PLATFORM_ENABLE_SIEM_EXTENDED will
+    enable "splunk_hecc" sends them to go set a flag that cannot help them.
+    """
+    return etype in TIER_B_EXPORTER_TYPES or etype in TIER_C_EXPORTER_TYPES
+
+
 def exporter_type_allowed(etype: str) -> bool:
     """Deny-by-default gate for exporter types.
 
@@ -607,12 +618,28 @@ def _build_one(entry: dict[str, Any]) -> SiemExporter | None:
     etype = entry.get("type")
     name = entry.get("name") or etype or "siem"
     config = entry.get("config") or {}
+    # An explicitly disabled exporter is inert whatever its tier. Checked first
+    # so that disabling is always available as the way to stop forwarding
+    # without deleting the config (including for a type that is now gated).
+    if entry.get("enabled", True) is False:
+        logger.info(
+            "siem_exporter_disabled",
+            extra={"exporter_type": etype, "exporter_name": name},
+        )
+        return None
+    if not exporter_type_known(str(etype)):
+        logger.warning(
+            "siem_unknown_exporter_type",
+            extra={"exporter_type": etype, "exporter_name": name},
+        )
+        return None
     if not exporter_type_allowed(str(etype)):
         # Not an error: a dark exporter type is *inert*, exactly like an
         # unmounted Tier C router. Logged so an operator who set a config and
-        # sees no events has a breadcrumb rather than silence.
+        # sees no events has a breadcrumb rather than silence. Distinct from the
+        # unknown-type case above: this one IS one flag away.
         logger.warning(
-            "siem_exporter_type_disabled",
+            "siem_exporter_type_gated",
             extra={
                 "exporter_type": etype,
                 "exporter_name": name,

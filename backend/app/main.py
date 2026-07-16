@@ -11,6 +11,16 @@ single source of truth for the tiering map documented in ``docs/TIERS.md``:
 
 Mounting an unregistered prefix raises: a new router must be tiered first.
 
+Known limit, stated so nobody mistakes this for airtight: enforcement is
+convention plus a test, not structure. ``mount()`` is the only tiered path, but
+nothing *prevents* a future caller from reaching past it to
+``app.include_router`` directly. The backstop is
+``test_every_mounted_route_belongs_to_a_registered_router``, which walks the
+published schema — and it only checks paths under ``settings.api_v1_prefix``.
+So a router mounted directly at, say, ``/internal`` would be untiered AND
+invisible to the ratchet. Acceptable today (every surface is ``/v1``); if a
+second prefix ever appears, that test needs to widen before the surface lands.
+
 Still on disk but NOT mounted, by design (Tier C frozen — see docs/GAPS.md
 for the promotion triggers): ``scim`` and ``idp_admin`` (enterprise
 provisioning; OIDC login covers a design-partner POC). ``siem`` and ``aibom``

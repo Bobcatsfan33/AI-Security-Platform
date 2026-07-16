@@ -81,19 +81,37 @@ whose exemption list may only shrink.
 
 ## What Phase 0 changed
 
-Nothing about what the platform *can* do. Specifically:
+No capability was **removed** — Tier C code is frozen, not deleted, and every
+line of it is still tested. But "no behaviour change" would be a false claim,
+and this document is the wrong place to start making those.
 
-- Added the tier registry and mounted every router through it.
-- Tier C is now deny-by-default: `/v1/threat-intel` is absent from a default
-  build's OpenAPI schema, and the four Tier C SIEM exporter types build no
-  exporter on either the write or the forward path.
-- Tier B carries `preview` in OpenAPI and a badge in the UI, with a parity test
-  between the two lists.
-- Added the router coverage ratchet (a one-way door on HTTP + tenant-isolation
-  tests).
+### Behaviour changes an operator will notice
+
+Three, all of them the deny-by-default posture arriving somewhere it previously
+had not:
+
+1. **`/v1/threat-intel` no longer exists** on a default deployment. It was
+   mounted before; it is now absent from the OpenAPI schema entirely (a 404, not
+   a 403) unless `PLATFORM_ENABLE_THREAT_INTEL=true`. The UI nav link is gone
+   with it; the page and router remain on disk.
+2. **Pre-existing Tier C SIEM configs stop forwarding on deploy.** An org with a
+   working Sentinel/Datadog/Chronicle/webhook exporter configured *before* this
+   change will silently stop receiving those events unless
+   `PLATFORM_ENABLE_SIEM_EXTENDED=true`. This is the gate working as designed —
+   exporter config lives in a JSONB column and outlives the deploy that gated
+   it, so a write-path-only check would have left it forwarding — but it is a
+   real, operator-visible change and the most likely to surprise. It is logged
+   (`siem_exporter_type_gated`), and such a config can be disabled
+   (`enabled: false`) or deleted without needing the flag.
+3. **Tier B is labelled preview** in the OpenAPI schema and the UI. Cosmetic,
+   but it changes what an evaluator concludes about stability.
+
+### Mechanism added
+
+- The tier registry, with every router mounted through it.
+- The router coverage ratchet — a one-way door on HTTP + tenant-isolation tests.
 - Corrected two unbacked claims (README test count, agent latency target) per
   guardrail 1.
 
-Deferred to Phase 1 by design: **mounting** `siem` and `aibom`. Phase 0 is a
-no-behaviour-change phase, and mounting is a behaviour change — those routers
-land with their HTTP and tenant-isolation tests, not before.
+Deferred to Phase 1 by design: **mounting** `siem` and `aibom` (GAP-001). Those
+routers land with their HTTP and tenant-isolation tests, not before.
