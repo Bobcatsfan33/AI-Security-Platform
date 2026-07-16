@@ -27,7 +27,12 @@ from app.db.session import get_db
 from app.identity.types import IdentityContext
 from app.security.audit_log import AuditEventType, AuditOutcome, log_event
 from app.security.secrets import get_resolver
-from app.siem.exporters import TIER_B_EXPORTER_TYPES, exporter_type_allowed
+from app.siem.exporters import (
+    TIER_B_EXPORTER_TYPES,
+    TIER_C_EXPORTER_TYPES,
+    exporter_type_allowed,
+    exporter_type_known,
+)
 from app.siem.forwarder import get_forwarder
 
 router = APIRouter(tags=["admin", "siem"])
@@ -42,6 +47,11 @@ class ExporterCreate(BaseModel):
     type: ExporterType
     name: str = Field(min_length=1, max_length=64)
     config: dict[str, Any]
+    # Lets an operator stop forwarding without discarding the configuration.
+    # Load-bearing for the tier gate: a config for a now-gated type can always
+    # be disabled, which is the difference between "frozen" and "stuck".
+    # Defaults true, so configs written before this field existed keep working.
+    enabled: bool = True
 
     @field_validator("config")
     @classmethod
@@ -55,6 +65,9 @@ class ExporterRead(BaseModel):
     type: ExporterType
     name: str
     config_redacted: dict[str, Any]
+    # Surfaced so "why am I seeing no events?" is answerable from the API rather
+    # than from the logs. Defaults true for entries written before the field.
+    enabled: bool = True
 
 
 # Per-type secret fields that MUST be passed as a secret reference.
@@ -70,24 +83,101 @@ _SECRET_FIELDS: dict[str, set[str]] = {
 }
 
 
-def _validate_exporter_tier(exporter: ExporterCreate) -> None:
-    """Reject Tier C exporter types unless they have been pulled forward.
-
-    This is the write-path half of the gate; :func:`app.siem.exporters._build_one`
-    is the read/forward-path half. Both are needed: this one gives an operator a
-    clear 400 instead of a config that saves and then silently never delivers,
-    and that one ensures a config predating the flag cannot keep forwarding.
-    """
-    if exporter_type_allowed(exporter.type):
-        return
-    raise HTTPException(
+def _gated_type_error(etype: str) -> HTTPException:
+    return HTTPException(
         status_code=status.HTTP_400_BAD_REQUEST,
         detail=(
-            f"exporter type '{exporter.type}' is not enabled on this deployment. "
+            f"exporter type '{etype}' is not enabled on this deployment. "
             "Set PLATFORM_ENABLE_SIEM_EXTENDED=true to enable it "
             f"(enabled by default: {', '.join(sorted(TIER_B_EXPORTER_TYPES))})."
         ),
     )
+
+
+def _validate_exporter_tier_on_create(exporter: ExporterCreate) -> None:
+    """No carve-outs on create. A gated type cannot be created at all.
+
+    There is deliberately no ``enabled=false`` exemption here: the disable
+    carve-out exists to let an operator turn OFF a config that predates the
+    gate, and on create there is no legacy config to preserve. Allowing a
+    disabled-but-gated create would let anyone stage Sentinel/Datadog/Chronicle
+    exporters on a deployment where the flag is off — inert, unreviewed, and
+    silently activated for every staged config at once the day
+    PLATFORM_ENABLE_SIEM_EXTENDED flips. "Frozen" has to mean you cannot
+    accumulate a backlog behind the flag.
+
+    Note on unknown types: unreachable from HTTP, where ``ExporterType`` is a
+    ``Literal`` and pydantic returns 422 before this runs. Kept as
+    defence-in-depth for non-HTTP callers. The unknown-vs-gated distinction
+    that operators actually observe is in the forwarder logs
+    (``siem_unknown_exporter_type`` vs ``siem_exporter_type_gated``), not here.
+    """
+    if exporter_type_allowed(exporter.type):
+        return
+    if not exporter_type_known(exporter.type):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"unknown exporter type '{exporter.type}'. Known types: "
+                f"{', '.join(sorted(TIER_B_EXPORTER_TYPES | TIER_C_EXPORTER_TYPES))}."
+            ),
+        )
+    raise _gated_type_error(exporter.type)
+
+
+def _validate_exporter_tier_on_update(
+    exporter: ExporterCreate, stored: dict[str, Any]
+) -> None:
+    """Updates are judged against the STORED record, not the payload alone.
+
+    When the stored type is gated, the only accepted write is *turning it off*:
+    ``enabled: false`` with every other field identical to what is already
+    stored. Anything else — rewriting config, swapping secret refs, changing
+    the type, or flipping it back on — is rejected.
+
+    Why this is stricter than "disabling is allowed": a check that only looked
+    at ``payload.enabled`` would accept a PUT that sets ``enabled: false`` while
+    *also* rewriting the exporter's config and secret refs, or changing its type
+    outright. That edit would sit inert and become live the moment the flag
+    flips — the gate would be guarding the wrong noun. The stored record is the
+    only thing that says what the operator is actually allowed to preserve.
+
+    Migrating a gated exporter to an allowed type is deliberately NOT expressed
+    here: delete it and create the replacement, so the new config passes create
+    validation on its own merits.
+    """
+    stored_type = str(stored.get("type") or "")
+
+    if exporter_type_allowed(stored_type):
+        # Nothing gated is being preserved — the payload stands on its own.
+        _validate_exporter_tier_on_create(exporter)
+        return
+
+    if exporter.enabled:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"exporter '{stored.get('name')}' has type '{stored_type}', which is not "
+                "enabled on this deployment. It can be disabled (enabled=false) or "
+                "deleted; to re-enable it, set PLATFORM_ENABLE_SIEM_EXTENDED=true."
+            ),
+        )
+
+    unchanged = (
+        exporter.type == stored_type
+        and exporter.name == (stored.get("name") or "")
+        and exporter.config == (stored.get("config") or {})
+    )
+    if not unchanged:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"exporter '{stored.get('name')}' has type '{stored_type}', which is not "
+                "enabled on this deployment. Only 'enabled' may be changed while the "
+                "type is gated — send the stored configuration unmodified with "
+                "enabled=false, or delete the exporter."
+            ),
+        )
 
 
 def _validate_secret_refs(exporter: ExporterCreate) -> None:
@@ -180,7 +270,7 @@ async def create_exporter(
     identity: IdentityContext = Depends(require_role("admin")),
     db: AsyncSession = Depends(get_db),
 ) -> ExporterRead:
-    _validate_exporter_tier(payload)
+    _validate_exporter_tier_on_create(payload)
     _validate_secret_refs(payload)
     org = await _load_org(db, identity.org_id)
     exporters = _exporters_list(org)
@@ -217,22 +307,21 @@ async def update_exporter(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="name_mismatch",
         )
-    _validate_exporter_tier(payload)
-    _validate_secret_refs(payload)
     org = await _load_org(db, identity.org_id)
     exporters = _exporters_list(org)
-    updated: list[dict[str, Any]] = []
-    found = False
-    for e in exporters:
-        if e.get("name") == name:
-            updated.append(payload.model_dump())
-            found = True
-        else:
-            updated.append(e)
-    if not found:
+
+    stored = next((e for e in exporters if e.get("name") == name), None)
+    if stored is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="exporter_not_found"
         )
+
+    # Judged against the stored record: a gated exporter may only be turned off,
+    # not rewritten while disabled. See _validate_exporter_tier_on_update.
+    _validate_exporter_tier_on_update(payload, stored)
+    _validate_secret_refs(payload)
+
+    updated = [payload.model_dump() if e.get("name") == name else e for e in exporters]
     _persist_exporters(org, updated)
     await db.commit()
     await get_forwarder().invalidate_org(str(org.id))

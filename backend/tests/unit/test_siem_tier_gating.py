@@ -24,6 +24,7 @@ from app.siem.exporters import (
     TIER_C_EXPORTER_TYPES,
     build_exporters,
     exporter_type_allowed,
+    exporter_type_known,
 )
 
 pytestmark = pytest.mark.unit
@@ -126,6 +127,55 @@ def test_extended_flag_revives_the_full_set(extended_enabled: None) -> None:
     exporters = build_exporters(configs)
 
     assert len(exporters) == len(configs), "flag on must build every configured exporter"
+
+
+# ─────────────────────────────────────────── disabling is always available
+
+
+def test_disabled_exporter_builds_nothing_regardless_of_tier() -> None:
+    """Disabling is how you stop forwarding without discarding config."""
+    for etype in sorted(TIER_B_EXPORTER_TYPES | TIER_C_EXPORTER_TYPES):
+        entry = _config(etype) | {"enabled": False}
+        assert build_exporters([entry]) == [], f"{etype}: disabled must be inert"
+
+
+def test_disabled_tier_b_exporter_is_inert() -> None:
+    """Even a Tier B type that IS allowed must respect enabled=false —
+    otherwise the flag is the only off switch and it is deployment-wide."""
+    assert build_exporters([_config("splunk_hec") | {"enabled": False}]) == []
+
+
+def test_enabled_defaults_true_for_configs_written_before_the_field() -> None:
+    """Backward compatibility: entries already in the JSONB column have no
+    `enabled` key and must keep forwarding."""
+    entry = _config("splunk_hec")
+    assert "enabled" not in entry
+
+    assert len(build_exporters([entry])) == 1
+
+
+def test_disabling_does_not_resurrect_an_unknown_type() -> None:
+    assert build_exporters([{"type": "nope", "name": "n", "config": {}, "enabled": False}]) == []
+
+
+# ─────────────────────────────────────────── unknown vs gated are different
+
+
+def test_known_covers_exactly_the_tiered_types() -> None:
+    for etype in TIER_B_EXPORTER_TYPES | TIER_C_EXPORTER_TYPES:
+        assert exporter_type_known(etype) is True
+    for etype in ("splunk_hecc", "", "sentinal", "nope"):
+        assert exporter_type_known(etype) is False
+
+
+def test_gated_type_is_known_but_not_allowed() -> None:
+    """The distinction the operator-facing messages hang on: a gated type is
+    real and one flag away; an unknown type is a typo the flag cannot fix."""
+    assert exporter_type_known("sentinel") is True
+    assert exporter_type_allowed("sentinel") is False
+
+    assert exporter_type_known("sentinal") is False
+    assert exporter_type_allowed("sentinal") is False
 
 
 def test_gate_is_read_at_call_time_not_import_time(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -11,6 +11,7 @@ properties the map promises:
 
 from __future__ import annotations
 
+import os
 import pathlib
 from collections.abc import Callable, Iterator
 
@@ -142,13 +143,22 @@ def test_every_tier_c_flag_is_a_real_setting() -> None:
 
 
 def test_tier_c_flags_default_to_off() -> None:
-    """The whole point of frozen: a deployment that sets nothing gets nothing."""
+    """The whole point of frozen: a deployment that sets nothing gets nothing.
+
+    Asserted on the FIELD DEFAULT rather than on an instantiated Settings.
+    ``Settings()`` reads the process environment, so a developer who has
+    ``PLATFORM_ENABLE_THREAT_INTEL=true`` exported would fail this test locally
+    while the code is perfectly correct — a test that punishes you for your
+    shell teaches you to ignore it.
+    """
     from app.core.config import Settings
 
-    settings = Settings(jwt_secret="x" * 40)
     for prefix in prefixes_for_tier(Tier.C):
         flag = ROUTER_TIERS[prefix].flag
-        assert getattr(settings, flag) is False, f"{prefix}: {flag} must default off"
+        assert flag in Settings.model_fields, f"{prefix}: {flag} is not a Settings field"
+        assert (
+            Settings.model_fields[flag].default is False
+        ), f"{prefix}: {flag} must DEFAULT to off, whatever this machine's env says"
 
 
 def test_unregistered_prefix_cannot_mount() -> None:
@@ -272,11 +282,26 @@ _PREVIEW_BADGE_TSX = (
 )
 
 
-@pytest.mark.skipif(not _PREVIEW_BADGE_TSX.exists(), reason="frontend not checked out")
 def test_frontend_preview_routes_match_backend_tier_b() -> None:
     """The badge a user sees and the tag the API reports are the same claim, so
     they must not drift. Backed by PreviewBadge.tsx's own docstring pointing
-    here."""
+    here.
+
+    Deliberately NOT ``skipif(not path.exists())``. A skip conditioned on the
+    file being there is a test that silently stops running the moment CI's
+    checkout scope narrows to ``backend/`` — and it would stop running exactly
+    when it starts being needed, reporting green the whole time. If the file is
+    genuinely absent, that is either a broken checkout or an intentional
+    backend-only run; the first must fail loudly, and the second has to say so.
+    """
+    if not _PREVIEW_BADGE_TSX.exists():
+        if os.environ.get("ASP_BACKEND_ONLY") == "1":
+            pytest.skip("ASP_BACKEND_ONLY=1: frontend deliberately not checked out")
+        pytest.fail(
+            f"{_PREVIEW_BADGE_TSX} is missing, so backend↔frontend preview parity is "
+            "unchecked. If this is an intentional backend-only run, set "
+            "ASP_BACKEND_ONLY=1 to skip explicitly rather than silently."
+        )
     backend = set(prefixes_for_tier(Tier.B))
     frontend = set(_frontend_tier_b_routes())
 
