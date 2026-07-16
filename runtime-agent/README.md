@@ -71,13 +71,30 @@ PLATFORM_URL=http://localhost:8000 \
 | Stage 2 ML classifier (CGo Rust) | ⏸️ follow-on |
 | Stage 3 LLM judge | ⏸️ follow-on |
 | Redis pub/sub policy cache + stale grace | ✅ |
-| Fail-open vs fail-closed per policy | ✅ |
+| Fail-open vs fail-closed per policy | ⚠️ **Stage 3 only** — see below |
 | Telemetry buffer + HTTP upload | ✅ (HTTP upload stubbed to stdout) |
 | Kill switch via WebSocket | ⏸️ follow-on |
 | Heartbeat to control plane | ⏸️ follow-on |
 | `/healthz` / `/readyz` / `/metrics` | ✅ |
 | Helm chart / K8s manifests | ⏸️ follow-on |
 | Python + Node SDK wrappers | ⏸️ follow-on |
+
+### Fail-behavior: what is actually true today
+
+The table above claimed a blanket ✅. It is narrower than that, and the
+difference is load-bearing, so it is spelled out rather than left to the
+reader:
+
+| Stage | Honours `fail_behavior`? | Actual behaviour when it cannot reach its backend |
+|---|---|---|
+| Stage 1 | n/a | Cannot fail — no I/O; always produces a verdict. |
+| Stage 2 | ❌ **No** | **Always fail-open**, regardless of policy. The policy argument is discarded (`stage2_http.go`). A down ONNX sidecar is indistinguishable from a clean verdict — both yield `Matched:false` — so `comprehensive` silently degrades to Stage-1-only. Tracked as **GAP-004**; fix queued for Phase 1. |
+| Stage 3 | ✅ Yes | `fail_behavior: "closed"` blocks with `judge unavailable; fail-closed`; `"open"` allows. |
+| No policy cached at all | ❌ **No** | **Always fail-open** — every request passes uninspected. There is no setting to change this today. Tracked as **GAP-003**; `AGENT_NO_POLICY_BEHAVIOR` lands in Phase 1. |
+
+See [`docs/GAPS.md`](../docs/GAPS.md). Do not rely on `fail_behavior: "closed"`
+as a deny-by-default guarantee until GAP-003 and GAP-004 are closed — today it
+covers one stage of three.
 
 ## Wire compatibility with the Python control plane
 

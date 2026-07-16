@@ -36,10 +36,23 @@ there is no policy. The path is untested.
 **Why it matters:** the single highest-consequence path in the agent. An
 evaluator who starts the agent before the control plane is reachable gets an
 open proxy and no signal that it is open. Directly contradicts guardrail 3.
-**Unblocks:** nothing external. Phase 2 (failure-mode matrix) — needs a product
-decision on the default: fail-closed-on-cold-start is safer but turns a control
-plane outage into a customer outage. Recommend an explicit
-`AGENT_NO_POLICY_BEHAVIOR` with a fail-closed default in production.
+**Unblocks:** nothing — **decided, Phase 1.** Add `AGENT_NO_POLICY_BEHAVIOR`
+mirroring the SDK fail-closed pattern exactly, so the platform has one
+convention rather than two:
+
+* an explicit setting always wins;
+* unset resolves by environment — prod → closed, dev/test → open.
+
+Two requirements on top of the setting:
+
+1. **Whichever behaviour fires on cold start must be loud** — a log line *and* a
+   telemetry event. A fail-closed outage must be diagnosable in seconds, and a
+   fail-open in dev must be visible rather than assumed. (Today this path logs
+   `proxy_no_policy_cached` at warn and emits nothing.)
+2. **Phase 2's `AGENT-FAILURE-MODES.md` must cover the operational
+   consequence**, not just the behaviour: a fail-closed cold start makes deploy
+   ordering matter, so it documents the retry/backoff story for "agent up
+   before control plane."
 
 ### GAP-004 — Stage 2 fail-open is hardcoded, ignoring `fail_behavior`
 **What:** [`stage2_http.go:67`](../runtime-agent/policy/stage2_http.go) returns
@@ -48,11 +61,16 @@ argument is discarded (`_ *CompiledPolicy`). A policy with
 `fail_behavior: "closed"` **does not make Stage 2 fail closed**. Worse, a down
 ONNX sidecar is indistinguishable from a clean verdict: both yield
 `Matched:false`, with no log line and no telemetry marking the degradation.
-**Why it matters:** `runtime-agent/README.md` claims "fail-open vs fail-closed
-per policy ✅". That is true for Stage 3 only. Comprehensive enforcement
-silently degrades to Stage-1-only.
-**Unblocks:** nothing external. Phase 2 — honour `fail_behavior`, and emit a
-distinct telemetry signal for "unreachable" vs "clean".
+**Why it matters:** `runtime-agent/README.md` claimed "fail-open vs fail-closed
+per policy ✅". That is true for Stage 3 only — corrected in the Phase 0 PR
+rather than left to ride, since a knowingly-false claim is the same guardrail-1
+violation as the two Phase 0 already fixed, just found later.
+**Unblocks:** nothing external. **Phase 1, early** — honour `fail_behavior`, and
+emit a distinct telemetry signal for "unreachable" vs "clean". Taken alongside
+GAP-005: both are the same finding in different clothes — the deny-by-default
+promise is unimplemented (here) or unverified (SDK) at exactly the branches that
+matter. Phase 2's failure-mode matrix then verifies the class under fault
+injection rather than discovering it.
 
 ---
 
