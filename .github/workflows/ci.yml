@@ -58,16 +58,21 @@ jobs:
           pip install --require-hashes -r requirements.lock
           pip install -e . --no-deps
       - name: Lock is in sync with pyproject
-        working-directory: backend
         # A lock that has drifted from pyproject is worse than none: it reports
-        # a resolution nobody asked for while looking authoritative. Regenerate
-        # with scripts/lock.sh if this fails.
+        # a resolution nobody asked for while looking authoritative.
+        #
+        # This runs scripts/lock.sh itself rather than reimplementing the uv
+        # command, so the check and the tool cannot drift apart — and because uv
+        # embeds the VERBATIM command line (including -o) in the file header, so
+        # compiling to any other path guarantees a diff on line 2 forever. The
+        # generated artifact is a function of the exact invocation; the only
+        # honest way to verify it is to make the exact invocation.
         run: |
           pip install uv==0.11.29
-          uv pip compile pyproject.toml --all-extras --universal --generate-hashes \
-            --python-version 3.11 -o /tmp/requirements.check 2>/dev/null
-          if ! diff -u requirements.lock /tmp/requirements.check; then
-            echo "::error::requirements.lock is out of sync with pyproject.toml — run scripts/lock.sh"
+          cp backend/requirements.lock /tmp/expected.lock
+          scripts/lock.sh > /dev/null
+          if ! diff -u /tmp/expected.lock backend/requirements.lock; then
+            echo "::error::requirements.lock is out of sync with pyproject.toml — run scripts/lock.sh and commit the result"
             exit 1
           fi
 
