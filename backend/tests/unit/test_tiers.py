@@ -49,26 +49,42 @@ def build_app(monkeypatch: pytest.MonkeyPatch) -> Iterator[Callable[..., FastAPI
 
 
 def _paths(app: FastAPI) -> list[str]:
-    return [r.path for r in app.routes if isinstance(r, APIRoute)]
+    """Every path the app publishes, read from the OpenAPI schema.
+
+    Deliberately NOT ``[r.path for r in app.routes]``. FastAPI 0.139 made
+    ``include_router`` lazy: it appends an internal ``_IncludedRouter``
+    placeholder rather than flattening ``APIRoute`` objects into ``app.routes``.
+    Routing still works, but introspecting ``app.routes`` sees nothing — which
+    is exactly how this module passed locally (fastapi 0.136) and failed on CI
+    (0.139) against an app that was, in fact, perfectly fine.
+
+    The schema is the better subject anyway: these tests assert on what the
+    platform *publishes* — what an evaluator reads at /v1/openapi.json — and
+    that is a contract, not an implementation detail of route storage.
+
+    Trade-off: ``include_in_schema=False`` routes (only ``/metrics``) are
+    invisible here. Nothing in this module tiers them.
+    """
+    return sorted(app.openapi()["paths"])
 
 
 def _api_prefix() -> str:
-    """The mount prefix actually in force, not an assumed "/v1".
-
-    Hardcoding "/v1" made every one of these tests pass vacuously against an app
-    whose routes were somewhere else — the failure mode that hid a real CI
-    break behind three green-looking assertions.
-    """
+    """The mount prefix actually in force, not an assumed "/v1"."""
     return get_settings().api_v1_prefix
 
 
-def _routes_under(app: FastAPI, prefix: str) -> list[APIRoute]:
+def _routes_under(app: FastAPI, prefix: str) -> list[str]:
     full = f"{_api_prefix()}{prefix}"
-    return [
-        r
-        for r in app.routes
-        if isinstance(r, APIRoute) and (r.path == full or r.path.startswith(f"{full}/"))
-    ]
+    return [p for p in _paths(app) if p == full or p.startswith(f"{full}/")]
+
+
+def _tags_for(app: FastAPI, path: str) -> set[str]:
+    """Union of tags across every operation on a path."""
+    tags: set[str] = set()
+    for operation in app.openapi()["paths"][path].values():
+        if isinstance(operation, dict):
+            tags.update(operation.get("tags", []))
+    return tags
 
 
 def _diagnose(app: FastAPI) -> str:
@@ -80,7 +96,7 @@ def _diagnose(app: FastAPI) -> str:
     return (
         f"\n  api_v1_prefix={_api_prefix()!r}"
         f"\n  environment={get_settings().environment!r}"
-        f"\n  mounted APIRoutes ({len(_paths(app))}): {sorted(_paths(app))[:40]}"
+        f"\n  published paths ({len(_paths(app))}): {_paths(app)[:40]}"
     )
 
 
@@ -95,8 +111,8 @@ def _app_is_not_empty(build_app: Callable[..., FastAPI]) -> None:
     """
     app = build_app()
     assert _paths(app), (
-        "create_app() produced an app with NO API routes — every assertion in "
-        "this module would pass vacuously." + _diagnose(app)
+        "create_app() published NO paths — every assertion in this module would "
+        "pass vacuously." + _diagnose(app)
     )
 
 
@@ -168,10 +184,10 @@ def test_dark_tier_c_is_not_in_the_openapi_schema(build_app: Callable[..., FastA
 def test_tier_b_routes_are_tagged_preview(build_app: Callable[..., FastAPI]) -> None:
     app = build_app()
     for prefix in prefixes_for_tier(Tier.B):
-        routes = _routes_under(app, prefix)
-        assert routes, f"{prefix} is Tier B but mounted no routes" + _diagnose(app)
-        for route in routes:
-            assert PREVIEW_TAG in route.tags, f"{route.path} is Tier B but not tagged preview"
+        paths = _routes_under(app, prefix)
+        assert paths, f"{prefix} is Tier B but published no paths" + _diagnose(app)
+        for path in paths:
+            assert PREVIEW_TAG in _tags_for(app, path), f"{path} is Tier B but not tagged preview"
 
 
 def test_tier_a_routes_are_not_tagged_preview(build_app: Callable[..., FastAPI]) -> None:
@@ -179,8 +195,8 @@ def test_tier_a_routes_are_not_tagged_preview(build_app: Callable[..., FastAPI])
     would carry no information."""
     app = build_app()
     for prefix in prefixes_for_tier(Tier.A):
-        for route in _routes_under(app, prefix):
-            assert PREVIEW_TAG not in route.tags, f"{route.path} is Tier A but tagged preview"
+        for path in _routes_under(app, prefix):
+            assert PREVIEW_TAG not in _tags_for(app, path), f"{path} is Tier A but tagged preview"
 
 
 def test_preview_tag_is_described_in_the_schema(build_app: Callable[..., FastAPI]) -> None:
@@ -207,7 +223,9 @@ def test_every_mounted_route_belongs_to_a_registered_router(
 
     app = build_app(PLATFORM_ENABLE_THREAT_INTEL="true")
     prefix = _api_prefix()
-    health_paths = {f"{prefix}{r.path}" for r in health_routes.router.routes if isinstance(r, APIRoute)}
+    health_paths = {
+        f"{prefix}{r.path}" for r in health_routes.router.routes if isinstance(r, APIRoute)
+    }
 
     unmapped: list[str] = []
     for path in _paths(app):

@@ -180,6 +180,33 @@ sidecar) and the kill switch as "via WebSocket" (it is HTTP long-poll). The
 latency claim was corrected in Phase 0 (GAP-002); the rest remains.
 **Unblocks:** nothing external. Phase 5 rewrites it.
 
+### GAP-016 — Local gates are not CI gates: dependencies are unpinned
+**What:** `backend/pyproject.toml` pins loose lower bounds, so a local venv and
+a fresh CI install resolve **different major versions**. Found the hard way in
+Phase 0: locally `fastapi==0.136.1`, CI resolved `0.139.2`, and the Phase 0
+tier tests passed locally and failed on CI.
+
+The behaviour that differed is instructive — FastAPI 0.139 made
+`include_router` *lazy*, appending an internal `_IncludedRouter` placeholder
+instead of flattening `APIRoute` objects into `app.routes`. Routing works
+identically; only introspection changed. So the app was fine and the *tests*
+were wrong, which is the expensive kind of failure: CI was right, and there was
+no local way to discover it.
+**Why it matters:** guardrail 4 says "full test suite green before every
+commit", and that is worth less than it appears when the local suite and the CI
+suite are running against different libraries. Every future phase pays this tax.
+Secondary: an unpinned transitive upgrade can change runtime behaviour in
+production with no diff to review.
+**Unblocks:** nothing external. Needs a product decision on approach — a lock
+file (`pip-compile` / `uv lock`) committed and installed with `--require-hashes`
+in CI is the honest fix; pinning only the direct deps in `pyproject.toml` is the
+cheap one and leaves transitives free. Recommend the lock file. Phase 4
+(operability) unless it bites again first.
+**Mitigation now:** the tier tests were rewritten to assert against the OpenAPI
+schema — the published contract — rather than FastAPI's internal route storage,
+and verified green against **both** 0.136.1 and 0.139.2. That makes this
+particular test version-robust; it does not fix the class.
+
 ### GAP-015 — No frontend test infrastructure
 **What:** zero tests, no runner, no `test` script. `next build` is the only
 frontend CI gate. Also 7 copy-pasted `SeverityBadge` definitions and no shared
