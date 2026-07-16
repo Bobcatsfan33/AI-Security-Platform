@@ -52,13 +52,52 @@ def _paths(app: FastAPI) -> list[str]:
     return [r.path for r in app.routes if isinstance(r, APIRoute)]
 
 
+def _api_prefix() -> str:
+    """The mount prefix actually in force, not an assumed "/v1".
+
+    Hardcoding "/v1" made every one of these tests pass vacuously against an app
+    whose routes were somewhere else — the failure mode that hid a real CI
+    break behind three green-looking assertions.
+    """
+    return get_settings().api_v1_prefix
+
+
 def _routes_under(app: FastAPI, prefix: str) -> list[APIRoute]:
-    full = f"/v1{prefix}"
+    full = f"{_api_prefix()}{prefix}"
     return [
         r
         for r in app.routes
         if isinstance(r, APIRoute) and (r.path == full or r.path.startswith(f"{full}/"))
     ]
+
+
+def _diagnose(app: FastAPI) -> str:
+    """Context for an assertion failure: what DID mount, and under what prefix.
+
+    A bare `assert []` tells you nothing about why. These tests assert on the
+    absence of routes, so the absence itself is the thing needing explanation.
+    """
+    return (
+        f"\n  api_v1_prefix={_api_prefix()!r}"
+        f"\n  environment={get_settings().environment!r}"
+        f"\n  mounted APIRoutes ({len(_paths(app))}): {sorted(_paths(app))[:40]}"
+    )
+
+
+@pytest.fixture(autouse=True)
+def _app_is_not_empty(build_app: Callable[..., FastAPI]) -> None:
+    """Guard against vacuous passes.
+
+    Several tests here assert `PREVIEW_TAG not in route.tags` or `no
+    /threat-intel routes` — all trivially true of an app with no routes at all.
+    If the factory ever produces an empty app, these tests must fail loudly
+    rather than certify it.
+    """
+    app = build_app()
+    assert _paths(app), (
+        "create_app() produced an app with NO API routes — every assertion in "
+        "this module would pass vacuously." + _diagnose(app)
+    )
 
 
 # ─────────────────────────────────────────── registry integrity
@@ -113,7 +152,7 @@ def test_threat_intel_is_absent_by_default(build_app: Callable[..., FastAPI]) ->
 
 def test_threat_intel_mounts_when_pulled_forward(build_app: Callable[..., FastAPI]) -> None:
     app = build_app(PLATFORM_ENABLE_THREAT_INTEL="true")
-    assert _routes_under(app, "/threat-intel"), "flag on must mount the router"
+    assert _routes_under(app, "/threat-intel"), "flag on must mount the router" + _diagnose(app)
 
 
 def test_dark_tier_c_is_not_in_the_openapi_schema(build_app: Callable[..., FastAPI]) -> None:
@@ -130,7 +169,7 @@ def test_tier_b_routes_are_tagged_preview(build_app: Callable[..., FastAPI]) -> 
     app = build_app()
     for prefix in prefixes_for_tier(Tier.B):
         routes = _routes_under(app, prefix)
-        assert routes, f"{prefix} is Tier B but mounted no routes"
+        assert routes, f"{prefix} is Tier B but mounted no routes" + _diagnose(app)
         for route in routes:
             assert PREVIEW_TAG in route.tags, f"{route.path} is Tier B but not tagged preview"
 
@@ -167,13 +206,14 @@ def test_every_mounted_route_belongs_to_a_registered_router(
     from app.api.v1 import health as health_routes
 
     app = build_app(PLATFORM_ENABLE_THREAT_INTEL="true")
-    health_paths = {f"/v1{r.path}" for r in health_routes.router.routes if isinstance(r, APIRoute)}
+    prefix = _api_prefix()
+    health_paths = {f"{prefix}{r.path}" for r in health_routes.router.routes if isinstance(r, APIRoute)}
 
     unmapped: list[str] = []
     for path in _paths(app):
-        if not path.startswith("/v1/") or path in health_paths:
+        if not path.startswith(f"{prefix}/") or path in health_paths:
             continue
-        segment = "/" + path[len("/v1/") :].split("/", 1)[0]
+        segment = "/" + path[len(prefix) + 1 :].split("/", 1)[0]
         if segment not in ROUTER_TIERS:
             unmapped.append(path)
     assert not unmapped, f"routes with no tier assignment: {unmapped}"
@@ -184,7 +224,7 @@ def test_every_registered_router_actually_mounts(build_app: Callable[..., FastAP
     nothing behind it."""
     app = build_app(PLATFORM_ENABLE_THREAT_INTEL="true")
     missing = [p for p in ROUTER_TIERS if not _routes_under(app, p)]
-    assert not missing, f"registered but not mounted: {missing}"
+    assert not missing, f"registered but not mounted: {missing}" + _diagnose(app)
 
 
 # ─────────────────────────────────────────── backend ↔ frontend parity
