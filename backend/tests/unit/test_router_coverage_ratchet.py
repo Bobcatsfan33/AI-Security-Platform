@@ -138,6 +138,16 @@ def _strip_comments(source: str) -> str:
     string literal on a line that also makes a client call would truncate that
     line — the failure mode is UNDER-crediting, which the ratchet treats as
     "write a test", not as a false pass.
+
+    KNOWN LIMIT — docstrings are not stripped. A test file that quotes
+    ``client.get("/v1/mcp/tools")`` inside a docstring still credits /mcp and
+    force-retires its exemption, exactly as a comment used to. This module
+    dodges its own trap by excluding itself (see :func:`_test_sources`), which
+    is not a general fix. Stripping docstrings needs an ``ast`` walk rather than
+    a line filter; deferred because the remaining hole requires someone to
+    document a call they did not write, whereas commenting out a call you *did*
+    write is a normal thing to do while debugging. If this bites, the fix is
+    ``ast.parse`` + drop every ``Expr(Constant(str))``.
     """
     out: list[str] = []
     for line in source.splitlines():
