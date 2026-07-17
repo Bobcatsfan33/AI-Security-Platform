@@ -157,6 +157,15 @@
       "fallback": false
     },
     {
+      "name": "explicit false in the dev shorthand still fails closed",
+      "why": "Covers PLATFORM_ENV=dev specifically. The dedupe that removed this pair called it a duplicate of the 'development' case — behaviourally it is, mechanically it is not: 'dev' and 'development' are separate entries in the allowlist, and only this case proves the shorthand honours an explicit false.",
+      "env": {
+        "PLATFORM_ENV": "dev",
+        "PLATFORM_FALLBACK_DIRECT": "false"
+      },
+      "fallback": false
+    },
+    {
       "name": "explicit true overrides production",
       "why": "An operator who explicitly opts out of protection gets what they asked for. Their call — but it must be explicit, never a default.",
       "env": {

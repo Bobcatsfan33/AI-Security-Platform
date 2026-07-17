@@ -93,12 +93,19 @@ def test_shared_decision_table(case: dict, monkeypatch: pytest.MonkeyPatch) -> N
 
 
 def test_the_shared_table_has_no_duplicate_cases() -> None:
-    """Two cases asserting the same env combination are noise, not coverage.
+    """Two cases asserting the same env COMBINATION are noise, not coverage.
 
-    The table already grew a pair ("explicit false overrides a dev environment"
-    vs "explicit false in a dev environment still fails closed") that tested one
-    behaviour twice under two names. Harmless, but a table read by two languages
-    should not make either of them wonder whether it missed a distinction.
+    Deliberately mechanical: it compares env dicts, not intent. The pair this
+    guard commemorates ("explicit false overrides a dev environment" vs
+    "…in a dev environment still fails closed") was duplicate in BEHAVIOUR but
+    not in env — one used PLATFORM_ENV=development, the other =dev — so this
+    test would not have caught it, and removing it cost the `dev` shorthand its
+    direct coverage. That case is back.
+
+    Which is the honest scope: a mechanical guard catches mechanical
+    duplication. Judging whether two different inputs are "really" the same
+    behaviour is a review question, and a test that tried would either be wrong
+    or be a second implementation of the SDK.
     """
     seen: dict[str, str] = {}
     duplicates: list[str] = []
