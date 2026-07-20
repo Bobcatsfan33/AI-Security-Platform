@@ -57,22 +57,29 @@ jobs:
           pip install --upgrade pip
           pip install --require-hashes -r requirements.lock
           pip install -e . --no-deps
-      - name: Lock is in sync with pyproject
+      - name: Locks are in sync with pyproject
         # A lock that has drifted from pyproject is worse than none: it reports
         # a resolution nobody asked for while looking authoritative.
         #
-        # This runs scripts/lock.sh itself rather than reimplementing the uv
-        # command, so the check and the tool cannot drift apart — and because uv
-        # embeds the VERBATIM command line (including -o) in the file header, so
+        # Runs scripts/lock.sh itself rather than reimplementing the uv command,
+        # so the check and the tool cannot drift apart — and because uv embeds
+        # the VERBATIM command line (including -o) in the file header, so
         # compiling to any other path guarantees a diff on line 2 forever. The
         # generated artifact is a function of the exact invocation; the only
         # honest way to verify it is to make the exact invocation.
+        #
+        # `git diff --exit-code` over the whole backend, NOT a per-file diff of
+        # requirements.lock: lock.sh regenerates BOTH locks (and would regenerate
+        # a third if one were added), and it runs before pytest, so a per-file
+        # check on the full lock let a stale/hand-edited runtime lock — the one
+        # the Docker image installs and cosign SIGNS — pass entirely green. That
+        # is "the thing we test is not the thing we ship", reintroduced inside
+        # the drift check. This fails if lock.sh changed anything at all.
         run: |
           pip install uv==0.11.29
-          cp backend/requirements.lock /tmp/expected.lock
           scripts/lock.sh > /dev/null
-          if ! diff -u /tmp/expected.lock backend/requirements.lock; then
-            echo "::error::requirements.lock is out of sync with pyproject.toml — run scripts/lock.sh and commit the result"
+          if ! git diff --exit-code -- backend/; then
+            echo "::error::a committed lock is out of sync with pyproject.toml — run scripts/lock.sh and commit ALL changed lock files"
             exit 1
           fi
 
