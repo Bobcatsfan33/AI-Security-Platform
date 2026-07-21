@@ -148,8 +148,17 @@ def _validate_exporter_tier_on_update(
     """
     stored_type = str(stored.get("type") or "")
 
-    if exporter_type_allowed(stored_type):
-        # Nothing gated is being preserved — the payload stands on its own.
+    if not exporter_type_known(stored_type) or exporter_type_allowed(stored_type):
+        # Either nothing gated is being preserved, or the stored record is a
+        # type we do not recognise at all (hand-edited or corrupted JSONB).
+        # Neither is a legacy gated config, so the payload stands on its own.
+        #
+        # The unknown case is checked FIRST because it would otherwise fall into
+        # the gated branch below and tell the operator to set
+        # PLATFORM_ENABLE_SIEM_EXTENDED — advice the flag cannot honour, since
+        # it only ever un-gates the four known Tier C types. Unreachable from
+        # HTTP today (ExporterType is a Literal), but the branch order is the
+        # bug, not the reachability.
         _validate_exporter_tier_on_create(exporter)
         return
 

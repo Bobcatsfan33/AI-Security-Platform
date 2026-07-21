@@ -92,6 +92,32 @@ def test_shared_decision_table(case: dict, monkeypatch: pytest.MonkeyPatch) -> N
     assert _routing.fallback_direct() is case["fallback"], case.get("why", case["name"])
 
 
+def test_the_shared_table_has_no_duplicate_cases() -> None:
+    """Two cases asserting the same env COMBINATION are noise, not coverage.
+
+    Deliberately mechanical: it compares env dicts, not intent. The pair this
+    guard commemorates ("explicit false overrides a dev environment" vs
+    "…in a dev environment still fails closed") was duplicate in BEHAVIOUR but
+    not in env — one used PLATFORM_ENV=development, the other =dev — so this
+    test would not have caught it, and removing it cost the `dev` shorthand its
+    direct coverage. That case is back.
+
+    Which is the honest scope: a mechanical guard catches mechanical
+    duplication. Judging whether two different inputs are "really" the same
+    behaviour is a review question, and a test that tried would either be wrong
+    or be a second implementation of the SDK.
+    """
+    seen: dict[str, str] = {}
+    duplicates: list[str] = []
+    for case in SHARED_CASES:
+        key = json.dumps(case["env"], sort_keys=True)
+        if key in seen:
+            duplicates.append(f"{seen[key]!r} and {case['name']!r} both assert env {key}")
+        seen[key] = case["name"]
+
+    assert not duplicates, "\n".join(duplicates)
+
+
 def test_the_shared_table_covers_the_dangerous_default() -> None:
     """A guard on the table itself: the case that matters most must be in it.
 

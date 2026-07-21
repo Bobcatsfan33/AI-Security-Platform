@@ -199,32 +199,86 @@ sidecar) and the kill switch as "via WebSocket" (it is HTTP long-poll). The
 latency claim was corrected in Phase 0 (GAP-002); the rest remains.
 **Unblocks:** nothing external. Phase 5 rewrites it.
 
-### GAP-016 — Local gates are not CI gates: dependencies are unpinned
-**What:** `backend/pyproject.toml` pins loose lower bounds, so a local venv and
-a fresh CI install resolve **different major versions**. Found the hard way in
-Phase 0: locally `fastapi==0.136.1`, CI resolved `0.139.2`, and the Phase 0
-tier tests passed locally and failed on CI.
+### GAP-016 — Local gates are not CI gates: dependencies are unpinned ✅ CLOSED
+**Was:** `pyproject.toml` pinned loose lower bounds, so a local venv and a fresh
+CI install resolved **different major versions**. Found the hard way: locally
+`fastapi==0.136.1`, CI `0.139.2`, and 0.139 had made `include_router` lazy.
+Routing was identical — only introspection changed — so the app was fine and the
+*tests* were wrong. CI was right and there was no local way to discover it.
+Guardrail 4 ("full suite green before every commit") is worth little while the
+two suites run against different libraries.
 
-The behaviour that differed is instructive — FastAPI 0.139 made
-`include_router` *lazy*, appending an internal `_IncludedRouter` placeholder
-instead of flattening `APIRoute` objects into `app.routes`. Routing works
-identically; only introspection changed. So the app was fine and the *tests*
-were wrong, which is the expensive kind of failure: CI was right, and there was
-no local way to discover it.
-**Why it matters:** guardrail 4 says "full test suite green before every
-commit", and that is worth less than it appears when the local suite and the CI
-suite are running against different libraries. Every future phase pays this tax.
-Secondary: an unpinned transitive upgrade can change runtime behaviour in
-production with no diff to review.
-**Unblocks:** nothing external. Needs a product decision on approach — a lock
-file (`pip-compile` / `uv lock`) committed and installed with `--require-hashes`
-in CI is the honest fix; pinning only the direct deps in `pyproject.toml` is the
-cheap one and leaves transitives free. Recommend the lock file. Phase 4
-(operability) unless it bites again first.
-**Mitigation now:** the tier tests were rewritten to assert against the OpenAPI
-schema — the published contract — rather than FastAPI's internal route storage,
-and verified green against **both** 0.136.1 and 0.139.2. That makes this
-particular test version-robust; it does not fix the class.
+**Closed by** two hashed, universal locks generated from one pyproject by
+`scripts/lock.sh`, and installed with `--require-hashes` everywhere:
+
+| Lock | Extras | Pkgs | Installed by |
+|---|---|---|---|
+| `requirements.lock` | `--all-extras` | 100 | CI, developers |
+| `requirements-runtime.lock` | none | 75 | **the production image** |
+
+The split is not tidiness: `backend/Dockerfile`'s runtime stage does
+`COPY --from=builder /install /usr/local`, so anything installed in the builder
+reaches the shipped image. The all-extras lock would put pytest, ruff, mypy and
+bandit in production — inflating what the A-2 hardening shrank and handing Trivy
+25 extra packages to find CVEs in. The runtime lock is `--constraint`ed to the
+full lock so the two agree **version for version**: the first cut of the split
+had CI testing `huggingface-hub` 1.23.0 while the image shipped 1.24.0 (a dev
+extra held the shared transitive back), which is this very gap reintroduced one
+level down. Caught by `test_dependency_locks.py`, which now guards it.
+
+**The Dockerfile was the last hole, and the worst one.** GAP-016 originally
+pinned CI and dev while the image still did `pip install .` — a floating
+resolution — and *that image* is what `security.yml` Trivy-scans, SBOM-attests
+and cosign-signs. The pinning claim was loudest about the one artifact it did
+not cover: no number of signatures makes an SBOM describe something
+reproducible when the contents were decided by whatever PyPI served that
+afternoon. Now fixed, and asserted by a test that reads the Dockerfile.
+
+Determinism is a property of the *invocation*, learned twice: `--python-version`
+is pinned to the `requires-python` floor (uv annotates `# via` comments from the
+running interpreter's markers, so macOS/3.14 and CI/3.12 produced different
+bytes from an identical resolution), and CI's drift check **runs `lock.sh`
+itself** rather than reimplementing the command (uv embeds the verbatim command
+line, including `-o`, in the file header — so compiling to any other path
+guarantees a diff on line 2 forever).
+
+**What this does NOT cover** — stated plainly, because the value of the lock is
+exactly its honesty:
+
+* **Dependabot does not maintain these locks.** It bumps direct deps in
+  `pyproject.toml`; those PRs arrive **red** on the sync check until someone runs
+  `lock.sh` (an acceptable forcing function, but it means zero auto-merge). More
+  importantly it files **nothing** for transitive-only CVEs — the common case,
+  and one this repo has already lived through twice with starlette-via-fastapi.
+  **`pip-audit` in CI is the sole transitive signal.** "Dependabot covers pip"
+  would imply more than is true.
+* **Build-backend deps are still unpinned.** `pip install --no-deps .` uses PEP
+  517 build isolation, which fetches `setuptools`/`wheel` (from
+  `[build-system] requires`) at build time with no hashes. Smaller hole than the
+  runtime tree, but it is in the image build. Fix is `--no-build-isolation` plus
+  pinned build deps; not attempted here because it cannot be verified without a
+  local Docker.
+* **Not everything at build time is pinned.** uv is version-pinned (and
+  `lock.sh` now *enforces* the pin rather than naming it, since uv's output
+  format is version-dependent), but not hash-pinned; `pip` and `pip-audit` are
+  unpinned. Consistent with the repo's existing patterns, and not a claim of
+  literal supply-chain purity.
+* **`sdks/python` CI still installs `-e ".[dev]"` unpinned** — the same bug
+  class, one directory over. See GAP-017.
+
+### GAP-017 — The SDK CI installs are unpinned
+**What:** `.github/workflows/ci.yml`'s SDKs job runs `pip install -e ".[dev]"`
+for `sdks/python`, and `npm ci` for `sdks/node`. The Node side is locked
+(`package-lock.json` is committed); the Python side is exactly the floating
+resolution GAP-016 closed for the backend, one directory over.
+**Why it matters:** it is the suite guarding whether unprotected LLM traffic
+ships. A silent dependency change under it is the same "green locally, red in
+CI — or worse, green in both while testing different code" failure, on the most
+security-load-bearing tests in the repo.
+**Unblocks:** nothing. Smaller than the backend (the SDK has no runtime deps at
+all — stdlib only by design — so the lock would cover test tooling), which is
+why it is a follow-up rather than part of GAP-016. Same `scripts/lock.sh`
+pattern.
 
 ### GAP-015 — No frontend test infrastructure
 **What:** zero tests, no runner, no `test` script. `next build` is the only

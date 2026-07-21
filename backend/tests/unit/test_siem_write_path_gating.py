@@ -196,6 +196,33 @@ def test_update_of_a_gated_exporter_is_unrestricted_once_pulled_forward(
     )
 
 
+def test_a_stored_record_with_an_unknown_type_is_not_treated_as_gated() -> None:
+    """A corrupted or hand-edited JSONB record naming a type we do not
+    recognise is not a legacy gated config, so the payload is judged on its own
+    merits — and crucially the operator is not told to set
+    PLATFORM_ENABLE_SIEM_EXTENDED, which could never un-gate a type that does
+    not exist.
+    """
+    stored = {"type": "sentinal", "name": "typo", "config": {}, "enabled": True}
+
+    # Replacing it with a Tier B type is fine: nothing gated is being preserved.
+    _validate_exporter_tier_on_update(
+        ExporterCreate(type=ALLOWED, name="typo", config={"url": "u", "token": "env:T"}),
+        stored,
+    )
+
+    # …and it still cannot become a gated type by the back door.
+    with pytest.raises(HTTPException) as exc:
+        _validate_exporter_tier_on_update(
+            ExporterCreate(
+                type=GATED, name="typo", config={"workspace_id": "w", "shared_key": "env:K"}
+            ),
+            stored,
+        )
+
+    assert "PLATFORM_ENABLE_SIEM_EXTENDED" in exc.value.detail
+
+
 def test_a_stored_record_without_enabled_is_treated_as_enabled() -> None:
     """Configs written before the field exists have no `enabled` key; disabling
     one must still be the accepted write."""

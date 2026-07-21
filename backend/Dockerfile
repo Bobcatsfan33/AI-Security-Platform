@@ -12,12 +12,28 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         gcc libpq-dev libxml2-dev libxmlsec1-dev libxmlsec1-openssl pkg-config \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /build
-COPY pyproject.toml ./
+COPY pyproject.toml requirements-runtime.lock ./
 COPY app ./app
 COPY alembic.ini ./
 COPY alembic ./alembic
-# NOTE: no [dev] extra. The production image carries runtime deps only.
-RUN pip install --prefix=/install --no-compile .
+# Dependencies come from the hashed lock, NOT from a floating resolution of
+# pyproject. This image is the artifact security.yml Trivy-scans, SBOM-attests
+# and cosign-signs — attesting an artifact whose contents were decided by
+# whatever PyPI served at build time describes one machine's afternoon, however
+# many signatures are wrapped around it. --require-hashes means every wheel here
+# matches a hash committed to this repo, so a swapped or compromised upstream
+# fails the build instead of being signed and shipped.
+#
+# requirements-runtime.lock, not requirements.lock: the runtime stage below does
+# `COPY --from=builder /install /usr/local`, so anything installed here reaches
+# production. The all-extras lock would put pytest, ruff, mypy and bandit in the
+# shipped image. Runtime deps only — the header of this file is a promise.
+#
+# Two steps because pip refuses to mix --require-hashes with a project install:
+# deps from the lock, then the project itself with --no-deps (its dependencies
+# are already satisfied above, and re-resolving them is exactly what we removed).
+RUN pip install --prefix=/install --no-compile --require-hashes -r requirements-runtime.lock \
+ && pip install --prefix=/install --no-compile --no-deps .
 
 FROM python:3.12-slim AS runtime
 # Runtime shared libraries only (no -dev headers, no compiler): libpq for the
