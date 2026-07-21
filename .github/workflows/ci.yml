@@ -34,7 +34,7 @@ jobs:
       ENVIRONMENT: test
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
@@ -145,7 +145,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - name: Python SDK — install
@@ -196,7 +196,7 @@ jobs:
 
       # ── Python SAST (pip-audit runs in the backend job, where the full
       #    dependency set is installed) ─────────────────────────────────────
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - name: bandit (Python SAST, high severity)
