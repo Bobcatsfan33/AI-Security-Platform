@@ -26,7 +26,7 @@ jobs:
         run: |
           python scripts/generate_oscal.py --out dist/oscal-component-definition.json
           python scripts/stig_evidence.py --out dist/stig-evidence-summary.md
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: compliance-evidence
           path: dist/
