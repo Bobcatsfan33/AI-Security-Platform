@@ -54,7 +54,7 @@ dependencies = [
     # Auth primitives
     "pyjwt[crypto]>=2.9",              # JWT (replaces python-jose; RS256-ready)
     "passlib[bcrypt]>=1.7.4",          # password / api-key hashing
-    "bcrypt<5.0,>=4.0",                # passlib pin
+    "bcrypt>=4.0,<6.0",                # passlib pin
     "cryptography>=42.0",              # field-level encryption (Fernet)
 
     # Logging
