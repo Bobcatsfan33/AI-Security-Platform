@@ -95,17 +95,32 @@ Tested in `runtime-agent/policy/stage2_failbehavior_test.go`.
 
 ## P1
 
-### GAP-001 — Tier A blast radius and Tier B SIEM are unreachable
+### GAP-001 — Tier A blast radius and Tier B SIEM are unreachable — SIEM ✅ DONE, aibom in progress
 **What:** `api/v1/aibom.py` (3 endpoints, incl. the only blast-radius surface)
-and `api/v1/siem.py` (4 endpoints, exporter CRUD) are on disk, tested at the
-service layer, and **never mounted**. ~25 endpoints of working code
-(also SCIM 13, idp_admin 5 — see GAP-009) are unreachable.
-**Why it matters:** blast radius is a headline Tier A capability with no HTTP
-surface. SIEM export is table stakes — a SOC that cannot see the platform's
-events will not run it inline.
-**Unblocks:** nothing external. **Phase 1** — mount both with full Tier A/B
-test treatment. Blast radius needs a real endpoint, not just the scoring
-factor. Deferred out of Phase 0 because mounting is a behaviour change.
+and `api/v1/siem.py` (4 endpoints, exporter CRUD) were on disk and **never
+mounted**. SIEM export is table stakes — a SOC that cannot see the platform's
+events will not run it inline — and blast radius is a headline Tier A capability
+with no HTTP surface.
+
+**SIEM ✅ mounted (Tier B):** `/v1/siem` reachable, with HTTP + tenant-isolation
+tests through the mounted app (not a bare APIRouter) plus the 12 validator unit
+tests. First surface to exercise the tier registry end to end, and the ratchet's
+first live test — mounting demanded HTTP + isolation tests before it would go
+green. Added `RouterSpec.user_facing` for it: admin-only APIs are Tier B (their
+API is preview-tagged) but have no page to badge, so they are excluded from the
+frontend parity list.
+
+**aibom in progress (Tier A):** deferred to its own follow-on because the audit
+missed that **the router does not work against the current model** — its
+`_asset_to_dict` reads ~30 attributes (`blast_radius_score`, `is_agentic`,
+`tools`, …) that the v2.0 pivot removed from `AIAsset` (now a
+`metadata_json` bag). Mounting as-is would `AttributeError` on the first
+request; it also has zero tests. The follow-on adapts `_asset_to_dict` to read
+`metadata_json` (the domain functions already tolerate sparse dicts) and adds
+the real blast-radius endpoint — a computed reachability decomposition, not the
+stored scalar echoed through a listing. Honest-when-thin: an asset with no
+agentic metadata gets a low radius with factors saying why. See the
+`app/aibom/blast_radius.py` design in the follow-on PR.
 
 ### GAP-006 — Detection efficacy is entirely unmeasured
 **What:** no efficacy suite for the attack graph or anomaly detector, no

@@ -102,3 +102,42 @@ async def test_cross_tenant_isolation(app_client, two_orgs) -> None:
         assert (await client.get(f"/v1/connectors/{cid}", headers=a)).status_code == 200
         assert (await client.get(f"/v1/assets/{aid}", headers=a)).status_code == 200
         assert (await client.get("/v1/dashboard/summary", headers=a)).json()["total_assets"] >= 10
+
+
+async def test_siem_exporter_config_is_org_scoped(app_client, two_orgs, monkeypatch) -> None:
+    """SIEM exporter config lives in Organization.settings, addressed by name
+    within the caller's org — so isolation is structural: org B's token can only
+    ever load org B's row. This proves it end to end (GAP-001).
+
+    404-not-403 on B's probes for A's exporter, so existence is not disclosed.
+    """
+    org_a, org_b = two_orgs
+    a = {"Authorization": f"Bearer {_token(org_a)}"}
+    b = {"Authorization": f"Bearer {_token(org_b)}"}
+    # The create path resolves the secret ref, so the referenced var must exist.
+    monkeypatch.setenv("A_TOKEN", "org-a-splunk-token")
+    splunk = {
+        "type": "splunk_hec",
+        "name": "a-splunk",
+        "config": {"url": "https://splunk.a", "token": "env:A_TOKEN"},
+    }
+
+    async with app_client as client:
+        # Org A creates an exporter.
+        resp = await client.post("/v1/siem/exporters", headers=a, json=splunk)
+        assert resp.status_code == 201, resp.text
+
+        # ── Org B must not see it in the list ────────────────────────────────
+        assert (await client.get("/v1/siem/exporters", headers=b)).json() == []
+
+        # ── Org B must not be able to mutate it by name (404, not 403) ───────
+        assert (
+            await client.put("/v1/siem/exporters/a-splunk", headers=b, json=splunk)
+        ).status_code == 404
+        assert (
+            await client.delete("/v1/siem/exporters/a-splunk", headers=b)
+        ).status_code == 404
+
+        # ── Org A still owns it ──────────────────────────────────────────────
+        a_list = (await client.get("/v1/siem/exporters", headers=a)).json()
+        assert [e["name"] for e in a_list] == ["a-splunk"]

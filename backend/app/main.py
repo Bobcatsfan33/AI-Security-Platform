@@ -23,9 +23,10 @@ second prefix ever appears, that test needs to widen before the surface lands.
 
 Still on disk but NOT mounted, by design (Tier C frozen — see docs/GAPS.md
 for the promotion triggers): ``scim`` and ``idp_admin`` (enterprise
-provisioning; OIDC login covers a design-partner POC). ``siem`` and ``aibom``
-are unmounted only until Phase 1 lands their HTTP and tenant-isolation tests
-— blast radius (aibom) is Tier A and SIEM's Splunk/Elastic pair is Tier B.
+provisioning; OIDC login covers a design-partner POC). ``aibom`` is mounted in
+its own follow-on (GAP-001) — its router needed adapting to the v2 asset model
+first — while ``siem`` (Tier B) mounts here with full HTTP + tenant-isolation
+tests.
 """
 
 from __future__ import annotations
@@ -59,6 +60,7 @@ from app.api.v1 import remediation as remediation_routes
 from app.api.v1 import reports as reports_routes
 from app.api.v1 import risk_index as risk_index_routes
 from app.api.v1 import runtime as runtime_routes
+from app.api.v1 import siem as siem_routes
 from app.api.v1 import suppressions as suppressions_routes
 from app.api.v1 import test_cases as test_cases_routes
 from app.api.v1 import threat_intel as threat_intel_routes
@@ -235,6 +237,10 @@ def create_app() -> FastAPI:
     mount(compliance_routes.router, "/compliance")
     mount(reports_routes.router, "/reports")
     mount(mcp_routes.router, "/mcp")
+    # GAP-001: SIEM exporter config, now reachable. The Tier B pair
+    # (Splunk/Elastic) is usable out of the box; the four Tier C exporter types
+    # stay gated inside the exporter builder, not here.
+    mount(siem_routes.router, "/siem")
 
     @app.get("/metrics", include_in_schema=False)
     async def metrics() -> Response:
