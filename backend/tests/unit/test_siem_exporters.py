@@ -33,6 +33,28 @@ from app.siem.exporters import (
 pytestmark = pytest.mark.unit
 
 
+
+@pytest.fixture(autouse=True)
+def _passthrough_resolver():
+    """Isolate these tests from secret resolution: _build_one now resolves
+    secret refs on the build path (F1), but these are tier-gating / builder
+    tests, not resolution tests. A passthrough resolver lets any config value
+    'resolve' so the assertions stay about which exporters are BUILT, not about
+    whether a real env var is set. Resolution semantics are tested in
+    test_siem_secret_resolution.py."""
+    from app.security import secrets as _secrets
+
+    class _AnyResolver:
+        def resolve(self, reference: str) -> str:
+            return f"resolved::{reference}"
+
+    original = _secrets.get_resolver()
+    _secrets.set_resolver(_AnyResolver())
+    try:
+        yield
+    finally:
+        _secrets.set_resolver(original)
+
 def _event(**over):
     base = dict(
         timestamp=datetime(2026, 6, 1, tzinfo=timezone.utc),

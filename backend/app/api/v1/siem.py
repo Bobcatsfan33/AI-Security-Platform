@@ -1,10 +1,15 @@
 """SIEM exporter admin routes — list / create / update / delete.
 
 Per-org SIEM configuration lives on ``Organization.settings.siem_exporters``
-as a list of ``{type, name, config}`` entries. Secret material (HEC
+as a list of ``{type, name, config, enabled}`` entries. Secret material (HEC
 tokens, shared keys, bearer tokens) MUST be passed as secret refs
-(``env:NAME`` / ``vault:path`` / ``awssm:arn``) — raw secrets are
-rejected at validation time so they never land in the JSONB column.
+(``env:NAME`` / ``vault:path`` / ``awssm:arn``) — raw secrets are rejected at
+validation time so they never land in the JSONB column, and resolved on the
+send path (``app/siem/exporters.py``), never here.
+
+Secret fields are named exactly (``token``, ``shared_key``, …); there is no
+``<field>_ref`` alias. Read responses redact known secret fields plus any key
+whose name reads as a secret, so a mis-named key cannot echo verbatim.
 
 Updates invalidate the per-org exporter cache so the next batch picks
 up the new configuration.
@@ -28,6 +33,7 @@ from app.identity.types import IdentityContext
 from app.security.audit_log import AuditEventType, AuditOutcome, log_event
 from app.security.secrets import get_resolver
 from app.siem.exporters import (
+    SECRET_CONFIG_FIELDS,
     TIER_B_EXPORTER_TYPES,
     TIER_C_EXPORTER_TYPES,
     exporter_type_allowed,
@@ -70,17 +76,43 @@ class ExporterRead(BaseModel):
     enabled: bool = True
 
 
-# Per-type secret fields that MUST be passed as a secret reference.
-# We accept either the literal field name (e.g. "token") or
-# ``<field>_ref`` to make the intent explicit on the wire.
-_SECRET_FIELDS: dict[str, set[str]] = {
-    "splunk_hec": {"token"},
-    "elastic": {"api_key", "basic_auth_password"},
-    "sentinel": {"shared_key"},
-    "datadog": {"api_key"},
-    "chronicle": {"bearer_token"},
-    "webhook": {"bearer_token"},  # optional
-}
+# Per-type secret fields that MUST be passed as a secret reference. The single
+# source of truth lives with the exporters (the module that resolves them on the
+# send path); importing it here keeps validation, redaction and resolution
+# describing the SAME fields — a divergence would mean validating one field and
+# leaking another.
+#
+# NOTE: only the exact field name is a "known secret". A ``<field>_ref`` spelling
+# is NOT recognised — an earlier docstring claimed it was, which was false: it
+# would have skipped validation AND redaction and then TypeError'd at build. The
+# redactor below is pattern-based specifically so a mis-named secret key still
+# does not echo verbatim.
+_SECRET_FIELDS: dict[str, frozenset[str]] = SECRET_CONFIG_FIELDS
+
+# Substrings that mark a config key as secret-bearing regardless of the per-type
+# map. A deny-list, so it can miss a secret under an innocuous key name — the
+# per-type map is the authority, this is the backstop that stops the reported
+# ``token_ref`` leak and its cousins. Full allow-list redaction (show only known
+# non-secret keys) is the stronger form; see docs/GAPS.md.
+_SECRET_KEY_PATTERNS: tuple[str, ...] = (
+    "token",
+    "secret",
+    "password",
+    "passwd",
+    "apikey",
+    "api_key",
+    "shared_key",
+    "bearer",
+    "credential",
+    "private",
+)
+
+
+def _looks_secret(key: str, secret_fields: frozenset[str]) -> bool:
+    if key in secret_fields:
+        return True
+    lowered = key.lower()
+    return any(pat in lowered for pat in _SECRET_KEY_PATTERNS)
 
 
 def _gated_type_error(etype: str) -> HTTPException:
@@ -189,6 +221,18 @@ def _validate_exporter_tier_on_update(
         )
 
 
+def _is_pure_disable(payload: ExporterCreate, stored: dict[str, Any]) -> bool:
+    """Whether this update only flips ``enabled`` to false, leaving type, name
+    and config exactly as stored. Such an update sends nothing, so it needs no
+    resolvable secret."""
+    return (
+        payload.enabled is False
+        and payload.type == str(stored.get("type") or "")
+        and payload.name == (stored.get("name") or "")
+        and payload.config == (stored.get("config") or {})
+    )
+
+
 def _validate_secret_refs(exporter: ExporterCreate) -> None:
     """Enforce that secret-bearing fields are references, not raw values."""
     resolver = get_resolver()
@@ -221,12 +265,12 @@ def _validate_secret_refs(exporter: ExporterCreate) -> None:
 def _redact(entry: dict[str, Any]) -> dict[str, Any]:
     redacted = {**entry, "config_redacted": {}}
     cfg = entry.get("config") or {}
-    secret_fields = _SECRET_FIELDS.get(entry.get("type", ""), set())
+    secret_fields = _SECRET_FIELDS.get(entry.get("type", ""), frozenset())
     for k, v in cfg.items():
-        if k in secret_fields:
-            redacted["config_redacted"][k] = "***"
-        else:
-            redacted["config_redacted"][k] = v
+        # Redact known secret fields AND anything whose key name reads as a
+        # secret — so a mis-spelled key like ``token_ref`` cannot echo the
+        # secret verbatim just because it is not in the per-type map.
+        redacted["config_redacted"][k] = "***" if _looks_secret(k, secret_fields) else v
     redacted.pop("config", None)
     return redacted
 
@@ -328,7 +372,15 @@ async def update_exporter(
     # Judged against the stored record: a gated exporter may only be turned off,
     # not rewritten while disabled. See _validate_exporter_tier_on_update.
     _validate_exporter_tier_on_update(payload, stored)
-    _validate_secret_refs(payload)
+
+    # A pure disable — enabled=false with config/type identical to what is
+    # stored — skips secret-ref validation. Disabling stops forwarding, so
+    # nothing will be sent and nothing needs to resolve; requiring the ref to
+    # resolve here would trap an operator whose secret var has since rotated or
+    # been unmounted into being unable to turn a broken exporter OFF. They could
+    # only delete it — the exact corner the disable carve-out exists to avoid.
+    if not _is_pure_disable(payload, stored):
+        _validate_secret_refs(payload)
 
     updated = [payload.model_dump() if e.get("name") == name else e for e in exporters]
     _persist_exporters(org, updated)

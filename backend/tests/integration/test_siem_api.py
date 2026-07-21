@@ -184,3 +184,106 @@ async def test_viewer_role_is_forbidden(app_client, org) -> None:
     async with app_client as client:
         resp = await client.get("/v1/siem/exporters", headers=viewer)
     assert resp.status_code == 403, resp.text
+
+
+async def test_unresolvable_secret_ref_is_400_on_create(app_client, org) -> None:
+    """The local round-trip that first caught this: create resolves the ref to
+    prove it resolvable, so a ref pointing at an UNSET var is a clear 400 — not
+    a config that saves and then silently never delivers."""
+    admin = {"Authorization": f"Bearer {_token(org)}"}
+    # No monkeypatch — env:DEFINITELY_UNSET_SPLUNK_TOKEN does not resolve.
+    payload = {
+        "type": "splunk_hec",
+        "name": "unresolvable",
+        "config": {"url": "https://x", "token": "env:DEFINITELY_UNSET_SPLUNK_TOKEN"},
+    }
+
+    async with app_client as client:
+        resp = await client.post("/v1/siem/exporters", headers=admin, json=payload)
+
+    assert resp.status_code == 400, resp.text
+    assert "could not be resolved" in resp.json()["detail"]
+
+
+async def test_gated_exporter_enabled_flip_only_update(app_client, org, monkeypatch) -> None:
+    """The subtlest branch in the gate, through the mounted router: a Sentinel
+    (gated) exporter created while the flag is ON, then updated while the flag is
+    OFF. Only a pure enabled-flip is allowed; re-enabling and config-rewrite are
+    both 400.
+
+    Create-under-flag-on / update-under-flag-off is exactly the deployment
+    sequence the flip-only rule protects — an org that had Extended enabled,
+    configured Sentinel, then the deployment turned the flag off.
+    """
+    monkeypatch.setenv("SENTINEL_KEY", "org-sentinel-key")
+    admin = {"Authorization": f"Bearer {_token(org)}"}
+    sentinel = {
+        "type": "sentinel",
+        "name": "sec",
+        "config": {"workspace_id": "w", "shared_key": "env:SENTINEL_KEY"},
+    }
+
+    async with app_client as client:
+        # ── flag ON: create the gated exporter ──────────────────────────────
+        monkeypatch.setenv("PLATFORM_ENABLE_SIEM_EXTENDED", "true")
+        get_settings.cache_clear()
+        resp = await client.post("/v1/siem/exporters", headers=admin, json=sentinel)
+        assert resp.status_code == 201, resp.text
+
+        # ── flag OFF: the exporter is now gated ─────────────────────────────
+        monkeypatch.delenv("PLATFORM_ENABLE_SIEM_EXTENDED", raising=False)
+        get_settings.cache_clear()
+
+        # identical-payload disable → 200 (the one allowed write)
+        resp = await client.put(
+            "/v1/siem/exporters/sec", headers=admin, json={**sentinel, "enabled": False}
+        )
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["enabled"] is False
+
+        # re-enable → 400
+        resp = await client.put(
+            "/v1/siem/exporters/sec", headers=admin, json={**sentinel, "enabled": True}
+        )
+        assert resp.status_code == 400, resp.text
+
+        # config-rewrite while disabled → 400
+        resp = await client.put(
+            "/v1/siem/exporters/sec",
+            headers=admin,
+            json={
+                "type": "sentinel",
+                "name": "sec",
+                "enabled": False,
+                "config": {"workspace_id": "attacker", "shared_key": "env:SENTINEL_KEY"},
+            },
+        )
+        assert resp.status_code == 400, resp.text
+
+
+async def test_pure_disable_works_even_if_the_secret_var_is_gone(app_client, org, monkeypatch) -> None:
+    """F4: an operator whose secret var rotated away must still be able to turn a
+    Tier B exporter OFF — a pure disable skips ref validation, so it does not
+    trap them into delete-only."""
+    admin = {"Authorization": f"Bearer {_token(org)}"}
+    splunk = {
+        "type": "splunk_hec",
+        "name": "rotated",
+        "config": {"url": "https://x", "token": "env:ROTATING_TOKEN"},
+    }
+
+    async with app_client as client:
+        # create while the var exists
+        monkeypatch.setenv("ROTATING_TOKEN", "present-at-create")
+        resp = await client.post("/v1/siem/exporters", headers=admin, json=splunk)
+        assert resp.status_code == 201, resp.text
+
+        # the var rotates away
+        monkeypatch.delenv("ROTATING_TOKEN", raising=False)
+
+        # a pure disable must still succeed (no ref resolution required)
+        resp = await client.put(
+            "/v1/siem/exporters/rotated", headers=admin, json={**splunk, "enabled": False}
+        )
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["enabled"] is False

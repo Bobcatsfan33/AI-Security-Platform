@@ -28,6 +28,8 @@ from fastapi import HTTPException
 
 from app.api.v1.siem import (
     ExporterCreate,
+    _is_pure_disable,
+    _redact,
     _validate_exporter_tier_on_create,
     _validate_exporter_tier_on_update,
 )
@@ -230,3 +232,68 @@ def test_a_stored_record_without_enabled_is_treated_as_enabled() -> None:
     del stored["enabled"]
 
     _validate_exporter_tier_on_update(_payload(stored, enabled=False), stored)
+
+
+# ─────────────────────────────────────────── F2: redaction cannot leak a secret
+
+
+def test_redact_masks_the_known_secret_field() -> None:
+    entry = {"type": "splunk_hec", "name": "p", "config": {"url": "u", "token": "env:T"}}
+    out = _redact(entry)
+    assert out["config_redacted"]["token"] == "***"
+    assert out["config_redacted"]["url"] == "u"
+
+
+def test_redact_masks_a_misnamed_secret_key_that_is_not_in_the_map() -> None:
+    """The reported F2 leak: a key like token_ref is NOT in the per-type secret
+    map, so the old redactor echoed it verbatim. The pattern backstop masks any
+    key whose name reads as a secret."""
+    entry = {
+        "type": "splunk_hec",
+        "name": "p",
+        "config": {"url": "u", "token_ref": "super-secret", "password": "hunter2"},
+    }
+    out = _redact(entry)
+    assert out["config_redacted"]["token_ref"] == "***", "token_ref must not echo verbatim"
+    assert out["config_redacted"]["password"] == "***"
+    assert out["config_redacted"]["url"] == "u"
+
+
+# ─────────────────────────────────────────── F4: a pure disable needs no secret
+
+
+def test_pure_disable_is_recognised() -> None:
+    stored = {
+        "type": "splunk_hec",
+        "name": "p",
+        "config": {"url": "u", "token": "env:T"},
+        "enabled": True,
+    }
+    disable = ExporterCreate(type="splunk_hec", name="p", config=stored["config"], enabled=False)
+    assert _is_pure_disable(disable, stored) is True
+
+
+def test_a_config_rewrite_is_not_a_pure_disable() -> None:
+    """enabled=false while ALSO changing config is not a pure disable — it must
+    still be validated (and, for a gated type, rejected)."""
+    stored = {
+        "type": "splunk_hec",
+        "name": "p",
+        "config": {"url": "u", "token": "env:T"},
+        "enabled": True,
+    }
+    rewrite = ExporterCreate(
+        type="splunk_hec", name="p", config={"url": "u", "token": "env:OTHER"}, enabled=False
+    )
+    assert _is_pure_disable(rewrite, stored) is False
+
+
+def test_re_enabling_is_not_a_pure_disable() -> None:
+    stored = {
+        "type": "splunk_hec",
+        "name": "p",
+        "config": {"url": "u", "token": "env:T"},
+        "enabled": False,
+    }
+    reenable = ExporterCreate(type="splunk_hec", name="p", config=stored["config"], enabled=True)
+    assert _is_pure_disable(reenable, stored) is False

@@ -316,15 +316,23 @@ def test_frontend_preview_routes_match_backend_tier_b() -> None:
     )
 
 
-def test_admin_only_tier_b_is_preview_tagged_but_not_in_the_badge_list() -> None:
+def test_admin_only_tier_b_is_absent_from_the_badge_list(
+    build_app: Callable[..., FastAPI],
+) -> None:
     """The split the user_facing flag exists for: /siem is Tier B (so its API
-    carries the preview tag) yet has no frontend page (so it is NOT in the UI
-    badge list). Asserting both halves so neither drifts.
+    carries the preview tag — asserted here, not just implied by the name) yet
+    has no frontend page, so it must NOT be in the UI badge list. Both halves,
+    so neither drifts.
     """
     admin_only = [p for p in prefixes_for_tier(Tier.B) if not ROUTER_TIERS[p].user_facing]
     assert "/siem" in admin_only, "siem is the admin-only Tier B surface this guards"
 
+    app = build_app()
     for prefix in admin_only:
+        # the API IS preview-tagged (an API consumer should see it)…
+        for path in _routes_under(app, prefix):
+            assert PREVIEW_TAG in _tags_for(app, path), f"{path} is Tier B but not preview-tagged"
+        # …and it is NOT badged in the UI (there is no page)
         assert prefix not in _frontend_tier_b_routes(), (
             f"{prefix} is admin-only (no page) but appears in the UI badge list"
         )
