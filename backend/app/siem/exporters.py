@@ -633,16 +633,16 @@ def build_exporters(configs: list[dict[str, Any]]) -> list[SiemExporter]:
     return out
 
 
-def _resolve_secret_refs(
-    etype: str, config: dict[str, Any], name: str
-) -> dict[str, Any] | None:
+def _resolve_secret_refs(etype: str, config: dict[str, Any]) -> dict[str, Any] | None:
     """Return a copy of ``config`` with secret-ref fields resolved to real
     values, or ``None`` if any ref cannot be resolved.
 
-    Resolution failure returns None (caller drops the exporter) rather than
-    raising: the forwarder builds many exporters and a raise would take the
-    whole batch down. The stored config is never mutated — the ref stays in the
-    JSONB column; only the outbound copy carries the secret.
+    Does NO logging: it returns None and lets the caller (``_build_one``) log,
+    where the exporter name/type are field-sensitively clean. The stored config
+    is never mutated — the ref stays in the JSONB column; only the outbound copy
+    carries the secret. Failure returns None (caller drops the exporter) rather
+    than raising, so one rotated secret cannot take the forwarder's whole batch
+    down.
     """
     from app.security.secrets import get_resolver
 
@@ -652,40 +652,19 @@ def _resolve_secret_refs(
 
     resolver = get_resolver()
     resolved = dict(config)
-    failed_field: str | None = None
-    failed_type: str | None = None
     for field in fields:
         ref = config.get(field)
         if ref is None:
             continue
         try:
             resolved[field] = resolver.resolve(str(ref))
-        except Exception as exc:  # noqa: BLE001 — any resolver backend may raise
-            # Capture only the field NAME and the exception CLASS — never the
-            # secret ref, the resolved value, or the exception message (which a
-            # resolver backend can fill with a vault path, an ARN, or the secret
-            # itself). Then break and log OUTSIDE this handler: the log call must
-            # not sit in the scope that just processed a secret, or the whole
-            # call is (correctly, conservatively) treated as a clear-text sink.
-            failed_field = field
-            failed_type = type(exc).__name__
-            break
-
-    if failed_field is not None:
-        # Nothing here is secret-derived: field name + exception class. That is
-        # enough for an operator to find and fix the exporter; the exporter is
-        # dropped (return None), never raised, so one rotated secret cannot take
-        # the forwarder's whole batch down.
-        logger.error(
-            "siem_secret_unresolved",
-            extra={
-                "exporter_type": etype,
-                "exporter_name": name,
-                "field": failed_field,
-                "error_type": failed_type,
-            },
-        )
-        return None
+        except Exception:  # noqa: BLE001 — any resolver backend may raise
+            # Swallow the exception entirely: its message can carry a vault
+            # path, an ARN, or the secret itself, so nothing about it leaves
+            # this function — not even its type. The caller logs the failure
+            # from the field NAME alone (see _build_one), which is all an
+            # operator needs and is provably secret-free.
+            return None
     return resolved
 
 
@@ -727,8 +706,16 @@ def _build_one(entry: dict[str, Any]) -> SiemExporter | None:
     # fail now (rotated var, unmounted vault): log loudly and drop THIS exporter,
     # never raise. build_exporters filters None and the forwarder keeps running,
     # so one broken secret does not silence every SIEM the org configured.
-    resolved = _resolve_secret_refs(str(etype), config, name)
+    #
+    # Logged here rather than in the resolver so the log names only ``name`` and
+    # ``etype`` (this function's own locals — clean), never anything derived from
+    # the secret the resolver just handled.
+    resolved = _resolve_secret_refs(str(etype), config)
     if resolved is None:
+        logger.error(
+            "siem_secret_unresolved",
+            extra={"exporter_type": etype, "exporter_name": name},
+        )
         return None
     config = resolved
 
