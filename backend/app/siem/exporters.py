@@ -659,13 +659,19 @@ def _resolve_secret_refs(
         try:
             resolved[field] = resolver.resolve(str(ref))
         except Exception as exc:  # noqa: BLE001 — any resolver backend may raise
+            # Log the exception TYPE, never its message. A resolver's message
+            # can carry sensitive material (a vault path, an ARN, or the secret
+            # itself for a backend that echoes it), and this is the failure path
+            # for a secret field. exporter_name + field already tell an operator
+            # exactly which exporter to go fix; the message adds risk, not
+            # signal. (CodeQL py/clear-text-logging-sensitive-data.)
             logger.error(
                 "siem_secret_unresolved",
                 extra={
                     "exporter_type": etype,
                     "exporter_name": name,
                     "field": field,
-                    "error": str(exc),
+                    "error_type": type(exc).__name__,
                 },
             )
             return None
