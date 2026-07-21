@@ -652,6 +652,8 @@ def _resolve_secret_refs(
 
     resolver = get_resolver()
     resolved = dict(config)
+    failed_field: str | None = None
+    failed_type: str | None = None
     for field in fields:
         ref = config.get(field)
         if ref is None:
@@ -659,22 +661,31 @@ def _resolve_secret_refs(
         try:
             resolved[field] = resolver.resolve(str(ref))
         except Exception as exc:  # noqa: BLE001 — any resolver backend may raise
-            # Log the exception TYPE, never its message. A resolver's message
-            # can carry sensitive material (a vault path, an ARN, or the secret
-            # itself for a backend that echoes it), and this is the failure path
-            # for a secret field. exporter_name + field already tell an operator
-            # exactly which exporter to go fix; the message adds risk, not
-            # signal. (CodeQL py/clear-text-logging-sensitive-data.)
-            logger.error(
-                "siem_secret_unresolved",
-                extra={
-                    "exporter_type": etype,
-                    "exporter_name": name,
-                    "field": field,
-                    "error_type": type(exc).__name__,
-                },
-            )
-            return None
+            # Capture only the field NAME and the exception CLASS — never the
+            # secret ref, the resolved value, or the exception message (which a
+            # resolver backend can fill with a vault path, an ARN, or the secret
+            # itself). Then break and log OUTSIDE this handler: the log call must
+            # not sit in the scope that just processed a secret, or the whole
+            # call is (correctly, conservatively) treated as a clear-text sink.
+            failed_field = field
+            failed_type = type(exc).__name__
+            break
+
+    if failed_field is not None:
+        # Nothing here is secret-derived: field name + exception class. That is
+        # enough for an operator to find and fix the exporter; the exporter is
+        # dropped (return None), never raised, so one rotated secret cannot take
+        # the forwarder's whole batch down.
+        logger.error(
+            "siem_secret_unresolved",
+            extra={
+                "exporter_type": etype,
+                "exporter_name": name,
+                "field": failed_field,
+                "error_type": failed_type,
+            },
+        )
+        return None
     return resolved
 
 
