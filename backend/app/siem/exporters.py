@@ -232,14 +232,26 @@ class ElasticExporter:
         url: str,
         index: str,
         api_key: str | None = None,
-        basic_auth: tuple[str, str] | None = None,
+        basic_auth_user: str | None = None,
+        basic_auth_password: str | None = None,
         timeout_s: float = 10.0,
     ) -> None:
+        # basic_auth is expressed as two SCALAR config fields, not a tuple, so
+        # that basic_auth_password — the declared secret in SECRET_CONFIG_FIELDS —
+        # is a real constructor parameter that the send-path resolver can resolve.
+        # Before this it was a phantom: the map named basic_auth_password, the
+        # constructor took a `basic_auth` tuple, so a config using the declared
+        # field TypeError'd at build while the field the constructor actually
+        # accepted was neither validated nor redacted.
         self.name = name
         self._url = url.rstrip("/") + "/_bulk"
         self._index = index
         self._api_key = api_key
-        self._basic_auth = basic_auth
+        self._basic_auth = (
+            (basic_auth_user, basic_auth_password)
+            if basic_auth_user and basic_auth_password
+            else None
+        )
         self._timeout_s = timeout_s
 
     async def export(self, events: list[SiemEvent]) -> int:
@@ -564,11 +576,21 @@ class WebhookExporter:
         name: str,
         url: str,
         headers: dict[str, str] | None = None,
+        bearer_token: str | None = None,
         timeout_s: float = 10.0,
     ) -> None:
+        # bearer_token is a real, resolvable parameter — the declared secret in
+        # SECRET_CONFIG_FIELDS — that injects an Authorization header. Before,
+        # the map named bearer_token but the constructor took only `headers`, so
+        # a config using the declared field TypeError'd at build (N1). A raw
+        # credential placed DIRECTLY in the headers dict is still not
+        # validated/redacted (it is nested, and this exporter is Tier C) — that
+        # residue is tracked as F3 in docs/GAPS.md.
         self.name = name
         self._url = url
-        self._headers = headers or {}
+        self._headers = dict(headers or {})
+        if bearer_token:
+            self._headers.setdefault("Authorization", f"Bearer {bearer_token}")
         self._timeout_s = timeout_s
 
     async def export(self, events: list[SiemEvent]) -> int:

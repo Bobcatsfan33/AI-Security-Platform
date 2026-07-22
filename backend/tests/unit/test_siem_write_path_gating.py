@@ -297,3 +297,18 @@ def test_re_enabling_is_not_a_pure_disable() -> None:
     }
     reenable = ExporterCreate(type="splunk_hec", name="p", config=stored["config"], enabled=True)
     assert _is_pure_disable(reenable, stored) is False
+
+
+def test_an_auth_named_key_is_redacted() -> None:
+    """N1's leak: a credential under a *_auth key (e.g. basic_auth_password, or
+    a raw value under 'authorization') used to echo verbatim because 'auth'
+    matched no pattern. The 'auth' pattern now catches it."""
+    entry = {
+        "type": "elastic",
+        "name": "es",
+        "config": {"url": "u", "index": "i", "basic_auth_password": "hunter2", "authorization": "raw"},
+    }
+    out = _redact(entry)
+    assert out["config_redacted"]["basic_auth_password"] == "***"
+    assert out["config_redacted"]["authorization"] == "***"
+    assert out["config_redacted"]["url"] == "u"
