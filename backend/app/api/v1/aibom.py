@@ -16,12 +16,13 @@ from dataclasses import asdict
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.aibom.blast_radius import compute_blast_radius
 from app.aibom.builder import build_bom
+from app.aibom.coerce import as_dict_list
 from app.aibom.drift import compute_drift
 from app.aibom.risk import score_supply_chain
 from app.auth.dependencies import require_role
@@ -55,7 +56,9 @@ class DriftResponse(BaseModel):
 
 class BlastRadiusResponse(BaseModel):
     asset_id: str
-    score: float
+    # The bound is a contract, not a comment: the schema rejects an out-of-range
+    # score, so a computation bug cannot ship a 137 to a design partner.
+    score: float = Field(ge=0, le=100)
     severity: str
     reach: dict[str, Any]
     # Each factor: {name, score, weight, detail}. `detail` is the basis a
@@ -155,10 +158,11 @@ async def get_drift(
     current = _asset_to_dict(row)
 
     # change_log entries are expected to be {timestamp, field, old_value,
-    # new_value, changed_by} but the test/real-world distribution will
-    # be partial. We construct a baseline dict by replaying the change log
-    # up to baseline_change_log_index.
-    change_log = current.get("change_log") or []
+    # new_value, changed_by} but the value is operator-shaped JSONB. Coerce to a
+    # list of DICTS: a non-list log, or a non-dict entry, must not
+    # AttributeError on .get and 500 — malformed operator data is not a server
+    # error. Non-dict entries are dropped.
+    change_log = as_dict_list(current.get("change_log"))
     if baseline_change_log_index is None:
         # Default: most recent prior snapshot. If the log is empty,
         # baseline is None → every set field shows as new.

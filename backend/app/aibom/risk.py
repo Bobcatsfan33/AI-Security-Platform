@@ -17,9 +17,11 @@ score is upstream of that, looking at static configuration.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field
-from typing import Any, Iterable
+from typing import Any
 
+from app.aibom.coerce import as_bool, as_list, as_number
 
 # Provider trust levels — well-known providers reduce risk; unknown /
 # self-hosted models the customer cannot vouch for increase it. Adjust
@@ -129,7 +131,7 @@ def score_supply_chain(asset: dict[str, Any]) -> SupplyChainRisk:
     factors["pii_present"] = pii_present
 
     # 5. Tool surface — more tools, more risk
-    tool_count = len(asset.get("tools") or [])
+    tool_count = len(as_list(asset.get("tools")))
     tool_risk = min(100.0, tool_count * 8.0)
     components.append(
         RiskComponent(
@@ -142,7 +144,7 @@ def score_supply_chain(asset: dict[str, Any]) -> SupplyChainRisk:
     factors["tool_count"] = tool_count
 
     # 6. MCP servers — same logic, slightly higher per-server weight
-    mcp_count = len(asset.get("mcp_servers") or [])
+    mcp_count = len(as_list(asset.get("mcp_servers")))
     mcp_risk = min(100.0, mcp_count * 15.0)
     components.append(
         RiskComponent(
@@ -156,8 +158,8 @@ def score_supply_chain(asset: dict[str, Any]) -> SupplyChainRisk:
 
     # 7. Agentic + blast radius — agentic systems with permissive tool
     # use carry materially more risk than narrow assistant configs
-    is_agentic = bool(asset.get("is_agentic"))
-    blast = float(asset.get("blast_radius_score") or 0.0)
+    is_agentic = as_bool(asset.get("is_agentic")) is True  # strict: "false" is not True
+    blast = as_number(asset.get("blast_radius_score")) or 0.0  # non-numeric -> 0, never 500
     if is_agentic:
         agentic_risk = min(100.0, 40.0 + blast)
     else:
@@ -178,7 +180,7 @@ def score_supply_chain(asset: dict[str, Any]) -> SupplyChainRisk:
     factors["blast_radius_score"] = blast
 
     # 8. Regulatory scope — anything regulated adds a flat compliance risk
-    reg_scope = list(asset.get("regulatory_scope") or [])
+    reg_scope = as_list(asset.get("regulatory_scope"))  # "gdpr" is not 4 frameworks
     reg_risk = min(100.0, len(reg_scope) * 20.0)
     components.append(
         RiskComponent(
@@ -210,8 +212,8 @@ def _pii_present(asset: dict[str, Any]) -> bool:
     we don't miss it on either.
     """
     sources: Iterable[Any] = []
-    sources = list(sources) + list(asset.get("rag_sources") or [])
-    sources = list(sources) + list(asset.get("data_lineage") or [])
+    sources = list(sources) + as_list(asset.get("rag_sources"))
+    sources = list(sources) + as_list(asset.get("data_lineage"))
     for src in sources:
         if not isinstance(src, dict):
             continue
