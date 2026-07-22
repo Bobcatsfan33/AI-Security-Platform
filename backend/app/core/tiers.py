@@ -135,6 +135,18 @@ ROUTER_TIERS: dict[str, RouterSpec] = {
         "SIEM exporter configuration (Splunk/Elastic ship; others gated).",
         user_facing=False,
     ),
+    # Tier A: AI-BOM graph, supply-chain risk, drift, and the computed
+    # blast-radius endpoint — the reason aibom is Tier A. API-only for now (no
+    # page), adapted to the v2 metadata_json model. Tier A means no preview tag
+    # and the reference-quality bar: these carry headline claims, so the
+    # endpoints deliver computed answers with stated bases against the current
+    # model, proven by integration tests before the mount.
+    "/aibom": RouterSpec(
+        "/aibom",
+        Tier.A,
+        "AI-BOM graph, supply-chain risk, drift, computed blast radius.",
+        user_facing=False,
+    ),
 }
 
 
