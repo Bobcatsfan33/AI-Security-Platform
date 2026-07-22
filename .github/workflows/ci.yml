@@ -209,9 +209,16 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-      - name: npm audit (high severity)
+      - name: npm audit gate (blocking, with expiring exceptions)
         working-directory: frontend
-        run: npm audit --audit-level=high
+        # BLOCKING — never warn-only. High/critical advisories fail the build,
+        # EXCEPT non-expired, justified, owned entries in audit-exceptions.json
+        # for dev/optional-and-unused deps. A production-artifact advisory gets
+        # no exception; an expired exception is a red gate. See docs/GAPS.md.
+        # npm ci so the gate audits the real installed tree (dev deps included).
+        run: |
+          npm ci
+          node scripts/audit-gate.mjs
 
       # ── Go SAST (high severity + high confidence) ───────────────────────
       - name: gosec (Go SAST)

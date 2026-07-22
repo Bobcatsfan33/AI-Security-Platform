@@ -1,0 +1,29 @@
+{
+  "_comment": [
+    "Expiring exceptions for the frontend npm-audit gate (scripts/audit-gate.mjs).",
+    "",
+    "POLICY (also in docs/GAPS.md): the gate STAYS BLOCKING \u2014 it never goes",
+    "warn-only. An exception is a TIME-BOXED, JUSTIFIED, OWNED deferral, not an",
+    "ignore. Rules the gate enforces:",
+    "  - A non-optional PRODUCTION dependency advisory gets NO exception \u2014 the",
+    "    hard bar. It must be fixed, not deferred.",
+    "  - Only dev / build-chain / optional-and-unused advisories are",
+    "    exception-eligible, and only with a written exposure justification.",
+    "  - expiry is 30 days by default, 90 days maximum. An EXPIRED exception is a",
+    "    RED gate (the build fails), not a stale ignore \u2014 so the debt is revisited",
+    "    on a clock, never forgotten.",
+    "",
+    "Each entry: id (GHSA/advisory), package, justification (grounded in OUR",
+    "exposure, not the advisory's generic text), owner, added, expires (YYYY-MM-DD)."
+  ],
+  "exceptions": [
+    {
+      "id": "GHSA-f88m-g3jw-g9cj",
+      "package": "sharp",
+      "justification": "sharp is an OPTIONAL dependency of next (server-side next/image). This dashboard uses next/image nowhere (no <Image>, no next/image import, no <img>), next.config sets images.unoptimized so Next never invokes sharp, AND outputFileTracingExcludes drops sharp + its @img libvips natives from the .next/standalone bundle \u2014 verified absent from the build. The production image ships only .next/standalone, so the vulnerable libvips code is neither present in the signed artifact nor reachable at runtime. sharp stays in the CI/dev tree only (npm --omit=optional also removes Tailwind's lightningcss and Next's SWC natives, breaking the build), which is why the audit still sees it. Retire when next ships a patched sharp (>=0.35.0).",
+      "owner": "ryanwallac33@gmail.com",
+      "added": "2026-07-21",
+      "expires": "2026-10-19"
+    }
+  ]
+}
