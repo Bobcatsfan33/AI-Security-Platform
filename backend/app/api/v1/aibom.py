@@ -20,9 +20,10 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.aibom.builder import AIBom, build_bom
-from app.aibom.drift import DriftReport, compute_drift
-from app.aibom.risk import SupplyChainRisk, score_supply_chain
+from app.aibom.blast_radius import compute_blast_radius
+from app.aibom.builder import build_bom
+from app.aibom.drift import compute_drift
+from app.aibom.risk import score_supply_chain
 from app.auth.dependencies import require_role
 from app.db.models.ai_asset import AIAsset
 from app.db.session import get_db
@@ -52,6 +53,18 @@ class DriftResponse(BaseModel):
     summary: str
 
 
+class BlastRadiusResponse(BaseModel):
+    asset_id: str
+    score: float
+    severity: str
+    reach: dict[str, Any]
+    # Each factor: {name, score, weight, detail}. `detail` is the basis a
+    # reviewer reads to decide whether to trust the number.
+    factors: list[dict[str, Any]]
+    containment: list[str]
+    basis: dict[str, Any]
+
+
 async def _load_asset(
     db: AsyncSession, asset_id: uuid.UUID, org_id: uuid.UUID
 ) -> AIAsset:
@@ -68,38 +81,28 @@ async def _load_asset(
 
 
 def _asset_to_dict(row: AIAsset) -> dict[str, Any]:
-    """Convert the SQLAlchemy row to a dict the AI-BOM functions accept."""
+    """Build the dict the AI-BOM functions consume, from the CURRENT model.
+
+    The agentic/reachability config (``tools``, ``downstream_consumers``,
+    ``is_agentic``, ``exposure``, ``change_log``, …) lives in the asset's
+    ``metadata_json`` JSONB bag — the v2.0 pivot replaced the typed columns the
+    original router read, so reading them off the row raised ``AttributeError``
+    on the first request. That is why aibom was never mounted despite being
+    audited as "3 endpoints": reachability was graded, not function.
+
+    Permissive-when-missing is the load-bearing property: the bag is passed
+    through VERBATIM, with NO defaults. A key that is absent stays absent — the
+    domain functions then read it as empty/zero and report the absence — so a
+    sparse asset yields the honest-empty decomposition, never a fabricated one.
+    The authoritative columns (``id``/``name``/``provider``) override any
+    same-named metadata key.
+    """
+    meta = row.metadata_json if isinstance(row.metadata_json, dict) else {}
     return {
+        **meta,
         "id": str(row.id),
         "name": row.name,
         "provider": row.provider,
-        "model_name": row.model_name,
-        "model_version": row.model_version,
-        "hosting": row.hosting,
-        "system_prompt": row.system_prompt,
-        "temperature": row.temperature,
-        "max_tokens": row.max_tokens,
-        "top_p": row.top_p,
-        "tools": row.tools or [],
-        "mcp_servers": row.mcp_servers or [],
-        "rag_sources": row.rag_sources or [],
-        "plugins": row.plugins or [],
-        "fine_tuning": row.fine_tuning or {},
-        "environment": row.environment,
-        "exposure": row.exposure,
-        "data_classification": row.data_classification,
-        "regulatory_scope": row.regulatory_scope or [],
-        "dependencies": row.dependencies or [],
-        "data_lineage": row.data_lineage or [],
-        "upstream_services": row.upstream_services or [],
-        "downstream_consumers": row.downstream_consumers or [],
-        "is_agentic": row.is_agentic,
-        "agent_framework": row.agent_framework,
-        "max_tool_calls_per_session": row.max_tool_calls_per_session,
-        "human_in_loop_required": row.human_in_loop_required,
-        "allowed_external_actions": row.allowed_external_actions or [],
-        "blast_radius_score": row.blast_radius_score,
-        "change_log": row.change_log or [],
     }
 
 
@@ -197,3 +200,29 @@ def _reconstruct_baseline(
             continue
         baseline[field] = entry.get("old_value")
     return baseline
+
+
+@router.get("/{asset_id}/blast-radius", response_model=BlastRadiusResponse)
+async def get_blast_radius(
+    asset_id: uuid.UUID,
+    identity: IdentityContext = Depends(require_role("viewer")),
+    db: AsyncSession = Depends(get_db),
+) -> BlastRadiusResponse:
+    """Computed blast radius — the reachable impact if this asset is compromised.
+
+    The score is DERIVED from the asset's reachability (see
+    ``app/aibom/blast_radius.py``), not the stored ``blast_radius_score`` scalar,
+    and every point of it traces to a factor with a stated basis. An asset with
+    no agentic metadata returns a low radius whose factors say why.
+    """
+    row = await _load_asset(db, asset_id, identity.org_id)
+    br = compute_blast_radius(_asset_to_dict(row))
+    return BlastRadiusResponse(
+        asset_id=br.asset_id,
+        score=br.score,
+        severity=br.severity,
+        reach=br.reach,
+        factors=[asdict(f) for f in br.factors],
+        containment=list(br.containment),
+        basis=br.basis,
+    )
