@@ -103,3 +103,29 @@ def test_a_batch_of_all_broken_refs_builds_nothing_without_raising() -> None:
     """The forwarder must survive an org whose every secret rotated away."""
     exporters = build_exporters([_splunk("env:GONE_1"), _splunk("env:GONE_2")])
     assert exporters == []
+
+
+def test_the_failure_log_contains_no_secret(caplog) -> None:
+    """N2: the drop-on-unresolvable log must never carry the secret ref, the
+    resolved value, or the resolver's message (which a backend can fill with a
+    vault path or the secret itself). Pins the property the _build_one refactor
+    established structurally."""
+    import logging
+
+    # A resolver whose EXCEPTION MESSAGE embeds a secret-looking string, to prove
+    # the message never reaches the log.
+    class _LeakyResolver:
+        def resolve(self, reference: str) -> str:
+            raise SecretResolutionError(f"backend echoed secret VERY-SECRET-VALUE for {reference}")
+
+    secrets_module.set_resolver(_LeakyResolver())
+    try:
+        with caplog.at_level(logging.ERROR):
+            assert build_exporters([_splunk("env:ANYTHING")]) == []
+    finally:
+        secrets_module.set_resolver(_StubResolver())
+
+    text = caplog.text
+    assert "siem_secret_unresolved" in text, "the drop must still be logged"
+    assert "VERY-SECRET-VALUE" not in text, "the resolver's message leaked into the log"
+    assert "env:ANYTHING" not in text, "the secret ref leaked into the log"

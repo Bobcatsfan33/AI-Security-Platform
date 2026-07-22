@@ -13,7 +13,9 @@
     "    RED gate (the build fails), not a stale ignore \u2014 so the debt is revisited",
     "    on a clock, never forgotten.",
     "",
-    "Each entry: id (GHSA/advisory), package, justification (grounded in OUR. A window over 30 days (default) also needs 'window_reason'.",
+    "Each entry: id (GHSA/advisory), package, justification (grounded in OUR",
+    "exposure, not the advisory's generic text), owner, added, expires (YYYY-MM-DD).",
+    "A window over 30 days (the default) also needs 'window_reason'.",
     "exposure, not the advisory's generic text), owner, added, expires (YYYY-MM-DD)."
   ],
   "exceptions": [

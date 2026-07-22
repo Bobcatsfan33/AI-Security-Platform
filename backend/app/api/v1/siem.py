@@ -105,6 +105,7 @@ _SECRET_KEY_PATTERNS: tuple[str, ...] = (
     "bearer",
     "credential",
     "private",
+    "auth",  # basic_auth_*, authorization, … — catches the N1 dead-field class
 )
 
 

@@ -145,6 +145,17 @@ path; the write-path gate; redaction that no longer leaks a mis-named secret
 key). These remain, none blocking a design-partner POC that uses Splunk/Elastic
 with env-var refs:
 
+* **N1 — dead secret fields ✅ CLOSED.** `SECRET_CONFIG_FIELDS["elastic"]` named
+  `basic_auth_password`, but `ElasticExporter` took a `basic_auth` tuple — no
+  such parameter — so a config using the declared field resolved its secret,
+  then TypeError'd at build and was dropped, while the field the constructor
+  actually accepted was neither validated nor redacted (a raw password there was
+  stored in the clear and echoed on read). `webhook`'s `bearer_token` was dead
+  the same way. Fixed: both constructors now accept the declared scalar field
+  (`basic_auth_user`/`basic_auth_password`; `bearer_token`), `auth` was added to
+  the redaction patterns, and `test_siem_secret_field_integrity.py` is the
+  ratchet — every `SECRET_CONFIG_FIELDS` entry must name a real constructor
+  parameter and be redactable, so the next dead-field drift fails a test.
 * **F2 (partial) — redaction is a deny-list, not an allow-list.** `_redact` now
   masks known secret fields *plus* any key whose name reads as a secret
   (`token`, `password`, `bearer`, …), so the reported `token_ref` leak is
@@ -152,12 +163,15 @@ with env-var refs:
   The fail-safe form is allow-list redaction — show only keys known to be
   non-secret, mask everything else — which needs the safe-key set enumerated per
   exporter type. Deferred; the deny-list closes the reported cases.
-* **F3 — webhook (Tier C) headers can carry raw credentials.** Only
-  `bearer_token` is validated and redacted for the webhook exporter; an operator
-  who puts `Authorization` under a `headers` map bypasses both. Flag-gated
+* **F3 — webhook (Tier C) headers can carry raw credentials.** `bearer_token` is
+  now a real, resolved, redacted field (see N1), but an operator who instead
+  puts `Authorization` inside the `headers` **map** bypasses validation and
+  redaction: the top-level key is `headers` (matches no pattern), and the secret
+  is a nested value the scalar-field mechanism does not reach. Flag-gated
   (`PLATFORM_ENABLE_SIEM_EXTENDED`, off by default), so not reachable on a
   default deployment, but it must be closed before webhook is promoted out of
-  Tier C.
+  Tier C — nested resolution/redaction, or a rule that forbids raw
+  `Authorization` in `headers`.
 * **F5 — no config-shape validation on create, and denied attempts are not
   audit-logged.** A Splunk config missing `url` is accepted, then silently
   dropped at build (`TypeError` → the operator learns from absent events, not an
