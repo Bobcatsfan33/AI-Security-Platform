@@ -95,7 +95,7 @@ Tested in `runtime-agent/policy/stage2_failbehavior_test.go`.
 
 ## P1
 
-### GAP-001 — Tier A blast radius and Tier B SIEM are unreachable — SIEM ✅ DONE, aibom in progress
+### GAP-001 — Tier A blast radius and Tier B SIEM are unreachable — ✅ DONE (SIEM + aibom mounted)
 **What:** `api/v1/aibom.py` (3 endpoints, incl. the only blast-radius surface)
 and `api/v1/siem.py` (4 endpoints, exporter CRUD) were on disk and **never
 mounted**. SIEM export is table stakes — a SOC that cannot see the platform's
@@ -119,17 +119,21 @@ ref drops that one exporter loudly rather than raising — a rotated secret cann
 silence the whole forwarder. Same lesson as aibom: the audit graded
 reachability, not function.
 
-**aibom in progress (Tier A):** deferred to its own follow-on because the audit
-missed that **the router does not work against the current model** — its
-`_asset_to_dict` reads ~30 attributes (`blast_radius_score`, `is_agentic`,
-`tools`, …) that the v2.0 pivot removed from `AIAsset` (now a
-`metadata_json` bag). Mounting as-is would `AttributeError` on the first
-request; it also has zero tests. The follow-on adapts `_asset_to_dict` to read
-`metadata_json` (the domain functions already tolerate sparse dicts) and adds
-the real blast-radius endpoint — a computed reachability decomposition, not the
-stored scalar echoed through a listing. Honest-when-thin: an asset with no
-agentic metadata gets a low radius with factors saying why. See the
-`app/aibom/blast_radius.py` design in the follow-on PR.
+**aibom ✅ mounted (Tier A):** the audit missed that the router did not work
+against the current model — `_asset_to_dict` read ~30 attributes the v2.0 pivot
+removed from `AIAsset` (now a `metadata_json` bag), so it would `AttributeError`
+on the first request; it also had zero tests. Fixed: `_asset_to_dict` reads
+`metadata_json` **verbatim, no defaults** (permissive-when-missing — a sparse
+asset yields honest-empty, never a fabricated value), and `app/aibom/blast_radius.py`
+computes the blast radius as a reachability decomposition (downstream fan-out,
+external-action surface, tool/MCP reach, autonomy, exposure, data sensitivity),
+not the stored scalar. Two guaranteed properties, tested: **honest-when-thin**
+(a metadata-less asset is low-radius with factors that STATE the absence — the
+reasons are the product) and **deterministic** (same row → byte-identical
+decomposition; no clock, no dict-ordering). Function was proven against a real
+asset row (real JSONB round-trip) BEFORE the mount, then mounted Tier A with
+HTTP + tenant-isolation tests through `create_app`. First Tier A mount — no
+preview tag, the reference-quality bar.
 
 **Lesson the SIEM mount taught (applies to aibom):** Phase 0's audit graded
 *reachability*, not *function*. It called aibom "3 endpoints" and SIEM "4

@@ -23,10 +23,10 @@ second prefix ever appears, that test needs to widen before the surface lands.
 
 Still on disk but NOT mounted, by design (Tier C frozen — see docs/GAPS.md
 for the promotion triggers): ``scim`` and ``idp_admin`` (enterprise
-provisioning; OIDC login covers a design-partner POC). ``aibom`` is mounted in
-its own follow-on (GAP-001) — its router needed adapting to the v2 asset model
-first — while ``siem`` (Tier B) mounts here with full HTTP + tenant-isolation
-tests.
+provisioning; OIDC login covers a design-partner POC). ``siem`` (Tier B) and
+``aibom`` (Tier A, GAP-001) both mount here with full HTTP + tenant-isolation
+tests; aibom's router was adapted to the v2 ``metadata_json`` model and its
+function proven against a real asset row before this mount.
 """
 
 from __future__ import annotations
@@ -39,6 +39,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app import __version__
 from app.api.middleware import CorrelationIdMiddleware
+from app.api.v1 import aibom as aibom_routes
 from app.api.v1 import aiguard as aiguard_routes
 from app.api.v1 import anomalies as anomalies_routes
 from app.api.v1 import assets as assets_routes
@@ -241,6 +242,10 @@ def create_app() -> FastAPI:
     # (Splunk/Elastic) is usable out of the box; the four Tier C exporter types
     # stay gated inside the exporter builder, not here.
     mount(siem_routes.router, "/siem")
+    # GAP-001 part 2: AI-BOM (Tier A) — adapted to the v2 metadata_json model,
+    # with the computed blast-radius endpoint. Function proven against a real
+    # asset row before this mount.
+    mount(aibom_routes.router, "/aibom")
 
     @app.get("/metrics", include_in_schema=False)
     async def metrics() -> Response:

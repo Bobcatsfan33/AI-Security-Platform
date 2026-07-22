@@ -141,3 +141,46 @@ async def test_siem_exporter_config_is_org_scoped(app_client, two_orgs, monkeypa
         # ── Org A still owns it ──────────────────────────────────────────────
         a_list = (await client.get("/v1/siem/exporters", headers=a)).json()
         assert [e["name"] for e in a_list] == ["a-splunk"]
+
+
+async def test_aibom_is_org_scoped(app_client, two_orgs) -> None:
+    """aibom endpoints load the asset by (id, org_id), so org B cannot inspect
+    org A's asset through any of them — 404, not 403 (GAP-001 part 2, Tier A)."""
+    import uuid as _uuid
+
+    from app.db.models.ai_asset import AIAsset
+    from app.db.models.connector import Connector
+
+    org_a, org_b = two_orgs
+    a = {"Authorization": f"Bearer {_token(org_a)}"}
+    b = {"Authorization": f"Bearer {_token(org_b)}"}
+
+    connector_id, asset_id = _uuid.uuid4(), _uuid.uuid4()
+    async with SessionLocal() as db:
+        db.add(
+            Connector(
+                id=connector_id, org_id=org_a, name="a-conn", connector_type="mock",
+                config_encrypted={}, is_enabled=True,
+            )
+        )
+        db.add(
+            AIAsset(
+                id=asset_id, org_id=org_a, name="a-asset", asset_type="agent",
+                provider="openai", external_id=f"ext-{asset_id.hex[:8]}",
+                connector_id=connector_id, metadata_json={"is_agentic": True, "tools": ["x"]},
+            )
+        )
+        await db.commit()
+
+    async with app_client as client:
+        # Org A sees every aibom view of its asset.
+        for suffix in ("", "/risk", "/drift", "/blast-radius"):
+            assert (
+                await client.get(f"/v1/aibom/{asset_id}{suffix}", headers=a)
+            ).status_code == 200
+
+        # Org B is 404 on every one — existence not disclosed.
+        for suffix in ("", "/risk", "/drift", "/blast-radius"):
+            assert (
+                await client.get(f"/v1/aibom/{asset_id}{suffix}", headers=b)
+            ).status_code == 404
