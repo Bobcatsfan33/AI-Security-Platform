@@ -266,6 +266,39 @@ exactly its honesty:
 * **`sdks/python` CI still installs `-e ".[dev]"` unpinned** — the same bug
   class, one directory over. See GAP-017.
 
+**Frontend npm-audit policy (the other half of the transitive story).** A
+Next.js app accretes transitive advisories that land continuously in the
+advisory DB — libvips via `sharp`, `@babel/core`, `postcss` — and a plain
+`npm audit --audit-level=high` gate blocks **every** PR the moment one is
+disclosed, for reasons unrelated to the change (this happened twice in one
+afternoon during GAP-001). The response is **not** to weaken the gate:
+
+* **The gate stays blocking. It never goes warn-only.** `frontend/scripts/audit-gate.mjs`
+  fails the build on any high/critical advisory.
+* **Exceptions are time-boxed, owned, and justified — not ignores.** A
+  non-expired entry in `frontend/audit-exceptions.json` (advisory id, an
+  exposure-grounded justification, an owner, an expiry) may defer a **dev,
+  build-chain, or optional-and-unused** advisory. Expiry is 30 days default,
+  90 max.
+* **A production-artifact advisory gets NO exception** — the
+  `--omit=dev --omit=optional` closure is the hard bar. It ships in the signed
+  image; it must be fixed.
+* **An expired exception is a RED gate**, enforced both by the gate script and
+  by `test_audit_exceptions.py` (which fails `pytest` the day an exception
+  lapses) — the debt is revisited on a clock, never forgotten.
+* Current sole exception: `sharp` (GHSA-f88m-g3jw-g9cj). `next/image` is unused,
+  `images.unoptimized` stops Next invoking it, and `outputFileTracingExcludes`
+  drops it from the `.next/standalone` bundle — verified absent from the build,
+  so it is not in the signed image. It cannot be dropped from the dev install
+  (`npm --omit=optional` also removes Tailwind's `lightningcss` and Next's SWC
+  natives), which is why the audit still sees it. Retire when Next ships a
+  patched sharp.
+
+Dependabot (npm, frontend + Node SDK) is the mechanism that actually *moves*
+these; the audit gate is the backstop that fails the build if one lands with no
+non-breaking fix, and the exception file is how such a case is deferred honestly
+rather than by turning the gate off.
+
 ### GAP-017 — The SDK CI installs are unpinned
 **What:** `.github/workflows/ci.yml`'s SDKs job runs `pip install -e ".[dev]"`
 for `sdks/python`, and `npm ci` for `sdks/node`. The Node side is locked
