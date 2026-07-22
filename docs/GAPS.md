@@ -95,17 +95,76 @@ Tested in `runtime-agent/policy/stage2_failbehavior_test.go`.
 
 ## P1
 
-### GAP-001 — Tier A blast radius and Tier B SIEM are unreachable
+### GAP-001 — Tier A blast radius and Tier B SIEM are unreachable — SIEM ✅ DONE, aibom in progress
 **What:** `api/v1/aibom.py` (3 endpoints, incl. the only blast-radius surface)
-and `api/v1/siem.py` (4 endpoints, exporter CRUD) are on disk, tested at the
-service layer, and **never mounted**. ~25 endpoints of working code
-(also SCIM 13, idp_admin 5 — see GAP-009) are unreachable.
-**Why it matters:** blast radius is a headline Tier A capability with no HTTP
-surface. SIEM export is table stakes — a SOC that cannot see the platform's
-events will not run it inline.
-**Unblocks:** nothing external. **Phase 1** — mount both with full Tier A/B
-test treatment. Blast radius needs a real endpoint, not just the scoring
-factor. Deferred out of Phase 0 because mounting is a behaviour change.
+and `api/v1/siem.py` (4 endpoints, exporter CRUD) were on disk and **never
+mounted**. SIEM export is table stakes — a SOC that cannot see the platform's
+events will not run it inline — and blast radius is a headline Tier A capability
+with no HTTP surface.
+
+**SIEM ✅ mounted (Tier B):** `/v1/siem` reachable, with HTTP + tenant-isolation
+tests through the mounted app (not a bare APIRouter) plus the validator unit
+tests. First surface to exercise the tier registry end to end, and the ratchet's
+first live test — mounting demanded HTTP + isolation tests before it would go
+green. Added `RouterSpec.user_facing` for it: admin-only APIs are Tier B (their
+API is preview-tagged) but have no page to badge, so they are excluded from the
+frontend parity list.
+
+Review of the mount caught **F1: the send path never resolved secret refs** —
+`_build_one` handed the stored `env:TOKEN` string straight to the exporter, so a
+real Splunk received the literal ref as its auth header. The "usable out of the
+box" pair could not authenticate. Fixed: refs resolve at the build chokepoint
+(`_resolve_secret_refs`), the stored JSONB keeps the ref, and an unresolvable
+ref drops that one exporter loudly rather than raising — a rotated secret cannot
+silence the whole forwarder. Same lesson as aibom: the audit graded
+reachability, not function.
+
+**aibom in progress (Tier A):** deferred to its own follow-on because the audit
+missed that **the router does not work against the current model** — its
+`_asset_to_dict` reads ~30 attributes (`blast_radius_score`, `is_agentic`,
+`tools`, …) that the v2.0 pivot removed from `AIAsset` (now a
+`metadata_json` bag). Mounting as-is would `AttributeError` on the first
+request; it also has zero tests. The follow-on adapts `_asset_to_dict` to read
+`metadata_json` (the domain functions already tolerate sparse dicts) and adds
+the real blast-radius endpoint — a computed reachability decomposition, not the
+stored scalar echoed through a listing. Honest-when-thin: an asset with no
+agentic metadata gets a low radius with factors saying why. See the
+`app/aibom/blast_radius.py` design in the follow-on PR.
+
+**Lesson the SIEM mount taught (applies to aibom):** Phase 0's audit graded
+*reachability*, not *function*. It called aibom "3 endpoints" and SIEM "4
+endpoints, exporter CRUD" — both accurate about what was on disk, both wrong
+about whether it worked. SIEM's send path never resolved secret refs (F1 below);
+aibom's router doesn't survive contact with the model. So for aibom the bar is:
+**prove the endpoints work against the CURRENT model with integration tests
+before mounting, not after.**
+
+### GAP-018 — SIEM exporter config: residual hardening (post-mount)
+The mount closed the load-bearing defects (F1 secret resolution on the send
+path; the write-path gate; redaction that no longer leaks a mis-named secret
+key). These remain, none blocking a design-partner POC that uses Splunk/Elastic
+with env-var refs:
+
+* **F2 (partial) — redaction is a deny-list, not an allow-list.** `_redact` now
+  masks known secret fields *plus* any key whose name reads as a secret
+  (`token`, `password`, `bearer`, …), so the reported `token_ref` leak is
+  closed. But a secret stored under a genuinely innocuous key name still shows.
+  The fail-safe form is allow-list redaction — show only keys known to be
+  non-secret, mask everything else — which needs the safe-key set enumerated per
+  exporter type. Deferred; the deny-list closes the reported cases.
+* **F3 — webhook (Tier C) headers can carry raw credentials.** Only
+  `bearer_token` is validated and redacted for the webhook exporter; an operator
+  who puts `Authorization` under a `headers` map bypasses both. Flag-gated
+  (`PLATFORM_ENABLE_SIEM_EXTENDED`, off by default), so not reachable on a
+  default deployment, but it must be closed before webhook is promoted out of
+  Tier C.
+* **F5 — no config-shape validation on create, and denied attempts are not
+  audit-logged.** A Splunk config missing `url` is accepted, then silently
+  dropped at build (`TypeError` → the operator learns from absent events, not an
+  error). And `log_event(...SUCCESS)` fires only on the happy path — a denied
+  create/update (gated type, unresolvable secret, tier violation) writes no
+  audit record, which is half an audit on a security surface. Both want a
+  per-type required-config schema and an audit-on-denial pass.
 
 ### GAP-006 — Detection efficacy is entirely unmeasured
 **What:** no efficacy suite for the attack graph or anomaly detector, no

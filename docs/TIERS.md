@@ -50,7 +50,7 @@ list is asserted against the backend registry by a parity test.
 | Reports — `/v1/reports` | ✅ mounted | No tests. Its framework list conflicts with `/v1/compliance`'s (GAP-008). |
 | Compliance evidence — `/v1/compliance` | ✅ mounted | `test_compliance_matrix.py` + its meta-test — the strongest gate in the repo. |
 | CI/CD gate — `actions/ai-security-gate` | ✅ ships | **Zero tests, no shellcheck, no CI job** (GAP-007). |
-| SIEM: **Splunk + Elastic** | ❌ **unmounted** | Exporters well-tested (23 tests). The router was never mounted, so no SIEM config is reachable over the API. Phase 1 mounts it (GAP-001). Allowed by default via `TIER_B_EXPORTER_TYPES`. |
+| SIEM: **Splunk + Elastic** | ✅ **mounted** (GAP-001) | `/v1/siem` — exporter config, admin-only. Tier B, so its API carries the `preview` tag; `user_facing=False` in the registry keeps it out of the UI badge list (no page to badge). Splunk/Elastic ship; Sentinel/Datadog/Chronicle/webhook stay gated in the exporter builder. HTTP + tenant-isolation tests through the mounted app (`test_siem_api.py`, `test_tenant_isolation.py::test_siem_exporter_config_is_org_scoped`) plus the 12 validator unit tests. |
 
 ## Tier C — frozen, dark by default
 

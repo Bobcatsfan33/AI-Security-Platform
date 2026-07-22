@@ -31,6 +31,7 @@ const FRONTEND = join(dirname(fileURLToPath(import.meta.url)), "..");
 const EXCEPTIONS_FILE = join(FRONTEND, "audit-exceptions.json");
 const BLOCKING_SEVERITIES = new Set(["high", "critical"]);
 const MAX_EXCEPTION_DAYS = 90;
+const DEFAULT_EXCEPTION_DAYS = 30; // longer than this needs a written window_reason
 
 function fail(msg) {
   console.error(`\n✖ audit gate: ${msg}`);
@@ -84,6 +85,12 @@ function loadExceptions() {
     const spanDays = (expires - added) / 86_400_000;
     if (spanDays > MAX_EXCEPTION_DAYS) {
       fail(`exception ${e.id}: expiry is ${Math.round(spanDays)}d after 'added' — max ${MAX_EXCEPTION_DAYS}d`);
+    }
+    if (spanDays > DEFAULT_EXCEPTION_DAYS && !e.window_reason) {
+      fail(
+        `exception ${e.id}: window is ${Math.round(spanDays)}d (>${DEFAULT_EXCEPTION_DAYS} default) ` +
+          `but has no 'window_reason' — say why it needs longer, so the default stays meaningful`,
+      );
     }
     if (expires < today) {
       fail(

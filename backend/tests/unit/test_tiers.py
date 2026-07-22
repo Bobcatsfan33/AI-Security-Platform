@@ -302,11 +302,37 @@ def test_frontend_preview_routes_match_backend_tier_b() -> None:
             "unchecked. If this is an intentional backend-only run, set "
             "ASP_BACKEND_ONLY=1 to skip explicitly rather than silently."
         )
-    backend = set(prefixes_for_tier(Tier.B))
+    # Only USER-FACING Tier B belongs in the badge list. The preview tag is on
+    # the API contract (all Tier B); the badge is on a page. An admin-only API
+    # like /siem is Tier B and preview-tagged but has no page to badge, so it is
+    # deliberately absent from the frontend list — see RouterSpec.user_facing.
+    backend = {p for p in prefixes_for_tier(Tier.B) if ROUTER_TIERS[p].user_facing}
     frontend = set(_frontend_tier_b_routes())
 
     assert frontend == backend, (
         "frontend TIER_B_ROUTES has drifted from the backend tier registry.\n"
-        f"  badged in UI but not Tier B: {sorted(frontend - backend)}\n"
-        f"  Tier B but unbadged in UI:   {sorted(backend - frontend)}"
+        f"  badged in UI but not user-facing Tier B: {sorted(frontend - backend)}\n"
+        f"  user-facing Tier B but unbadged in UI:   {sorted(backend - frontend)}"
     )
+
+
+def test_admin_only_tier_b_is_absent_from_the_badge_list(
+    build_app: Callable[..., FastAPI],
+) -> None:
+    """The split the user_facing flag exists for: /siem is Tier B (so its API
+    carries the preview tag — asserted here, not just implied by the name) yet
+    has no frontend page, so it must NOT be in the UI badge list. Both halves,
+    so neither drifts.
+    """
+    admin_only = [p for p in prefixes_for_tier(Tier.B) if not ROUTER_TIERS[p].user_facing]
+    assert "/siem" in admin_only, "siem is the admin-only Tier B surface this guards"
+
+    app = build_app()
+    for prefix in admin_only:
+        # the API IS preview-tagged (an API consumer should see it)…
+        for path in _routes_under(app, prefix):
+            assert PREVIEW_TAG in _tags_for(app, path), f"{path} is Tier B but not preview-tagged"
+        # …and it is NOT badged in the UI (there is no page)
+        assert prefix not in _frontend_tier_b_routes(), (
+            f"{prefix} is admin-only (no page) but appears in the UI badge list"
+        )

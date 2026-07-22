@@ -56,6 +56,14 @@ class RouterSpec:
     tier: Tier
     summary: str
     flag: str | None = None
+    # Whether this surface has a user-facing frontend page. The OpenAPI preview
+    # tag is about the API contract and applies to ALL Tier B (an API consumer
+    # should see "preview"); the UI badge is about a page, and an admin-only API
+    # like /siem has no page to badge. So the frontend parity test compares its
+    # badge list against Tier B routers that are user_facing — not all of Tier
+    # B. Defaults True because most surfaces are pages; the exception is the
+    # thing that needs marking.
+    user_facing: bool = True
 
     def __post_init__(self) -> None:
         if self.flag and self.tier is not Tier.C:
@@ -115,6 +123,18 @@ ROUTER_TIERS: dict[str, RouterSpec] = {
     "/compliance": RouterSpec("/compliance", Tier.B, "Evidence packs and framework catalogue."),
     "/reports": RouterSpec("/reports", Tier.B, "Rendered evaluation reports."),
     "/mcp": RouterSpec("/mcp", Tier.A, "MCP tool profiles, inspection, violations, call chain."),
+    # Tier B, but admin-only: exporter config is an API surface with no page, so
+    # its API carries the preview tag while nothing badges in the UI
+    # (user_facing=False keeps the frontend parity list honest). The exporter
+    # TYPES split B/C — Splunk/Elastic ship, the rest need
+    # PLATFORM_ENABLE_SIEM_EXTENDED — but that gate lives in the exporter
+    # builder, not the router: the router itself is one tier.
+    "/siem": RouterSpec(
+        "/siem",
+        Tier.B,
+        "SIEM exporter configuration (Splunk/Elastic ship; others gated).",
+        user_facing=False,
+    ),
 }
 
 

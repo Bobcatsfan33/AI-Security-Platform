@@ -13,7 +13,7 @@
     "    RED gate (the build fails), not a stale ignore \u2014 so the debt is revisited",
     "    on a clock, never forgotten.",
     "",
-    "Each entry: id (GHSA/advisory), package, justification (grounded in OUR",
+    "Each entry: id (GHSA/advisory), package, justification (grounded in OUR. A window over 30 days (default) also needs 'window_reason'.",
     "exposure, not the advisory's generic text), owner, added, expires (YYYY-MM-DD)."
   ],
   "exceptions": [
@@ -23,7 +23,8 @@
       "justification": "sharp is an OPTIONAL dependency of next (server-side next/image). This dashboard uses next/image nowhere (no <Image>, no next/image import, no <img>), next.config sets images.unoptimized so Next never invokes sharp, AND outputFileTracingExcludes drops sharp + its @img libvips natives from the .next/standalone bundle \u2014 verified absent from the build. The production image ships only .next/standalone, so the vulnerable libvips code is neither present in the signed artifact nor reachable at runtime. sharp stays in the CI/dev tree only (npm --omit=optional also removes Tailwind's lightningcss and Next's SWC natives, breaking the build), which is why the audit still sees it. Retire when next ships a patched sharp (>=0.35.0).",
       "owner": "ryanwallac33@gmail.com",
       "added": "2026-07-21",
-      "expires": "2026-10-19"
+      "expires": "2026-10-19",
+      "window_reason": "90d (the max) because the fix is out of our hands \u2014 it waits on Next to ship a patched sharp (>=0.35.0). The exposure is verified nil (sharp absent from the shipped .next/standalone bundle), so a shorter revisit cadence would only churn the expiry with no action available."
     }
   ]
 }

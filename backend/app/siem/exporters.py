@@ -36,6 +36,25 @@ ExporterType = Literal[
     "webhook",
 ]
 
+# Config keys, per exporter type, whose value is a secret REFERENCE
+# (``env:VAR`` / ``vault:path`` / ``awssm:arn``) that must be resolved to the
+# real secret before the exporter can authenticate.
+#
+# This is the SINGLE source of truth for "which fields are secrets": the router
+# (app/api/v1/siem.py) imports it to validate resolvability and to redact on
+# read, and :func:`_build_one` resolves them here, on the send path. That last
+# part is the whole point — validating a ref at create time and then storing the
+# ref accomplishes nothing if the ref is what leaves in the Authorization
+# header. Resolve where the bytes leave.
+SECRET_CONFIG_FIELDS: dict[str, frozenset[str]] = {
+    "splunk_hec": frozenset({"token"}),
+    "elastic": frozenset({"api_key", "basic_auth_password"}),
+    "sentinel": frozenset({"shared_key"}),
+    "datadog": frozenset({"api_key"}),
+    "chronicle": frozenset({"bearer_token"}),
+    "webhook": frozenset({"bearer_token"}),
+}
+
 # Tier B — ship by default, labelled preview (see docs/TIERS.md). A SOC that
 # cannot see the platform's events will not run it inline, so these two are
 # table stakes rather than a Tier C nice-to-have.
@@ -614,6 +633,41 @@ def build_exporters(configs: list[dict[str, Any]]) -> list[SiemExporter]:
     return out
 
 
+def _resolve_secret_refs(etype: str, config: dict[str, Any]) -> dict[str, Any] | None:
+    """Return a copy of ``config`` with secret-ref fields resolved to real
+    values, or ``None`` if any ref cannot be resolved.
+
+    Does NO logging: it returns None and lets the caller (``_build_one``) log,
+    where the exporter name/type are field-sensitively clean. The stored config
+    is never mutated — the ref stays in the JSONB column; only the outbound copy
+    carries the secret. Failure returns None (caller drops the exporter) rather
+    than raising, so one rotated secret cannot take the forwarder's whole batch
+    down.
+    """
+    from app.security.secrets import get_resolver
+
+    fields = SECRET_CONFIG_FIELDS.get(etype, frozenset())
+    if not fields:
+        return dict(config)
+
+    resolver = get_resolver()
+    resolved = dict(config)
+    for field in fields:
+        ref = config.get(field)
+        if ref is None:
+            continue
+        try:
+            resolved[field] = resolver.resolve(str(ref))
+        except Exception:  # noqa: BLE001 — any resolver backend may raise
+            # Swallow the exception entirely: its message can carry a vault
+            # path, an ARN, or the secret itself, so nothing about it leaves
+            # this function — not even its type. The caller logs the failure
+            # from the field NAME alone (see _build_one), which is all an
+            # operator needs and is provably secret-free.
+            return None
+    return resolved
+
+
 def _build_one(entry: dict[str, Any]) -> SiemExporter | None:
     etype = entry.get("type")
     name = entry.get("name") or etype or "siem"
@@ -647,6 +701,24 @@ def _build_one(entry: dict[str, Any]) -> SiemExporter | None:
             },
         )
         return None
+    # Resolve secret refs HERE, on the send path — not at create time, where the
+    # ref is only validated and then stored. A ref that resolved at create can
+    # fail now (rotated var, unmounted vault): log loudly and drop THIS exporter,
+    # never raise. build_exporters filters None and the forwarder keeps running,
+    # so one broken secret does not silence every SIEM the org configured.
+    #
+    # Logged here rather than in the resolver so the log names only ``name`` and
+    # ``etype`` (this function's own locals — clean), never anything derived from
+    # the secret the resolver just handled.
+    resolved = _resolve_secret_refs(str(etype), config)
+    if resolved is None:
+        logger.error(
+            "siem_secret_unresolved",
+            extra={"exporter_type": etype, "exporter_name": name},
+        )
+        return None
+    config = resolved
+
     try:
         if etype == "splunk_hec":
             return SplunkHECExporter(name=name, **config)
