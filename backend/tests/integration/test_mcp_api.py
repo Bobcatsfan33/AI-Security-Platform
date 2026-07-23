@@ -311,7 +311,11 @@ async def test_violations_filter_by_status(app_client, org_with_user) -> None:
         )
         resp = await client.get("/v1/mcp/violations?status=open", headers=h)
     assert resp.status_code == 200, resp.text
-    assert all(r["resolution_status"] == "open" for r in resp.json())
+    rows = resp.json()
+    # Presence, not just uniformity: an empty list satisfies `all(...)` vacuously,
+    # so assert our seeded violation is actually in the filtered result.
+    assert any(r["session_id"] == "s-filter" for r in rows), "seeded violation missing"
+    assert all(r["resolution_status"] == "open" for r in rows)
 
 
 # ─────────────────────────────────────────── chain detection (the headline)
