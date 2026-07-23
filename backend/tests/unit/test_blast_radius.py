@@ -136,3 +136,67 @@ def test_list_ordering_in_input_does_not_change_output() -> None:
 def test_reach_lists_are_sorted() -> None:
     br = compute_blast_radius({"id": "a7", "downstream_consumers": ["gamma", "alpha", "beta"]})
     assert br.reach["downstream_consumers"] == ["alpha", "beta", "gamma"]
+
+
+# ─────────────────────────────────────────── malformed input must not fabricate
+
+
+def test_string_false_is_not_agentic() -> None:
+    """bool("false") is True — the trap. A string must not score the asset
+    agentic, and the reason must say the value was unparseable."""
+    br = compute_blast_radius({"id": "m1", "is_agentic": "false"})
+    assert br.reach["autonomy"]["is_agentic"] is False
+    assert _reasons(br)["autonomy"] == (
+        "is_agentic present but not a boolean — unscored (treated non-agentic)"
+    )
+    # containment must NOT claim a human gate on a non-agentic asset
+    assert not any("human-in-the-loop" in c for c in br.containment)
+
+
+def test_string_false_human_in_loop_is_not_claimed_as_containment() -> None:
+    """The operator recorded human_in_loop as absent (string 'false'); a
+    mitigation must not be claimed present."""
+    br = compute_blast_radius(
+        {"id": "m2", "is_agentic": True, "human_in_loop_required": "false"}
+    )
+    assert not any("human-in-the-loop" in c for c in br.containment)
+    assert "human_in_loop=unparseable (treated absent)" in _reasons(br)["autonomy"]
+
+
+def test_bool_budget_is_not_a_budget() -> None:
+    """max_tool_calls_per_session=True must not become 'capped at 1'."""
+    br = compute_blast_radius(
+        {"id": "m3", "is_agentic": True, "max_tool_calls_per_session": True}
+    )
+    assert br.reach["autonomy"]["max_tool_calls_per_session"] is None
+    assert not any("budget capped" in c for c in br.containment)
+    assert "max_tool_calls=unparseable" in _reasons(br)["autonomy"]
+
+
+def test_negative_budget_is_not_a_budget() -> None:
+    br = compute_blast_radius(
+        {"id": "m4", "is_agentic": True, "max_tool_calls_per_session": -3}
+    )
+    assert br.reach["autonomy"]["max_tool_calls_per_session"] is None
+    assert not any("-3" in c for c in br.containment)
+
+
+def test_string_where_list_expected_counts_nothing() -> None:
+    """tools='shell' must not count 5 tools (len of the string)."""
+    br = compute_blast_radius({"id": "m5", "tools": "shell", "downstream_consumers": "billing"})
+    assert br.reach["tool_reach"]["tools"] == 0
+    assert _reasons(br)["tool_reach"] == "no tool grants recorded"
+    assert br.reach["downstream_consumers"] == []
+
+
+def test_present_but_unmapped_exposure_says_unrecognised_not_absent() -> None:
+    """exposure='dmz' IS recorded — the reason must not claim 'not recorded'."""
+    br = compute_blast_radius({"id": "m6", "exposure": "dmz"})
+    detail = _reasons(br)["exposure"]
+    assert "not a recognised level" in detail
+    assert "not recorded" not in detail
+
+
+def test_absent_exposure_says_not_recorded() -> None:
+    br = compute_blast_radius({"id": "m7"})
+    assert _reasons(br)["exposure"] == "exposure not recorded"

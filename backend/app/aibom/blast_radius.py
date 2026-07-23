@@ -26,6 +26,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from app.aibom.coerce import as_bool, as_list, as_positive_int, as_str
+
 # Fixed, documented weights. Order here is the order factors are emitted, so the
 # decomposition is stable regardless of input dict ordering.
 _TOOL_WEIGHT = 0.20
@@ -79,14 +81,11 @@ class BlastRadius:
     basis: dict[str, Any] = field(default_factory=dict)
 
 
-def _as_list(value: Any) -> list[Any]:
-    """Coerce a JSONB value to a sorted list of strings, or [] when absent.
-
-    Sorted so the reported reach is byte-stable regardless of how the value was
-    stored. A missing/non-list value is empty, never a placeholder."""
-    if not isinstance(value, list):
-        return []
-    return sorted(str(v) for v in value)
+def _sorted_strs(value: Any) -> list[str]:
+    """A sorted list of the string items of a JSONB list, or [] when the value
+    is not a list. Sorted so the reported reach is byte-stable regardless of how
+    it was stored; a missing/non-list value is empty, never a placeholder."""
+    return sorted(str(v) for v in as_list(value))
 
 
 def _band(score: float) -> str:
@@ -108,19 +107,38 @@ def compute_blast_radius(asset: dict[str, Any]) -> BlastRadius:
     """
     asset_id = str(asset.get("id") or "")
 
-    tools = _as_list(asset.get("tools"))
-    mcp_servers = _as_list(asset.get("mcp_servers"))
-    downstream = _as_list(asset.get("downstream_consumers"))
-    external_actions = _as_list(asset.get("allowed_external_actions"))
-    is_agentic = bool(asset.get("is_agentic"))
-    human_in_loop = bool(asset.get("human_in_loop_required"))
-    # max_tool_calls: honest-empty means "unknown", which we treat as unbounded
-    # for the autonomy factor ONLY when the asset is agentic — an agentic asset
-    # with no stated budget is not safer than one with a budget.
+    tools = _sorted_strs(asset.get("tools"))
+    mcp_servers = _sorted_strs(asset.get("mcp_servers"))
+    downstream = _sorted_strs(asset.get("downstream_consumers"))
+    external_actions = _sorted_strs(asset.get("allowed_external_actions"))
+
+    # Strict typing: a value scores only if it is exactly the expected type. A
+    # present-but-malformed value (e.g. is_agentic="false") is NOT scored and
+    # says so in its factor detail — the reasons are the product and must not
+    # misstate what the operator recorded.
+    raw_agentic = asset.get("is_agentic")
+    is_agentic = as_bool(raw_agentic) is True
+    agentic_malformed = raw_agentic is not None and as_bool(raw_agentic) is None
+
+    raw_hitl = asset.get("human_in_loop_required")
+    human_in_loop = as_bool(raw_hitl) is True
+    hitl_malformed = raw_hitl is not None and as_bool(raw_hitl) is None
+
+    # max_tool_calls: absent OR malformed means "unknown", treated as unbounded
+    # for the autonomy factor only when agentic. A bool, a zero, or a negative is
+    # not a budget — as_positive_int rejects all three.
     raw_budget = asset.get("max_tool_calls_per_session")
-    max_tool_calls = int(raw_budget) if isinstance(raw_budget, (int, float)) else None
-    exposure = str(asset.get("exposure") or "").lower()
-    data_class = str(asset.get("data_classification") or "").lower()
+    max_tool_calls = as_positive_int(raw_budget)
+    budget_malformed = raw_budget is not None and max_tool_calls is None
+
+    # Exposure / data class score only when present AND a recognised level. A
+    # value that is present but unmapped ("dmz") is reported as unrecognised, not
+    # as "not recorded" — the operator DID record something; we just can't score
+    # it, and the reason must not imply otherwise.
+    raw_exposure = asset.get("exposure")
+    exposure = as_str(raw_exposure) or ""
+    raw_data = asset.get("data_classification")
+    data_class = as_str(raw_data) or ""
 
     factors: list[BlastFactor] = []
 
@@ -175,7 +193,10 @@ def compute_blast_radius(asset: dict[str, Any]) -> BlastRadius:
     # 4. Autonomy — an agentic asset acting without a human gate reaches further.
     if not is_agentic:
         autonomy_score = 0.0
-        autonomy_detail = "non-agentic (no autonomous action)"
+        if agentic_malformed:
+            autonomy_detail = "is_agentic present but not a boolean — unscored (treated non-agentic)"
+        else:
+            autonomy_detail = "non-agentic (no autonomous action)"
     else:
         base = 50.0
         if not human_in_loop:
@@ -183,37 +204,35 @@ def compute_blast_radius(asset: dict[str, Any]) -> BlastRadius:
         if max_tool_calls is None or max_tool_calls > 10:
             base += 20.0
         autonomy_score = min(100.0, base)
-        budget = "unbounded" if max_tool_calls is None else str(max_tool_calls)
-        autonomy_detail = (
-            f"agentic; human_in_loop={human_in_loop}; max_tool_calls={budget}"
-        )
+        if max_tool_calls is not None:
+            budget = str(max_tool_calls)
+        elif budget_malformed:
+            budget = "unparseable (treated unbounded)"
+        else:
+            budget = "unbounded"
+        hitl = "unparseable (treated absent)" if hitl_malformed else str(human_in_loop)
+        autonomy_detail = f"agentic; human_in_loop={hitl}; max_tool_calls={budget}"
     factors.append(BlastFactor("autonomy", autonomy_score, _AUTONOMY_WEIGHT, autonomy_detail))
 
     # 5. Exposure — internet-facing widens the radius.
     exp_score = _EXPOSURE_SCORE.get(exposure, 0.0)
-    factors.append(
-        BlastFactor(
-            "exposure",
-            exp_score,
-            _EXPOSURE_WEIGHT,
-            f"exposure={exposure}" if exposure in _EXPOSURE_SCORE else "exposure not recorded",
-        )
-    )
+    if exposure in _EXPOSURE_SCORE:
+        exp_detail = f"exposure={exposure}"
+    elif raw_exposure is None:
+        exp_detail = "exposure not recorded"
+    else:
+        exp_detail = f"exposure={raw_exposure!r} is not a recognised level — unscored"
+    factors.append(BlastFactor("exposure", exp_score, _EXPOSURE_WEIGHT, exp_detail))
 
     # 6. Data sensitivity — raises the impact of any compromise.
     data_score = _DATA_SCORE.get(data_class, 0.0)
-    factors.append(
-        BlastFactor(
-            "data_sensitivity",
-            data_score,
-            _DATA_WEIGHT,
-            (
-                f"data_classification={data_class}"
-                if data_class in _DATA_SCORE
-                else "data classification not recorded"
-            ),
-        )
-    )
+    if data_class in _DATA_SCORE:
+        data_detail = f"data_classification={data_class}"
+    elif raw_data is None:
+        data_detail = "data classification not recorded"
+    else:
+        data_detail = f"data_classification={raw_data!r} is not a recognised level — unscored"
+    factors.append(BlastFactor("data_sensitivity", data_score, _DATA_WEIGHT, data_detail))
 
     total = round(sum(f.score * f.weight for f in factors), 2)
     total = max(0.0, min(100.0, total))
