@@ -376,6 +376,19 @@ these; the audit gate is the backstop that fails the build if one lands with no
 non-breaking fix, and the exception file is how such a case is deferred honestly
 rather than by turning the gate off.
 
+**Worked example — the hard bar held on first contact (2026-07-23, PR #89).**
+A batch of Next.js advisories disclosed that morning turned both frontend gates
+red on every open PR at once: five `next`/`postcss` advisories on the npm gate
+and four HIGH `next` CVEs on the Trivy image gate. Every one was a **production**
+dependency advisory with a **fixed version available** — exactly the class the
+policy says gets *no* exception. The gate offered no deferral and none was taken:
+`next` 16.2.6→16.2.11 plus a `postcss`→8.5.22 override, fixed not deferred, in a
+standalone two-file PR that merged before the feature work rebased onto it. The
+`sharp` entry stayed the *only* exception — the one advisory that is genuinely
+unfixable-by-us and verified absent from the shipped bundle. This is the ledger
+working as designed: an exception is the rare, justified case, not the escape
+hatch every red advisory reaches for.
+
 ### GAP-017 — The SDK CI installs are unpinned
 **What:** `.github/workflows/ci.yml`'s SDKs job runs `pip install -e ".[dev]"`
 for `sdks/python`, and `npm ci` for `sdks/node`. The Node side is locked
@@ -397,6 +410,36 @@ component library (Phase 0 added the first shared component, `PreviewBadge`).
 **Why it matters:** Phase 1 brings the MCP and anomalies pages to backend
 parity with no regression net under them.
 **Unblocks:** nothing external. Phase 1 stands up a runner.
+
+### GAP-021 — The Trivy image gate has no exception ledger
+**What:** the npm audit gate has `frontend/audit-exceptions.json` — a time-boxed,
+owned, justified deferral mechanism with an expiry test (`test_audit_exceptions.py`
+reddens the day an entry lapses). The **Trivy image scan** (`build-scan-sign`,
+HIGH/CRITICAL, both the frontend and backend images) has **no equivalent**. It
+is a bare `exit 1` on any finding.
+**Why it matters:** today that is fine *because every image CVE has been
+fixable* — the 2026-07-23 `next` batch (GAP-016 worked example) had a fixed
+version, so the fix was to bump, not to defer. But container-layer findings
+recur constantly (the Alpine base, bundled node-pkgs) and some land **unfixed**
+(no patched version published yet) or **not reachable in our usage** (a CVE in a
+code path the image never executes). The first time that happens, the image gate
+hard-blocks **every** PR in the repo with no honest escape valve — and the
+pressure in that moment is to do the one thing the npm policy forbids: turn the
+gate warn-only. The mechanism to avoid that should exist *before* it is needed,
+not be improvised under a red main.
+**Design (mirror the npm ledger exactly, so there is one shape to learn):** a
+JSON ledger (`image-scan-exceptions.json`) keyed by CVE id + image + package,
+each entry carrying an exposure-grounded justification, an owner, and an expiry
+(30d default, 90d max); a generator that emits the `.trivyignore` the action
+consumes from it; and a `test_image_scan_exceptions`-style expiry test that
+fails `pytest` on a lapsed entry. **Same hard bar:** a CVE with a fixed version
+available gets **no** exception — fixed-version-available means fix, exactly as
+the npm gate treats a production advisory.
+**Unblocks:** nothing external. **Trigger to implement:** the first **unfixable**
+(or verified-unreachable) HIGH/CRITICAL image CVE. Filed now to capture the
+design while the npm parallel is fresh; deferred because this batch was fixable
+and interleaving process work into the in-flight MCP increment chain buys
+nothing a real red gate is not currently demanding.
 
 ---
 
