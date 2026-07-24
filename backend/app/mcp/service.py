@@ -23,6 +23,7 @@ from app.mcp.inspector import (
     ToolProfile,
     builtin_profiles_by_name,
     inspect_call,
+    sanitize_stored_profile,
 )
 from app.security.audit_log import AuditEventType, AuditOutcome, log_event
 
@@ -56,13 +57,16 @@ async def resolve_profile(
         )
     ).scalar_one_or_none()
     if row is not None:
-        return ToolProfile(
+        # Stored JSONB is operator-shaped and untrusted: sanitize strictly so a
+        # malformed profile degrades to honest-empty-plus-integrity-issue on the
+        # inspect path (GAP-019) instead of fabricating params or 500ing.
+        return sanitize_stored_profile(
             tool_name=row.tool_name,
             access_mode=row.access_mode,  # type: ignore[arg-type]
             description=row.description,
-            allowed_params=tuple(row.allowed_params or []),
-            forbidden_params=tuple(row.forbidden_params or []),
-            param_constraints=dict(row.param_constraints or {}),
+            allowed_params=row.allowed_params,
+            forbidden_params=row.forbidden_params,
+            param_constraints=row.param_constraints,
         )
 
     return builtin_profiles_by_name().get(tool_name)

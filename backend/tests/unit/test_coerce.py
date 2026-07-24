@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.aibom.coerce import (
+from app.core.coerce import (
     as_bool,
     as_dict_list,
     as_list,

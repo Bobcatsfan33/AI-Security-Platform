@@ -252,28 +252,44 @@ sibling org cannot read it. Today, 4 do.
 [`test_router_coverage_ratchet.py`](../backend/tests/unit/test_router_coverage_ratchet.py)
 may only shrink, and each row names the phase that retires it.
 
-### GAP-019 — MCP `/inspect` 500s on a malformed stored tool profile
-**What:** the per-call inspection path reads a tool profile's `param_constraints`
-and `allowed_params` straight off JSONB and treats them as typed
+### GAP-019 — MCP `/inspect` 500s on a malformed stored tool profile ✅ CLOSED (increment 2)
+**Was:** the per-call inspection path read a tool profile's `param_constraints`
+and `allowed_params` straight off JSONB and treated them as typed
 (`rule.get(...)`, `tuple(allowed_params)`). A profile whose `param_constraints`
-is not a dict-of-dicts crashes with `AttributeError: 'str' object has no
-attribute 'get'`; a string `allowed_params` miscounts as characters. Confirmed
+was not a dict-of-dicts crashed with `AttributeError: 'str' object has no
+attribute 'get'`; a string `allowed_params` miscounted as characters. Confirmed
 empirically against `asp-it-pg`: one malformed profile 500s **every** inspection
-for that tool.
-**Why it matters:** `POST /v1/mcp/inspect` is the hot path the runtime agent
-calls on every MCP tool invocation. A config-shaped 500 there is an availability
-failure in the enforcement path — the same coercion class aibom hardened
-(`bool("false")` fabrication, `float()`/`.get()` on operator JSONB). The API
-body-validates `param_constraints` today, but nothing guarantees the DB only
-ever holds API-written profiles (scanner/gateway writes, migrations, hand-edits),
-and the inspector must not trust JSONB shape.
-**Unblocks:** nothing external. **Closed by increment 2** — promote
-`app/aibom/coerce.py` → `app/core/coerce.py` and apply strict coercion in
-`resolve_profile` + `_inspect_params`, with a malformed-profile battery
-asserting no 500s and nothing fabricated.
-**Encoded now:** `test_inspect_malformed_stored_profile_does_not_500` in
-`backend/tests/integration/test_mcp_api.py`, marked `xfail(strict=True)`. The
-fix turns it XPASS → the marker deletion in increment 2 is the proof.
+for that tool. `POST /v1/mcp/inspect` is the hot path the runtime agent calls on
+every MCP tool invocation, so a config-shaped 500 there is an availability
+failure in the enforcement path — the same coercion class aibom hardened.
+**Closed by:** `app/aibom/coerce.py` promoted to `app/core/coerce.py` (aibom +
+MCP both import it now), and `app/mcp/inspector.sanitize_stored_profile` — used
+by `resolve_profile` (inspect path) and `list_tools` (registry read, which had
+the same 500 via `dict(str)`) — coerces every stored field strictly. Anything
+unparseable is dropped from enforcement AND named in a new
+`ToolProfile.integrity_issues`.
+
+**The design decision, made explicit (because /inspect ENFORCES, it does not
+merely report like aibom):** a profile that cannot be fully parsed does **not**
+inspect as "no constraints" — that is fail-open on the agent's hot path. A
+non-empty `integrity_issues` becomes a `malformed_profile` violation at
+**severity high → recommendation `flag` → `allowed=False`**: deny-by-default,
+with the reason naming each unreadable field so the operator can fix the
+profile. Parseable enforcement still applies on top (a valid forbidden token in
+a partially-malformed profile still fires), so hardening never *weakens*
+detection. `block` was not chosen over `flag`: a malformed profile is a
+config-integrity problem, not a high-confidence attack, and `flag` already
+denies at the inspection layer while routing it to human review rather than hard-
+failing legitimate traffic on a typo.
+**Proven by:** the malformed-profile battery in
+`backend/tests/integration/test_mcp_api.py` (flags-not-500s, no fabrication,
+partial-malformation still enforces, registry read no longer 500s) and the pure
+`backend/tests/unit/test_mcp_profile_sanitize.py`. The `xfail(strict=True)`
+marker was deleted — its removal is the proof of fix.
+**Follow-up (not blocking):** `GET /tools` sanitizes for safe display but does
+not yet surface `integrity_issues` in the response; exposing them would let an
+operator SEE which stored profiles are malformed rather than infer it from a
+flagged call. Worth a small schema addition later.
 
 ### GAP-020 — MCP user-stamping writes 500 instead of a clean 403
 **What:** `POST /v1/mcp/tools` writes `created_by = identity.user_id` and

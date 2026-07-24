@@ -21,7 +21,7 @@ from app.db.models.mcp import McpCall, McpToolProfile, McpViolation
 from app.db.session import get_db
 from app.identity.types import IdentityContext
 from app.mcp import service as mcp_service
-from app.mcp.inspector import DEFAULT_TOOL_PROFILES
+from app.mcp.inspector import DEFAULT_TOOL_PROFILES, sanitize_stored_profile
 
 router = APIRouter(tags=["mcp"])
 
@@ -128,15 +128,27 @@ async def list_tools(
 
     out: list[ToolProfileResponse] = []
     for r in custom_rows:
+        # Same coercion the inspect path uses (GAP-019): a stored profile whose
+        # JSONB is malformed must not 500 the registry read either — e.g. a
+        # string param_constraints would blow up ``dict(...)`` here. Display the
+        # sanitized (enforceable) view; malformed pieces are dropped, not faked.
+        prof = sanitize_stored_profile(
+            tool_name=r.tool_name,
+            access_mode=r.access_mode,
+            description=r.description,
+            allowed_params=r.allowed_params,
+            forbidden_params=r.forbidden_params,
+            param_constraints=r.param_constraints,
+        )
         out.append(
             ToolProfileResponse(
                 id=r.id,
-                tool_name=r.tool_name,
-                access_mode=r.access_mode,
-                description=r.description,
-                allowed_params=list(r.allowed_params or []),
-                forbidden_params=list(r.forbidden_params or []),
-                param_constraints=dict(r.param_constraints or {}),
+                tool_name=prof.tool_name,
+                access_mode=prof.access_mode,
+                description=prof.description,
+                allowed_params=list(prof.allowed_params),
+                forbidden_params=list(prof.forbidden_params),
+                param_constraints=prof.param_constraints,
                 is_builtin=False,
             )
         )

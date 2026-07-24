@@ -1,10 +1,13 @@
 """Strict coercion for operator-shaped JSONB.
 
-The v2.0 pivot moved the asset's agentic config from typed columns into the
-``metadata_json`` bag. A column was ``bool``; a bag value is whatever a connector
-or a hand-edit wrote — ``"false"``, ``"shell"``, ``true`` where a number was
-meant. The AI-BOM math consumed it as if it were still typed, which produced two
-failure classes:
+Shared primitives for every surface that reads operator-written JSONB and must
+treat it as untrusted: the AI-BOM math (``app/aibom``) and the MCP inspector
+(``app/mcp``) both build on these. Promoted from ``app/aibom`` to ``app/core``
+when MCP became the second consumer — same helpers, same rules, one home.
+
+A typed column is ``bool``; a JSONB bag value is whatever a connector or a
+hand-edit wrote — ``"false"``, ``"shell"``, ``true`` where a number was meant.
+Code that consumes it as if it were still typed produces two failure classes:
 
 * **Fabrication** (a Tier A honesty violation): ``bool("false")`` is ``True``, so
   a string ``"false"`` scores an asset agentic; ``len("shell")`` counts five

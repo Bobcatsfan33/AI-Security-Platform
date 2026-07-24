@@ -21,7 +21,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import Any
 
-from app.aibom.coerce import as_bool, as_list, as_number
+from app.core.coerce import as_bool, as_list, as_number
 
 # Provider trust levels — well-known providers reduce risk; unknown /
 # self-hosted models the customer cannot vouch for increase it. Adjust
