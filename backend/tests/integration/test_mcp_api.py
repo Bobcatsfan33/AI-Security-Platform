@@ -13,16 +13,19 @@ violation, and — the Tier A headline — a real two-call sequence fires the
 ``read_then_exfil`` attack-chain match (MITRE T1048), driven entirely through
 the API, no synthetic shortcut.
 
-Three defects the probes found are encoded as ``xfail(strict=True)`` tests, one
-per condition, each naming its GAP. ``strict`` is the ratchet: the day the fix
+Defects the probes found were encoded as ``xfail(strict=True)`` tests, one per
+condition, each naming its GAP. ``strict`` is the ratchet: the day the fix
 lands, the xfail turns to XPASS and ERRORS the suite, forcing its own marker
 deletion in the fix PR. A plain xfail would rot into a green lie; a strict one
 cannot.
 
-* GAP-019 — ``POST /inspect`` 500s on a malformed *stored* tool profile
-  (JSONB coercion on the hot path the runtime agent hits every call).
+* GAP-019 — ``POST /inspect`` 500s on a malformed *stored* tool profile (JSONB
+  coercion on the hot path the runtime agent hits every call). **CLOSED
+  (increment 2):** the xfail is gone; the malformed-profile battery below now
+  asserts the fix — malformed profiles flag deny-by-default, never 500.
 * GAP-020 — ``POST /tools`` and ``POST /violations/{id}/resolve`` 500 instead
-  of a clean 403 when the JWT subject is not a provisioned user.
+  of a clean 403 when the JWT subject is not a provisioned user (still xfail;
+  increment 3).
 
 Postgres-backed; runs in CI, skips locally without a database.
 """
@@ -390,7 +393,7 @@ async def test_read_then_exfil_chain_fires_end_to_end(app_client, org_with_user)
 async def test_inspect_does_not_500_on_odd_param_types(app_client, org_with_user) -> None:
     """Request-body params are operator-shaped: non-string values, nested dicts,
     lists. None of it may 500 — malformed input is a client condition. (Distinct
-    from a malformed stored PROFILE, which is GAP-019 below.)"""
+    from a malformed stored PROFILE — see the GAP-019 battery below.)"""
     org_id, _ = org_with_user
     h = {"Authorization": f"Bearer {_token(org_id, 'admin')}"}
     async with app_client as client:
@@ -453,19 +456,22 @@ async def test_viewer_cannot_create_tool(app_client, org_with_user) -> None:
 # marker, which is the proof the defect is closed. See docs/GAPS.md.
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="GAP-019: /inspect 500s (AttributeError) on a malformed stored tool "
-    "profile — param_constraints read from JSONB without coercion. Fixed in "
-    "increment 2 (app/core/coerce.py applied to resolve_profile/_inspect_params).",
-)
-async def test_inspect_malformed_stored_profile_does_not_500(app_client, org_with_user) -> None:
-    """A profile whose ``param_constraints`` is not a dict-of-dicts, and whose
-    ``allowed_params`` is a string, crashes the inspect hot path today
-    (``'str' object has no attribute 'get'``). Reference quality: malformed
-    operator data degrades to honest-empty, never a 500 — the runtime agent
-    calls this on every tool invocation, so one bad profile must not take out
-    inspection for that tool."""
+async def _inspect(client, org_id, tool_name, params, session="s", role="admin"):
+    h = {"Authorization": f"Bearer {_token(org_id, role)}"}
+    return await client.post(
+        "/v1/mcp/inspect",
+        headers=h,
+        json={"session_id": session, "agent_id": "a1", "tool_name": tool_name, "params": params},
+    )
+
+
+async def test_malformed_profile_flags_not_500s(app_client, org_with_user) -> None:
+    """GAP-019 closed. A profile whose ``param_constraints`` is not a
+    dict-of-dicts and whose ``allowed_params`` is a string used to crash the
+    inspect hot path (``'str' object has no attribute 'get'``). Now it returns
+    200 AND — the design decision — is FLAGGED, not silently allowed: on the
+    enforcement path an unreadable profile must deny-by-default, never inspect
+    as 'no constraints' (which would fail open on every call to that tool)."""
     org_id, _ = org_with_user
     await _seed_profile(
         org_id,
@@ -473,19 +479,144 @@ async def test_inspect_malformed_stored_profile_does_not_500(app_client, org_wit
         allowed_params="not-a-list",
         param_constraints={"query": "not-a-dict"},
     )
-    h = {"Authorization": f"Bearer {_token(org_id, 'admin')}"}
     async with app_client as client:
-        resp = await client.post(
-            "/v1/mcp/inspect",
-            headers=h,
-            json={
-                "session_id": "s-badprofile",
-                "agent_id": "a1",
-                "tool_name": "malformed_tool",
-                "params": {"query": "SELECT 1"},
-            },
+        resp = await _inspect(
+            org_id=org_id,
+            client=client,
+            tool_name="malformed_tool",
+            params={"query": "SELECT 1"},
+            session="s-badprofile",
         )
     assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["recommendation"] in ("flag", "block"), "malformed profile must not allow"
+    assert body["allowed"] is False
+    types = {v["type"] for v in body["violations"]}
+    assert "malformed_profile" in types
+    detail = " ".join(v["detail"] for v in body["violations"] if v["type"] == "malformed_profile")
+    # The reason names which fields were unreadable — the operator's fix list.
+    assert "allowed_params" in detail and "query" in detail
+
+
+async def test_malformed_forbidden_params_flags(app_client, org_with_user) -> None:
+    """A string where forbidden_params should be a list would, uncoerced,
+    fabricate per-character tokens (``tuple("DROP")`` → D,R,O,P). It must not:
+    the field is dropped from enforcement and the call is flagged malformed."""
+    org_id, _ = org_with_user
+    await _seed_profile(org_id, tool_name="bad_forbidden", forbidden_params="DROP")
+    async with app_client as client:
+        resp = await _inspect(
+            org_id=org_id,
+            client=client,
+            tool_name="bad_forbidden",
+            params={"query": "hello"},
+            session="s-badforbid",
+        )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["allowed"] is False
+    types = {v["type"] for v in body["violations"]}
+    assert "malformed_profile" in types
+    # The fabricated single-char tokens must NOT appear as forbidden_value hits.
+    assert "forbidden_value" not in types
+
+
+async def test_malformed_constraint_field_does_not_500(app_client, org_with_user) -> None:
+    """A well-formed rule OBJECT carrying a garbage field (string max_length)
+    used to TypeError at ``len(val) > max_len``. Now the unparseable field is
+    dropped and the profile flags malformed — still 200, still deny-by-default."""
+    org_id, _ = org_with_user
+    await _seed_profile(
+        org_id,
+        tool_name="bad_rulefield",
+        param_constraints={"query": {"type": "string", "max_length": "lots"}},
+    )
+    async with app_client as client:
+        resp = await _inspect(
+            org_id=org_id,
+            client=client,
+            tool_name="bad_rulefield",
+            params={"query": "x"},
+            session="s-badrule",
+        )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["allowed"] is False
+    assert "malformed_profile" in {v["type"] for v in body["violations"]}
+
+
+async def test_partial_malformation_still_enforces_the_good_parts(
+    app_client, org_with_user
+) -> None:
+    """Defense in depth: one malformed constraint does not disable the rest. A
+    profile with a VALID forbidden token and a malformed constraint both flags
+    malformed AND still catches the forbidden token — the parseable enforcement
+    survives the unparseable part."""
+    org_id, _ = org_with_user
+    await _seed_profile(
+        org_id,
+        tool_name="partial_bad",
+        forbidden_params=["DROP"],
+        param_constraints={"query": "not-a-dict"},
+    )
+    async with app_client as client:
+        resp = await _inspect(
+            org_id=org_id,
+            client=client,
+            tool_name="partial_bad",
+            params={"query": "DROP TABLE t"},
+            session="s-partial",
+        )
+    assert resp.status_code == 200, resp.text
+    types = {v["type"] for v in resp.json()["violations"]}
+    assert "malformed_profile" in types  # the bad constraint is surfaced
+    assert "forbidden_value" in types  # AND the good forbidden token still fires
+
+
+async def test_wellformed_custom_constraint_still_enforces(app_client, org_with_user) -> None:
+    """Regression: a VALID stored constraint must keep working after hardening —
+    a max_length rule flags an over-long value with no malformed_profile noise."""
+    org_id, _ = org_with_user
+    await _seed_profile(
+        org_id,
+        tool_name="len_capped",
+        param_constraints={"query": {"type": "string", "max_length": 3}},
+    )
+    async with app_client as client:
+        resp = await _inspect(
+            org_id=org_id,
+            client=client,
+            tool_name="len_capped",
+            params={"query": "waytoolong"},
+            session="s-len",
+        )
+    assert resp.status_code == 200, resp.text
+    types = {v["type"] for v in resp.json()["violations"]}
+    assert "param_constraint_violation" in types
+    assert "malformed_profile" not in types, "a valid profile must not read as malformed"
+
+
+async def test_list_tools_does_not_500_on_malformed_stored_profile(
+    app_client, org_with_user
+) -> None:
+    """The same malformed profile must not 500 the REGISTRY read either: a
+    string param_constraints would blow up ``dict(...)`` in list_tools. GAP-019
+    manifested on this path too; the sanitizer closes both."""
+    org_id, _ = org_with_user
+    await _seed_profile(
+        org_id,
+        tool_name="bad_for_display",
+        allowed_params="not-a-list",
+        param_constraints="not-a-dict",
+    )
+    h = {"Authorization": f"Bearer {_token(org_id, 'viewer')}"}
+    async with app_client as client:
+        resp = await client.get("/v1/mcp/tools", headers=h)
+    assert resp.status_code == 200, resp.text
+    row = next(t for t in resp.json() if t["tool_name"] == "bad_for_display")
+    # Sanitized display: fabricated char-list is gone, unreadable constraints empty.
+    assert row["allowed_params"] == []
+    assert row["param_constraints"] == {}
 
 
 @pytest.mark.xfail(

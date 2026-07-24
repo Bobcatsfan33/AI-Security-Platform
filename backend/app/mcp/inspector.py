@@ -30,6 +30,8 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
+from app.core.coerce import as_bool, as_number, as_positive_int
+
 # ─────────────────────────────────────────────── Tunables
 
 DRIFT_BLOCK_THRESHOLD: float = float(os.getenv("MCP_DRIFT_BLOCK_THRESHOLD", "0.8"))
@@ -66,6 +68,12 @@ class ToolProfile:
     allowed_params: tuple[str, ...] = field(default_factory=tuple)
     forbidden_params: tuple[str, ...] = field(default_factory=tuple)
     param_constraints: dict[str, dict[str, Any]] = field(default_factory=dict)
+    # Non-empty ONLY for a profile loaded from storage whose JSONB was
+    # malformed — each entry names one field the operator's intent could not be
+    # read from. Built-in profiles are literals and always leave this empty. The
+    # inspector turns a non-empty value into a ``malformed_profile`` violation
+    # (deny-by-default), so unreadable config cannot silently reduce scrutiny.
+    integrity_issues: tuple[str, ...] = field(default_factory=tuple)
 
 
 @dataclass(frozen=True)
@@ -226,9 +234,117 @@ DEFAULT_TOOL_PROFILES: tuple[ToolProfile, ...] = (
 # ─────────────────────────────────────────────── Param inspection
 
 
-def _inspect_params(
-    params: dict[str, Any], profile: ToolProfile
-) -> list[Violation]:
+def _sanitize_str_list(raw: Any, field_name: str, issues: list[str]) -> tuple[str, ...]:
+    """A tuple of the string items of a stored JSONB list. A non-list value, or
+    a list with non-string entries, records an integrity issue rather than
+    fabricating (``tuple("shell")`` would count five params)."""
+    if raw is None:
+        return ()
+    if not isinstance(raw, list):
+        issues.append(f"{field_name} is not a list")
+        return ()
+    clean = tuple(x for x in raw if isinstance(x, str))
+    if len(clean) != len(raw):
+        issues.append(f"{field_name} contains non-string entries")
+    return clean
+
+
+def _sanitize_rule(name: str, raw_rule: Any, issues: list[str]) -> dict[str, Any] | None:
+    """Coerce one param-constraint rule read from storage. Only correctly-typed
+    fields survive; a present-but-unparseable field is dropped AND recorded as
+    an integrity issue (so it flags, not silently no-ops). Returns None when the
+    rule is not an object at all — the whole rule is unreadable."""
+    if not isinstance(raw_rule, dict):
+        issues.append(f"constraint {name!r} is not an object")
+        return None
+    clean: dict[str, Any] = {}
+    if "required" in raw_rule:
+        b = as_bool(raw_rule["required"])
+        if b is None:
+            issues.append(f"constraint {name!r}.required is not a boolean")
+        else:
+            clean["required"] = b
+    if "type" in raw_rule:
+        kind = raw_rule["type"]
+        if isinstance(kind, str):
+            clean["type"] = kind
+        else:
+            issues.append(f"constraint {name!r}.type is not a string")
+    if "max_length" in raw_rule:
+        v = as_positive_int(raw_rule["max_length"])
+        if v is None:
+            issues.append(f"constraint {name!r}.max_length is not a positive integer")
+        else:
+            clean["max_length"] = v
+    if "max" in raw_rule:
+        v = as_number(raw_rule["max"])
+        if v is None:
+            issues.append(f"constraint {name!r}.max is not a number")
+        else:
+            clean["max"] = v
+    if "pattern" in raw_rule:
+        pat = raw_rule["pattern"]
+        if not isinstance(pat, str):
+            issues.append(f"constraint {name!r}.pattern is not a string")
+        else:
+            try:
+                re.compile(pat)
+                clean["pattern"] = pat
+            except re.error:
+                issues.append(f"constraint {name!r}.pattern is not a valid regex")
+    if "values" in raw_rule:
+        vals = raw_rule["values"]
+        if isinstance(vals, list):
+            clean["values"] = vals
+        else:
+            issues.append(f"constraint {name!r}.values is not a list")
+    return clean
+
+
+def sanitize_stored_profile(
+    *,
+    tool_name: str,
+    access_mode: AccessMode,
+    description: str,
+    allowed_params: Any,
+    forbidden_params: Any,
+    param_constraints: Any,
+) -> ToolProfile:
+    """Build a :class:`ToolProfile` from raw stored JSONB, tolerating any shape.
+
+    A stored profile is operator-shaped: a connector, a migration, or a
+    hand-edit can write a string where a list was meant, or a scalar where a
+    constraint object was meant. Reading it as if it were typed either
+    fabricates (``tuple("shell")`` is five params) or 500s (``rule.get`` on a
+    non-dict — the GAP-019 crash). This coerces every field strictly: anything
+    unparseable is dropped from enforcement AND named in ``integrity_issues``,
+    so the inspect path neither crashes nor silently trusts a corrupt profile.
+    """
+    issues: list[str] = []
+    allowed = _sanitize_str_list(allowed_params, "allowed_params", issues)
+    forbidden = _sanitize_str_list(forbidden_params, "forbidden_params", issues)
+
+    constraints: dict[str, dict[str, Any]] = {}
+    if isinstance(param_constraints, dict):
+        for key, raw_rule in param_constraints.items():
+            clean = _sanitize_rule(str(key), raw_rule, issues)
+            if clean is not None:
+                constraints[str(key)] = clean
+    elif param_constraints is not None:
+        issues.append("param_constraints is not an object")
+
+    return ToolProfile(
+        tool_name=tool_name,
+        access_mode=access_mode,
+        description=description if isinstance(description, str) else "",
+        allowed_params=allowed,
+        forbidden_params=forbidden,
+        param_constraints=constraints,
+        integrity_issues=tuple(issues),
+    )
+
+
+def _inspect_params(params: dict[str, Any], profile: ToolProfile) -> list[Violation]:
     """Check params against the tool's intent profile. Empty list = clean."""
     violations: list[Violation] = []
     forbidden = set(profile.forbidden_params)
@@ -240,10 +356,7 @@ def _inspect_params(
             violations.append(
                 Violation(
                     type="forbidden_param",
-                    detail=(
-                        f"Parameter {key!r} is forbidden for tool "
-                        f"{profile.tool_name!r}"
-                    ),
+                    detail=(f"Parameter {key!r} is forbidden for tool {profile.tool_name!r}"),
                     severity="high",
                 )
             )
@@ -286,9 +399,7 @@ def _inspect_params(
                 violations.append(
                     Violation(
                         type="param_constraint_violation",
-                        detail=(
-                            f"Parameter {param_name!r} exceeds max_length {max_len}"
-                        ),
+                        detail=(f"Parameter {param_name!r} exceeds max_length {max_len}"),
                         severity="low",
                     )
                 )
@@ -297,38 +408,33 @@ def _inspect_params(
                 violations.append(
                     Violation(
                         type="param_constraint_violation",
-                        detail=(
-                            f"Parameter {param_name!r} does not match pattern"
-                        ),
+                        detail=(f"Parameter {param_name!r} does not match pattern"),
                         severity="low",
                     )
                 )
         elif kind == "number":
             max_val = rule.get("max")
-            if (
-                max_val is not None
-                and isinstance(val, (int, float))
-                and val > max_val
-            ):
+            if max_val is not None and isinstance(val, (int, float)) and val > max_val:
                 violations.append(
                     Violation(
                         type="param_constraint_violation",
-                        detail=(
-                            f"Parameter {param_name!r} value {val} exceeds "
-                            f"max {max_val}"
-                        ),
+                        detail=(f"Parameter {param_name!r} value {val} exceeds max {max_val}"),
                         severity="medium",
                     )
                 )
         elif kind == "enum":
-            allowed_vals = set(rule.get("values", []))
+            # A list, not a set: stored ``values`` may contain unhashable items
+            # (a nested object), and ``set()`` of those would TypeError — the
+            # very 500 class this module is hardening against. Membership on a
+            # list needs no hashing and no ordering.
+            allowed_vals = rule.get("values", [])
             if val not in allowed_vals:
                 violations.append(
                     Violation(
                         type="param_constraint_violation",
                         detail=(
                             f"Parameter {param_name!r} value {val!r} not in "
-                            f"allowed values {sorted(allowed_vals)}"
+                            f"allowed values {allowed_vals}"
                         ),
                         severity="medium",
                     )
@@ -377,9 +483,7 @@ def _find_subsequence_with_gap(
     if needle_idx >= 0:
         return False, 0, []
 
-    total_gap = sum(
-        positions[i + 1] - positions[i] - 1 for i in range(len(positions) - 1)
-    )
+    total_gap = sum(positions[i + 1] - positions[i] - 1 for i in range(len(positions) - 1))
     return True, total_gap, positions
 
 
@@ -436,12 +540,8 @@ def compute_risk_score(
     """
     if not violations and not chain_matches:
         return 0.0
-    base = max(
-        (_SEVERITY_RISK.get(v.severity, 0.15) for v in violations), default=0.0
-    )
-    chain_bonus = max(
-        (_CHAIN_RISK.get(c.severity, 0.1) for c in chain_matches), default=0.0
-    )
+    base = max((_SEVERITY_RISK.get(v.severity, 0.15) for v in violations), default=0.0)
+    chain_bonus = max((_CHAIN_RISK.get(c.severity, 0.1) for c in chain_matches), default=0.0)
     return min(1.0, base + chain_bonus)
 
 
@@ -488,6 +588,22 @@ def inspect_call(
         access_mode: AccessMode | None = None
     else:
         access_mode = profile.access_mode
+        # A stored profile that could not be fully parsed must not inspect as
+        # "no constraints" — on the enforcement path that is fail-open. Flag it
+        # (deny-by-default) and name why, so the operator fixes the profile
+        # rather than the corruption silently widening what the agent may do.
+        if profile.integrity_issues:
+            violations.append(
+                Violation(
+                    type="malformed_profile",
+                    detail=(
+                        "stored tool profile is malformed and cannot be fully "
+                        f"enforced ({'; '.join(profile.integrity_issues)}) — "
+                        "flagged rather than trusted"
+                    ),
+                    severity="high",
+                )
+            )
         violations.extend(_inspect_params(params, profile))
 
     chain_matches: list[ChainMatch] = []

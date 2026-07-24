@@ -26,7 +26,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from app.aibom.coerce import as_bool, as_list, as_positive_int, as_str
+from app.core.coerce import as_bool, as_list, as_positive_int, as_str
 
 # Fixed, documented weights. Order here is the order factors are emitted, so the
 # decomposition is stable regardless of input dict ordering.
