@@ -252,6 +252,51 @@ sibling org cannot read it. Today, 4 do.
 [`test_router_coverage_ratchet.py`](../backend/tests/unit/test_router_coverage_ratchet.py)
 may only shrink, and each row names the phase that retires it.
 
+### GAP-019 — MCP `/inspect` 500s on a malformed stored tool profile
+**What:** the per-call inspection path reads a tool profile's `param_constraints`
+and `allowed_params` straight off JSONB and treats them as typed
+(`rule.get(...)`, `tuple(allowed_params)`). A profile whose `param_constraints`
+is not a dict-of-dicts crashes with `AttributeError: 'str' object has no
+attribute 'get'`; a string `allowed_params` miscounts as characters. Confirmed
+empirically against `asp-it-pg`: one malformed profile 500s **every** inspection
+for that tool.
+**Why it matters:** `POST /v1/mcp/inspect` is the hot path the runtime agent
+calls on every MCP tool invocation. A config-shaped 500 there is an availability
+failure in the enforcement path — the same coercion class aibom hardened
+(`bool("false")` fabrication, `float()`/`.get()` on operator JSONB). The API
+body-validates `param_constraints` today, but nothing guarantees the DB only
+ever holds API-written profiles (scanner/gateway writes, migrations, hand-edits),
+and the inspector must not trust JSONB shape.
+**Unblocks:** nothing external. **Closed by increment 2** — promote
+`app/aibom/coerce.py` → `app/core/coerce.py` and apply strict coercion in
+`resolve_profile` + `_inspect_params`, with a malformed-profile battery
+asserting no 500s and nothing fabricated.
+**Encoded now:** `test_inspect_malformed_stored_profile_does_not_500` in
+`backend/tests/integration/test_mcp_api.py`, marked `xfail(strict=True)`. The
+fix turns it XPASS → the marker deletion in increment 2 is the proof.
+
+### GAP-020 — MCP user-stamping writes 500 instead of a clean 403
+**What:** `POST /v1/mcp/tools` writes `created_by = identity.user_id` and
+`POST /v1/mcp/violations/{id}/resolve` writes `resolved_by = identity.user_id`,
+both FKs to `users.id`. When the JWT subject is not a persisted user, SQLAlchemy
+raises an unhandled `IntegrityError` → 500 (confirmed on both endpoints against
+`asp-it-pg`).
+**Why it matters:** an unhandled 500 on a valid-signature token is a robustness
+failure on a security surface, and it made both endpoints untestable without
+seeding a user. The contract is **subject-must-be-a-provisioned-user, clean
+403** — the FK stays non-nullable (attribution on a security surface is the
+point; a nullable stamp is an audit trail with a hole), and the check happens
+BEFORE the write. This also buys deny-by-default for free: a deleted user with a
+still-live token now gets a clean deny where the FK used to give a 500.
+**Unblocks:** nothing external. **Closed by increment 3** — resolve the subject
+against `users` (org-scoped) before the write; 403 with detail
+`"token subject is not a provisioned user"` when absent.
+**Encoded now:** `test_create_tool_unprovisioned_subject_is_403` and
+`test_resolve_violation_unprovisioned_subject_is_403` in
+`backend/tests/integration/test_mcp_api.py`, both `xfail(strict=True)`. The
+happy paths (a provisioned subject) already pass green, so the fix is scoped to
+the absent-subject branch.
+
 ---
 
 ## P2 — deferred, with triggers

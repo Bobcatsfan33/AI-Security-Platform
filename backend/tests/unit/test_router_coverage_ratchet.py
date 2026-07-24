@@ -93,7 +93,9 @@ NEEDS_HTTP_TESTS: dict[str, str] = {
     "/threat-intel": "Tier C frozen — dark by default; retire the row or the router.",
     "/compliance": "Phase 5 — service tests only (test_compliance_matrix).",
     "/reports": "Phase 5 — Tier B preview; no tests at any layer.",
-    "/mcp": "Phase 1 — the spearhead. First row to retire.",
+    # /mcp retired here: test_mcp_api.py drives all 8 endpoints over HTTP. Its
+    # tenant-isolation row below stays until the cross-org test lands (the two
+    # ratchets shrink separately, by design — see this module's header).
 }
 
 # Guardrail 2: every tenant-scoped surface proves a sibling org cannot read it.

@@ -8,7 +8,7 @@ on:
 
 jobs:
   backend:
-    name: Backend unit tests
+    name: Backend tests (unit + integration)
     runs-on: ubuntu-latest
     services:
       postgres:
