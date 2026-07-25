@@ -18,12 +18,42 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import require_role
 from app.db.models.mcp import McpCall, McpToolProfile, McpViolation
+from app.db.models.user import User
 from app.db.session import get_db
 from app.identity.types import IdentityContext
 from app.mcp import service as mcp_service
 from app.mcp.inspector import DEFAULT_TOOL_PROFILES, sanitize_stored_profile
 
 router = APIRouter(tags=["mcp"])
+
+
+async def _require_provisioned_subject(db: AsyncSession, identity: IdentityContext) -> uuid.UUID:
+    """Resolve the caller's token subject to a provisioned user in their org,
+    or 403.
+
+    The write endpoints stamp ``created_by`` / ``resolved_by`` (FK →
+    ``users.id``) — attribution on a security surface, kept non-nullable on
+    purpose. A valid-signature token whose subject is not a persisted user would
+    otherwise raise an FK ``IntegrityError`` → 500 (GAP-020). Checking BEFORE the
+    write turns that into a clean deny, and gives deny-by-default for free: a
+    user deleted while their token is still live can no longer write. Org-scoped
+    so a subject from another tenant cannot stamp attribution here.
+    """
+    user_id = identity.user_id
+    if user_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="token subject is not a provisioned user",
+        )
+    exists = (
+        await db.execute(select(User.id).where(User.id == user_id, User.org_id == identity.org_id))
+    ).scalar_one_or_none()
+    if exists is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="token subject is not a provisioned user",
+        )
+    return user_id
 
 
 # ─────────────────────────────────────────────── Tool profile DTOs
@@ -120,10 +150,10 @@ async def list_tools(
     Org-custom profiles override built-ins by ``tool_name``.
     """
     custom_rows = (
-        await db.execute(
-            select(McpToolProfile).where(McpToolProfile.org_id == identity.org_id)
-        )
-    ).scalars().all()
+        (await db.execute(select(McpToolProfile).where(McpToolProfile.org_id == identity.org_id)))
+        .scalars()
+        .all()
+    )
     custom_names = {r.tool_name for r in custom_rows}
 
     out: list[ToolProfileResponse] = []
@@ -180,6 +210,7 @@ async def create_tool(
     identity: IdentityContext = Depends(require_role("admin")),
     db: AsyncSession = Depends(get_db),
 ) -> ToolProfileResponse:
+    creator_id = await _require_provisioned_subject(db, identity)
     existing = (
         await db.execute(
             select(McpToolProfile).where(
@@ -201,7 +232,7 @@ async def create_tool(
         allowed_params=payload.allowed_params,
         forbidden_params=payload.forbidden_params,
         param_constraints=payload.param_constraints,
-        created_by=identity.user_id,
+        created_by=creator_id,
     )
     db.add(row)
     await db.commit()
@@ -308,8 +339,7 @@ async def inspect(
         recommendation=result.recommendation,
         risk_score=result.risk_score,
         violations=[
-            {"type": v.type, "detail": v.detail, "severity": v.severity}
-            for v in result.violations
+            {"type": v.type, "detail": v.detail, "severity": v.severity} for v in result.violations
         ],
         chain_matches=[
             {
@@ -328,8 +358,9 @@ async def inspect(
 
 @router.get("/violations", response_model=list[ViolationResponse])
 async def list_violations(
-    status_filter: Literal["open", "acknowledged", "resolved", "false_positive"]
-    | None = Query(None, alias="status"),
+    status_filter: Literal["open", "acknowledged", "resolved", "false_positive"] | None = Query(
+        None, alias="status"
+    ),
     limit: int = Query(100, ge=1, le=500),
     identity: IdentityContext = Depends(require_role("analyst")),
     db: AsyncSession = Depends(get_db),
@@ -367,6 +398,7 @@ async def resolve_violation(
 ) -> ViolationResponse:
     from datetime import datetime, timezone
 
+    resolver_id = await _require_provisioned_subject(db, identity)
     row = (
         await db.execute(
             select(McpViolation).where(
@@ -379,7 +411,7 @@ async def resolve_violation(
         raise HTTPException(status_code=404, detail="not_found")
     row.resolution_status = payload.status
     row.resolution_notes = payload.notes
-    row.resolved_by = identity.user_id
+    row.resolved_by = resolver_id
     row.resolved_at = datetime.now(timezone.utc)
     await db.commit()
     await db.refresh(row)
@@ -407,15 +439,17 @@ async def get_chain(
     db: AsyncSession = Depends(get_db),
 ) -> list[CallEntry]:
     rows = (
-        await db.execute(
-            select(McpCall)
-            .where(
-                McpCall.org_id == identity.org_id, McpCall.session_id == session_id
+        (
+            await db.execute(
+                select(McpCall)
+                .where(McpCall.org_id == identity.org_id, McpCall.session_id == session_id)
+                .order_by(McpCall.called_at.asc())
+                .limit(limit)
             )
-            .order_by(McpCall.called_at.asc())
-            .limit(limit)
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     return [
         CallEntry(
             id=r.id,
