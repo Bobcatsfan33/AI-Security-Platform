@@ -26,6 +26,14 @@
       "added": "2026-07-21",
       "expires": "2026-10-19",
       "window_reason": "90d (the max) because the fix is out of our hands \u2014 it waits on Next to ship a patched sharp (>=0.35.0). The exposure is verified nil (sharp absent from the shipped .next/standalone bundle), so a shorter revisit cadence would only churn the expiry with no action available."
+    },
+    {
+      "id": "GHSA-mh99-v99m-4gvg",
+      "package": "brace-expansion",
+      "justification": "brace-expansion (DoS via unbounded expansion length) is reached ONLY through ESLint at lint time: eslint@9 -> minimatch@3 -> brace-expansion@1.x, and eslint-config-next -> typescript-eslint -> minimatch@10 -> brace-expansion@5.x. Both entry points are devDependencies. The production image ships only .next/standalone, which excludes devDependencies and the linter, so brace-expansion is absent from the signed artifact and unreachable at runtime (confirmed: it is NOT in the `npm audit --omit=dev --omit=optional` production closure the gate treats as the hard bar). There is no non-breaking fix: the only patched release is 5.0.8, and forcing it tree-wide via overrides breaks eslint@9's minimatch@3 with `TypeError: expand is not a function` (brace-expansion 5.x changed its export shape), while no patched 1.x exists. npm's own remediation is `eslint@10.8.0, which is a breaking change`. Retire when eslint-config-next supports eslint@10 (Dependabot moves it) or a patched 1.x/backport lands.",
+      "owner": "ryanwallac33@gmail.com",
+      "added": "2026-07-25",
+      "expires": "2026-08-24"
     }
   ]
 }
