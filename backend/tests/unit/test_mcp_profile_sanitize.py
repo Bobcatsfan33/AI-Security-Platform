@@ -111,3 +111,33 @@ def test_wellformed_profile_inspects_clean() -> None:
     result = inspect_call(tool_name="t", params={"q": "short"}, profile=p, recent_modes=["read"])
     assert result.recommendation == "allow"
     assert not any(v.type == "malformed_profile" for v in result.violations)
+
+
+def test_malformed_deny_survives_a_raised_threshold(monkeypatch) -> None:
+    """The malformed-profile deny is STRUCTURAL, not threshold-mediated. Raise
+    the flag threshold above the malformed risk (0.6) and the deny must hold —
+    otherwise an operator tuning MCP_DRIFT_FLAG_THRESHOLD to 0.7 would silently
+    convert every malformed profile to allow, a config knob defeating a security
+    invariant without anyone deciding to. Without the floor this would return
+    'allow' (0.6 < 0.7); the floor forces it to 'flag'."""
+    import app.mcp.inspector as insp
+
+    monkeypatch.setattr(insp, "DRIFT_FLAG_THRESHOLD", 0.7)
+    monkeypatch.setattr(insp, "DRIFT_BLOCK_THRESHOLD", 0.9)
+    p = _san(param_constraints={"q": "not-a-dict"})
+    result = inspect_call(tool_name="t", params={"q": "x"}, profile=p, recent_modes=["read"])
+    assert result.recommendation != "allow"
+    assert result.allowed is False
+    assert any(v.type == "malformed_profile" for v in result.violations)
+
+
+def test_a_clean_call_still_allows_under_a_raised_threshold(monkeypatch) -> None:
+    """The floor is scoped to the deny-list types: it must not turn an ordinary
+    clean call into a deny. A well-formed profile with no violations still
+    allows even with the threshold raised."""
+    import app.mcp.inspector as insp
+
+    monkeypatch.setattr(insp, "DRIFT_FLAG_THRESHOLD", 0.7)
+    p = _san(param_constraints={"q": {"type": "string", "max_length": 100}})
+    result = inspect_call(tool_name="t", params={"q": "ok"}, profile=p, recent_modes=["read"])
+    assert result.recommendation == "allow"

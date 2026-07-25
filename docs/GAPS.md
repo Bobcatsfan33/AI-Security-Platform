@@ -291,27 +291,40 @@ not yet surface `integrity_issues` in the response; exposing them would let an
 operator SEE which stored profiles are malformed rather than infer it from a
 flagged call. Worth a small schema addition later.
 
-### GAP-020 — MCP user-stamping writes 500 instead of a clean 403
-**What:** `POST /v1/mcp/tools` writes `created_by = identity.user_id` and
-`POST /v1/mcp/violations/{id}/resolve` writes `resolved_by = identity.user_id`,
-both FKs to `users.id`. When the JWT subject is not a persisted user, SQLAlchemy
-raises an unhandled `IntegrityError` → 500 (confirmed on both endpoints against
-`asp-it-pg`).
-**Why it matters:** an unhandled 500 on a valid-signature token is a robustness
-failure on a security surface, and it made both endpoints untestable without
-seeding a user. The contract is **subject-must-be-a-provisioned-user, clean
-403** — the FK stays non-nullable (attribution on a security surface is the
-point; a nullable stamp is an audit trail with a hole), and the check happens
-BEFORE the write. This also buys deny-by-default for free: a deleted user with a
-still-live token now gets a clean deny where the FK used to give a 500.
-**Unblocks:** nothing external. **Closed by increment 3** — resolve the subject
-against `users` (org-scoped) before the write; 403 with detail
-`"token subject is not a provisioned user"` when absent.
-**Encoded now:** `test_create_tool_unprovisioned_subject_is_403` and
-`test_resolve_violation_unprovisioned_subject_is_403` in
-`backend/tests/integration/test_mcp_api.py`, both `xfail(strict=True)`. The
-happy paths (a provisioned subject) already pass green, so the fix is scoped to
-the absent-subject branch.
+### GAP-020 — MCP user-stamping writes 500 instead of a clean 403 ✅ CLOSED (increment 3)
+**Was:** `POST /v1/mcp/tools` wrote `created_by = identity.user_id` and
+`POST /v1/mcp/violations/{id}/resolve` wrote `resolved_by = identity.user_id`,
+both FKs to `users.id`. When the JWT subject was not a persisted user, SQLAlchemy
+raised an unhandled `IntegrityError` → 500 (confirmed on both endpoints against
+`asp-it-pg`). An unhandled 500 on a valid-signature token is a robustness failure
+on a security surface, and it made both endpoints untestable without seeding a
+user.
+**Closed by:** `_require_provisioned_subject` in `app/api/v1/mcp.py` resolves the
+token subject against `users` (org-scoped) BEFORE either write and raises 403
+with detail `"token subject is not a provisioned user"` when absent. The FK
+stays **non-nullable** — attribution on a security surface is the point; a
+nullable stamp is an audit trail with a hole. This also buys deny-by-default for
+free: a user deleted while their token is still live now gets a clean deny where
+the FK used to 500. Org-scoped, so a subject from another tenant cannot stamp
+attribution here.
+**Proven by:** `test_create_tool_unprovisioned_subject_is_403` and
+`test_resolve_violation_unprovisioned_subject_is_403` (markers deleted — their
+removal is the proof), alongside the green happy-path writes that use a
+provisioned subject.
+
+### The malformed-profile deny floor (GAP-019 review follow-up, landed in increment 3)
+Review of the GAP-019 fix (PR #91) caught that the malformed-profile deny was
+**threshold-mediated, not structural**: it denied only because severity high
+(0.6) cleared `MCP_DRIFT_FLAG_THRESHOLD` (default 0.5). An operator raising that
+env knob to 0.7 would silently convert *every* malformed profile to `allow` —
+the exact class this program keeps closing: a config knob that defeats a
+security invariant without anyone deciding to. Fixed with a **structural floor**
+in `inspect_call` — `_DENY_FLOOR_TYPES = {"malformed_profile"}`; if a floor-type
+violation is present the recommendation cannot be `allow`, regardless of
+threshold. Same instinct as a zero-value that is non-permissive by construction.
+Proven by `test_malformed_deny_survives_a_raised_threshold` (sets the threshold
+above 0.6 and asserts the deny holds) with a companion asserting a clean call
+still allows under the same raised threshold.
 
 ---
 

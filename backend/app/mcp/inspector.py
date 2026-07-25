@@ -553,6 +553,17 @@ def recommendation(risk_score: float) -> Recommendation:
     return "allow"
 
 
+# Violation types that deny STRUCTURALLY — the recommendation cannot be "allow"
+# when one is present, regardless of the (env-tunable) risk thresholds. A
+# malformed profile currently denies only because severity high (0.6) clears the
+# default flag threshold (0.5); an operator who raises MCP_DRIFT_FLAG_THRESHOLD
+# to 0.7 would otherwise silently convert every malformed profile to allow —
+# fail-open on the enforcement path via a config knob nobody decided to flip.
+# The deny is a property of the violation SET, not of a threshold. Same instinct
+# as a zero-value that is non-permissive by construction.
+_DENY_FLOOR_TYPES: frozenset[str] = frozenset({"malformed_profile"})
+
+
 # ─────────────────────────────────────────────── Top-level inspection
 
 
@@ -612,6 +623,11 @@ def inspect_call(
 
     risk = compute_risk_score(violations, chain_matches)
     rec = recommendation(risk)
+    # Structural deny floor: a threshold change must not be able to turn a
+    # deny-by-default violation into "allow". If one is present and the score
+    # landed below the flag threshold, floor the recommendation to "flag".
+    if rec == "allow" and any(v.type in _DENY_FLOOR_TYPES for v in violations):
+        rec = "flag"
 
     return InspectionResult(
         tool_name=tool_name,

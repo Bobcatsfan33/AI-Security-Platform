@@ -24,8 +24,9 @@ cannot.
   (increment 2):** the xfail is gone; the malformed-profile battery below now
   asserts the fix — malformed profiles flag deny-by-default, never 500.
 * GAP-020 — ``POST /tools`` and ``POST /violations/{id}/resolve`` 500 instead
-  of a clean 403 when the JWT subject is not a provisioned user (still xfail;
-  increment 3).
+  of a clean 403 when the JWT subject is not a provisioned user. **CLOSED
+  (increment 3):** the xfails are gone; the two subject-is-403 tests below now
+  assert the fix — the subject is resolved against ``users`` before the write.
 
 Postgres-backed; runs in CI, skips locally without a database.
 """
@@ -449,11 +450,12 @@ async def test_viewer_cannot_create_tool(app_client, org_with_user) -> None:
     assert resp.status_code == 403, resp.text
 
 
-# ═══════════════════════════════════════════ DEFECT TESTS (xfail strict)
+# ═══════════════════════════════════════════ GAP-019 CLOSED — malformed battery
 #
-# These assert the DESIRED behaviour and fail today. strict=True means each
-# turns to an ERROR (XPASS) the day its fix lands — the fix PR must delete the
-# marker, which is the proof the defect is closed. See docs/GAPS.md.
+# The xfail(strict) marker these carried was deleted when the fix landed. The
+# battery now asserts the CHOSEN semantics: a malformed stored profile returns
+# 200 and denies-by-default (flag), never 500s, never fabricates, and never lets
+# a corrupt profile silently reduce enforcement. See docs/GAPS.md GAP-019.
 
 
 async def _inspect(client, org_id, tool_name, params, session="s", role="admin"):
@@ -619,13 +621,42 @@ async def test_list_tools_does_not_500_on_malformed_stored_profile(
     assert row["param_constraints"] == {}
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="GAP-020: POST /tools 500s (unhandled FK IntegrityError on "
-    "created_by → users) when the JWT subject is not a provisioned user. "
-    "Contract: check the subject BEFORE the write and return 403. Fixed in "
-    "increment 3.",
-)
+async def test_malformed_profile_violation_persists_in_violations(
+    app_client, org_with_user
+) -> None:
+    """The ``malformed_profile`` violation is not only returned inline — it is
+    persisted and surfaces by TYPE in GET /violations, so the investigation
+    surface shows WHICH profile is corrupt, not merely that a call was flagged.
+    (The persistence mechanism is covered generically elsewhere; this pins the
+    specific type through to the violations list.)"""
+    org_id, _ = org_with_user
+    await _seed_profile(org_id, tool_name="persist_bad", param_constraints={"q": "not-a-dict"})
+    h = {"Authorization": f"Bearer {_token(org_id, 'analyst')}"}
+    async with app_client as client:
+        await _inspect(
+            org_id=org_id,
+            client=client,
+            tool_name="persist_bad",
+            params={"q": "x"},
+            session="s-persist-bad",
+            role="analyst",
+        )
+        listed = await client.get("/v1/mcp/violations?status=open", headers=h)
+    assert listed.status_code == 200, listed.text
+    rows = [r for r in listed.json() if r["session_id"] == "s-persist-bad"]
+    assert rows, "a malformed-profile call must surface as a persisted violation"
+    assert "malformed_profile" in {v["type"] for v in rows[0]["violations"]}
+
+
+# ═══════════════════════════════════════════ GAP-020 CLOSED (increment 3)
+#
+# The subject-must-be-provisioned contract: a write endpoint that stamps
+# created_by/resolved_by checks the token subject against users BEFORE the write
+# and returns 403 (not an FK 500) when it is absent. The xfail(strict) markers
+# these two tests carried were deleted when the fix landed — their removal is
+# the proof, per the ratchet.
+
+
 async def test_create_tool_unprovisioned_subject_is_403(app_client, org_with_user) -> None:
     org_id, _ = org_with_user  # token subject is a random, unprovisioned uuid
     h = {"Authorization": f"Bearer {_token(org_id, 'admin')}"}
@@ -639,13 +670,6 @@ async def test_create_tool_unprovisioned_subject_is_403(app_client, org_with_use
     assert "provisioned user" in resp.json().get("detail", "")
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="GAP-020: POST /violations/{id}/resolve 500s (unhandled FK "
-    "IntegrityError on resolved_by → users) when the JWT subject is not a "
-    "provisioned user. Same contract as create_tool: 403 before the write. "
-    "Fixed in increment 3.",
-)
 async def test_resolve_violation_unprovisioned_subject_is_403(app_client, org_with_user) -> None:
     org_id, user_id = org_with_user
     # Create the violation with a PROVISIONED analyst (so the inspect write
