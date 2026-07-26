@@ -16,7 +16,9 @@ import pytest_asyncio
 from sqlalchemy import text
 
 from app.core.config import get_settings
+from app.db.models.mcp import McpToolProfile
 from app.db.models.organization import Organization
+from app.db.models.user import User
 from app.db.session import SessionLocal
 
 pytestmark = pytest.mark.integration
@@ -134,9 +136,7 @@ async def test_siem_exporter_config_is_org_scoped(app_client, two_orgs, monkeypa
         assert (
             await client.put("/v1/siem/exporters/a-splunk", headers=b, json=splunk)
         ).status_code == 404
-        assert (
-            await client.delete("/v1/siem/exporters/a-splunk", headers=b)
-        ).status_code == 404
+        assert (await client.delete("/v1/siem/exporters/a-splunk", headers=b)).status_code == 404
 
         # ── Org A still owns it ──────────────────────────────────────────────
         a_list = (await client.get("/v1/siem/exporters", headers=a)).json()
@@ -159,15 +159,24 @@ async def test_aibom_is_org_scoped(app_client, two_orgs) -> None:
     async with SessionLocal() as db:
         db.add(
             Connector(
-                id=connector_id, org_id=org_a, name="a-conn", connector_type="mock",
-                config_encrypted={}, is_enabled=True,
+                id=connector_id,
+                org_id=org_a,
+                name="a-conn",
+                connector_type="mock",
+                config_encrypted={},
+                is_enabled=True,
             )
         )
         db.add(
             AIAsset(
-                id=asset_id, org_id=org_a, name="a-asset", asset_type="agent",
-                provider="openai", external_id=f"ext-{asset_id.hex[:8]}",
-                connector_id=connector_id, metadata_json={"is_agentic": True, "tools": ["x"]},
+                id=asset_id,
+                org_id=org_a,
+                name="a-asset",
+                asset_type="agent",
+                provider="openai",
+                external_id=f"ext-{asset_id.hex[:8]}",
+                connector_id=connector_id,
+                metadata_json={"is_agentic": True, "tools": ["x"]},
             )
         )
         await db.commit()
@@ -175,12 +184,78 @@ async def test_aibom_is_org_scoped(app_client, two_orgs) -> None:
     async with app_client as client:
         # Org A sees every aibom view of its asset.
         for suffix in ("", "/risk", "/drift", "/blast-radius"):
-            assert (
-                await client.get(f"/v1/aibom/{asset_id}{suffix}", headers=a)
-            ).status_code == 200
+            assert (await client.get(f"/v1/aibom/{asset_id}{suffix}", headers=a)).status_code == 200
 
         # Org B is 404 on every one — existence not disclosed.
         for suffix in ("", "/risk", "/drift", "/blast-radius"):
-            assert (
-                await client.get(f"/v1/aibom/{asset_id}{suffix}", headers=b)
-            ).status_code == 404
+            assert (await client.get(f"/v1/aibom/{asset_id}{suffix}", headers=b)).status_code == 404
+
+
+async def test_mcp_is_org_scoped(app_client, two_orgs) -> None:
+    """MCP surface (Tier A) is org-scoped across all three tables: a custom tool
+    profile, an inspected call, and its violation, all created in org A, are
+    invisible to org B — B sees only built-in profiles, empty violations/chain,
+    and 404 (not 403) on A's profile by id."""
+    org_a, org_b = two_orgs
+    a = {"Authorization": f"Bearer {_token(org_a)}"}
+    b = {"Authorization": f"Bearer {_token(org_b)}"}
+
+    # Seed A's custom profile (created_by a real A user — NOT NULL FK).
+    creator, pid = uuid.uuid4(), uuid.uuid4()
+    async with SessionLocal() as db:
+        db.add(
+            User(
+                id=creator,
+                org_id=org_a,
+                email=f"a-{creator.hex[:8]}@x.io",
+                name="A",
+                role="admin",
+                idp_groups=[],
+            )
+        )
+        await db.flush()
+        db.add(
+            McpToolProfile(
+                id=pid,
+                org_id=org_a,
+                tool_name="secret_tool",
+                access_mode="read",
+                description="",
+                allowed_params=["q"],
+                forbidden_params=["DROP"],
+                param_constraints={},
+                created_by=creator,
+            )
+        )
+        await db.commit()
+
+    async with app_client as client:
+        # A inspects a malicious call — materializes a call + violation in A.
+        await client.post(
+            "/v1/mcp/inspect",
+            headers=a,
+            json={
+                "session_id": "a-sess",
+                "agent_id": "ag",
+                "tool_name": "secret_tool",
+                "params": {"query": "DROP TABLE t"},
+            },
+        )
+
+        # A sees its own data (positive control).
+        a_tools = (await client.get("/v1/mcp/tools", headers=a)).json()
+        assert any(t["tool_name"] == "secret_tool" for t in a_tools)
+        assert (await client.get("/v1/mcp/violations", headers=a)).json()
+        assert len((await client.get("/v1/mcp/chain/a-sess", headers=a)).json()) == 1
+
+        # B sees NONE of A's data.
+        b_tools = (await client.get("/v1/mcp/tools", headers=b)).json()
+        assert not any(t["tool_name"] == "secret_tool" for t in b_tools)
+        assert (await client.get("/v1/mcp/violations", headers=b)).json() == []
+        assert (await client.get("/v1/mcp/chain/a-sess", headers=b)).json() == []
+
+        # B cannot touch A's profile by id — 404, not 403 (existence not disclosed).
+        assert (
+            await client.patch(f"/v1/mcp/tools/{pid}", headers=b, json={"description": "x"})
+        ).status_code == 404
+        assert (await client.delete(f"/v1/mcp/tools/{pid}", headers=b)).status_code == 404
