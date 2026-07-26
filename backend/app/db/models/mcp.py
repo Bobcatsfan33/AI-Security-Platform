@@ -67,10 +67,14 @@ class McpToolProfile(Base, TenantScoped):
     forbidden_params: Mapped[JsonbList]
     param_constraints: Mapped[JsonbDict]
 
-    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+    # Attribution on a security surface: a profile always has a creator (the
+    # API enforces it via the provisioned-subject 403), so NOT NULL. RESTRICT,
+    # not SET NULL — deprovisioning deactivates (SCIM), it does not delete, so a
+    # user carrying live attribution must not be hard-deleted out from under it.
+    created_by: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("users.id", ondelete="SET NULL"),
-        nullable=True,
+        ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=False,
     )
     created_at: Mapped[TimestampUtc]
     updated_at: Mapped[TimestampUtcUpdated]
@@ -104,6 +108,15 @@ class McpViolation(Base, TenantScoped):
     """
 
     __tablename__ = "mcp_violations"
+    __table_args__ = (
+        # A violation is 'open' IFF it has no resolver. This makes the audit
+        # hole — "resolved (or acknowledged / false_positive) with no resolver" —
+        # unrepresentable at the schema level, not merely unwritten by the API.
+        CheckConstraint(
+            "(resolution_status = 'open') = (resolved_by IS NULL)",
+            name="ck_mcp_violations_resolver_matches_status",
+        ),
+    )
 
     id: Mapped[UUIDPk]
     org_id: Mapped[UUIDFk] = mapped_column(
@@ -122,9 +135,13 @@ class McpViolation(Base, TenantScoped):
         String(32), default="open", nullable=False
     )  # open | acknowledged | resolved | false_positive
     resolution_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # Stays nullable — NULL is the legitimate "unresolved" state. RESTRICT (not
+    # SET NULL) so a resolver's stamp is never anonymized by deleting the user.
+    # The CHECK below ties the stamp to the state: a violation is 'open' IFF it
+    # has no resolver, so "acted-on with no resolver" is unrepresentable.
     resolved_by: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("users.id", ondelete="SET NULL"),
+        ForeignKey("users.id", ondelete="RESTRICT"),
         nullable=True,
     )
     resolved_at: Mapped[Optional[datetime]] = mapped_column(_DateTimeTz, nullable=True)

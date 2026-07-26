@@ -32,12 +32,14 @@ async def _require_provisioned_subject(db: AsyncSession, identity: IdentityConte
     or 403.
 
     The write endpoints stamp ``created_by`` / ``resolved_by`` (FK →
-    ``users.id``) — attribution on a security surface, kept non-nullable on
-    purpose. A valid-signature token whose subject is not a persisted user would
-    otherwise raise an FK ``IntegrityError`` → 500 (GAP-020). Checking BEFORE the
-    write turns that into a clean deny, and gives deny-by-default for free: a
-    user deleted while their token is still live can no longer write. Org-scoped
-    so a subject from another tenant cannot stamp attribution here.
+    ``users.id``) — attribution on a security surface. ``created_by`` is NOT
+    NULL and ``resolved_by`` is state-tied (NULL iff the violation is open); both
+    are ``ON DELETE RESTRICT`` (migration 0010), so a stamp is never anonymized.
+    A valid-signature token whose subject is not a persisted user would otherwise
+    raise an FK ``IntegrityError`` → 500 (GAP-020). Checking BEFORE the write
+    turns that into a clean deny, and gives deny-by-default for free: a user
+    deleted while their token is still live can no longer write. Org-scoped so a
+    subject from another tenant cannot stamp attribution here.
     """
     user_id = identity.user_id
     if user_id is None:

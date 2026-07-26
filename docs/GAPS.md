@@ -301,16 +301,54 @@ on a security surface, and it made both endpoints untestable without seeding a
 user.
 **Closed by:** `_require_provisioned_subject` in `app/api/v1/mcp.py` resolves the
 token subject against `users` (org-scoped) BEFORE either write and raises 403
-with detail `"token subject is not a provisioned user"` when absent. The FK
-stays **non-nullable** — attribution on a security surface is the point; a
-nullable stamp is an audit trail with a hole. This also buys deny-by-default for
-free: a user deleted while their token is still live now gets a clean deny where
-the FK used to 500. Org-scoped, so a subject from another tenant cannot stamp
-attribution here.
+with detail `"token subject is not a provisioned user"` when absent. This also
+buys deny-by-default for free: a user deleted while their token is still live now
+gets a clean deny where the FK used to 500. Org-scoped, so a subject from another
+tenant cannot stamp attribution here.
 **Proven by:** `test_create_tool_unprovisioned_subject_is_403` and
 `test_resolve_violation_unprovisioned_subject_is_403` (markers deleted — their
 removal is the proof), alongside the green happy-path writes that use a
 provisioned subject.
+
+> **CORRECTION (increment 4):** the increment-3 write of this entry (and the
+> #92 PR body / router docstring) claimed "the FK stays **non-nullable**." That
+> was **false against the schema**: 0009 shipped `created_by`/`resolved_by` as
+> `nullable` with `ondelete=SET NULL`. The 403 fix was unaffected (the 500 was
+> referential integrity, not NOT NULL), but the "audit trail with a hole" the
+> narrative claimed we avoided existed — deleting a user silently NULLed their
+> stamps. GAP-022 closes it for real.
+
+### GAP-022 — MCP attribution stamps were nullable and SET NULL ✅ CLOSED (increment 4)
+**Was:** `mcp_tool_profiles.created_by` and `mcp_violations.resolved_by` were
+`nullable` with `ondelete=SET NULL` (migration 0009). Deleting a user silently
+anonymized their historical attribution — an audit-trail hole on a security
+surface, exactly what the GAP-020 narrative wrongly claimed did not exist.
+**Closed by:** migration 0010, tightening per-column (they are not symmetric):
+* `created_by` → **NOT NULL** + **ON DELETE RESTRICT**. A profile always has a
+  creator (the provisioned-subject 403 guarantees it on insert); the schema now
+  enforces it.
+* `resolved_by` → **stays nullable** (NULL is the legitimate *unresolved* state)
+  + **ON DELETE RESTRICT**, plus a CHECK — `(resolution_status = 'open') =
+  (resolved_by IS NULL)` — that ties the stamp to the state. The real hole was
+  never "nullable"; it was **"acted-on with no resolver"**, and the CHECK makes
+  that state *unrepresentable*, not merely unwritten by the API.
+
+**RESTRICT, not SET NULL/CASCADE**, because deprovisioning is **deactivation**,
+not deletion (`app/scim/users.py` sets `is_active = False`) — a user carrying
+live attribution can no longer be hard-deleted out from under it. Verified
+empirically that RESTRICT blocks a direct user delete *and* that org teardown
+(CASCADE through users + profiles) still succeeds — Postgres orders the cascade
+so referencing rows go first. Backfill (a no-op on today's empty tables) routes
+any pre-existing NULL/degraded stamp to a documented per-org sentinel `system`
+user.
+**Proven by:** the attribution-integrity battery in `test_mcp_api.py`
+(NOT NULL rejected below the API; both CHECK directions unrepresentable; both
+legitimate states insert; user deletion refused while a stamp references them)
+and `test_mcp_is_org_scoped` in `test_tenant_isolation.py` — which also **retires
+the last `/mcp` ratchet row** (`NEEDS_TENANT_ISOLATION_TESTS`). Migration 0009's
+RLS was verified correct for all three `mcp_*` tables (ENABLE+FORCE + a
+`WITH CHECK` tenant policy on `app.current_org`, fail-closed on an unset GUC) — no
+change needed.
 
 ### The malformed-profile deny floor (GAP-019 review follow-up, landed in increment 3)
 Review of the GAP-019 fix (PR #91) caught that the malformed-profile deny was

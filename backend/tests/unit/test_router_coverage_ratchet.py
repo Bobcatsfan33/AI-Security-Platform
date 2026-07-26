@@ -120,7 +120,8 @@ NEEDS_TENANT_ISOLATION_TESTS: dict[str, str] = {
     "/threat-intel": "Tier C frozen — dark by default. Cross-TENANT by design; see docs/TIERS.md.",
     "/compliance": "Phase 5 — evidence packs are org-scoped; untested across orgs.",
     "/reports": "Phase 5 — Tier B preview.",
-    "/mcp": "Phase 1 — the spearhead. First row to retire.",
+    # /mcp retired: test_tenant_isolation.py::test_mcp_is_org_scoped proves a
+    # sibling org sees none of A's profiles/calls/violations (404-not-403).
 }
 
 

@@ -41,9 +41,10 @@ import jwt
 import pytest
 import pytest_asyncio
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 
 from app.core.config import get_settings
-from app.db.models.mcp import McpToolProfile
+from app.db.models.mcp import McpCall, McpToolProfile, McpViolation
 from app.db.models.organization import Organization
 from app.db.models.user import User
 from app.db.session import SessionLocal
@@ -101,10 +102,31 @@ async def org_with_user() -> AsyncIterator[tuple[uuid.UUID, uuid.UUID]]:
         await db.commit()
 
 
+async def _seed_user(org_id: uuid.UUID, role: str = "admin") -> uuid.UUID:
+    """Insert a provisioned user in the org and return its id. created_by /
+    resolved_by are NOT NULL / state-tied FKs to users now (migration 0010), so
+    a seeded profile needs a real creator."""
+    uid = uuid.uuid4()
+    async with SessionLocal() as db:
+        db.add(
+            User(
+                id=uid,
+                org_id=org_id,
+                email=f"seed-{uid.hex[:8]}@example.com",
+                name="Seed User",
+                role=role,
+                idp_groups=[],
+            )
+        )
+        await db.commit()
+    return uid
+
+
 async def _seed_profile(org_id: uuid.UUID, **overrides) -> uuid.UUID:
-    """Insert an MCP tool profile directly (created_by=None, bypassing the
-    users FK) so a test can exercise read/update/delete paths without depending
-    on POST /tools. Returns the profile id."""
+    """Insert an MCP tool profile directly so a test can exercise
+    read/update/delete paths without depending on POST /tools. created_by
+    defaults to a freshly-seeded real user (NOT NULL FK); override it explicitly
+    when a test needs a specific creator. Returns the profile id."""
     pid = uuid.uuid4()
     fields = {
         "id": pid,
@@ -115,9 +137,10 @@ async def _seed_profile(org_id: uuid.UUID, **overrides) -> uuid.UUID:
         "allowed_params": ["q"],
         "forbidden_params": [],
         "param_constraints": {},
-        "created_by": None,
     }
     fields.update(overrides)
+    if "created_by" not in fields:
+        fields["created_by"] = await _seed_user(org_id)
     async with SessionLocal() as db:
         db.add(McpToolProfile(**fields))
         await db.commit()
@@ -696,3 +719,201 @@ async def test_resolve_violation_unprovisioned_subject_is_403(app_client, org_wi
         )
     assert resp.status_code == 403, resp.text
     assert "provisioned user" in resp.json().get("detail", "")
+
+
+# ═══════════════════════════════════════════ attribution integrity (0010)
+#
+# The schema now enforces what the API promises: a profile has a creator, a
+# resolver stamp tracks the violation's state, and neither can be anonymized by
+# deleting the principal. These prove it against DIRECT writes, below the API.
+
+
+async def _seed_call(org_id: uuid.UUID, session: str = "s") -> uuid.UUID:
+    cid = uuid.uuid4()
+    async with SessionLocal() as db:
+        db.add(
+            McpCall(
+                id=cid,
+                org_id=org_id,
+                session_id=session,
+                agent_id="a",
+                tool_name="t",
+                access_mode="read",
+                params={},
+                recommendation="flag",
+                risk_score=0.6,
+                violations=[],
+                chain_matches=[],
+            )
+        )
+        await db.commit()
+    return cid
+
+
+async def test_created_by_is_not_null_at_the_schema(org_with_user) -> None:
+    """A profile with no creator is rejected by NOT NULL, not just by the API."""
+    org_id, _ = org_with_user
+    with pytest.raises(IntegrityError):
+        async with SessionLocal() as db:
+            db.add(
+                McpToolProfile(
+                    id=uuid.uuid4(),
+                    org_id=org_id,
+                    tool_name="no_creator",
+                    access_mode="read",
+                    description="",
+                    allowed_params=[],
+                    forbidden_params=[],
+                    param_constraints={},
+                    created_by=None,
+                )
+            )
+            await db.commit()
+
+
+async def test_resolved_with_no_resolver_is_unrepresentable(org_with_user) -> None:
+    """The CHECK, forward direction: a non-open violation cannot have a NULL
+    resolver. This is the actual audit hole — 'acted-on with no resolver' — made
+    impossible at the schema level, against any write path."""
+    org_id, _ = org_with_user
+    call_id = await _seed_call(org_id)
+    with pytest.raises(IntegrityError):
+        async with SessionLocal() as db:
+            db.add(
+                McpViolation(
+                    id=uuid.uuid4(),
+                    org_id=org_id,
+                    call_id=call_id,
+                    session_id="s",
+                    tool_name="t",
+                    recommendation="flag",
+                    risk_score=0.6,
+                    violations=[],
+                    chain_matches=[],
+                    resolution_status="resolved",
+                    resolved_by=None,
+                )
+            )
+            await db.commit()
+
+
+async def test_open_with_a_resolver_is_unrepresentable(org_with_user) -> None:
+    """The CHECK, reverse direction: an OPEN violation must not carry a resolver
+    stamp. A future re-open path must NULL the stamp or the constraint catches it."""
+    org_id, user_id = org_with_user
+    call_id = await _seed_call(org_id)
+    with pytest.raises(IntegrityError):
+        async with SessionLocal() as db:
+            db.add(
+                McpViolation(
+                    id=uuid.uuid4(),
+                    org_id=org_id,
+                    call_id=call_id,
+                    session_id="s",
+                    tool_name="t",
+                    recommendation="flag",
+                    risk_score=0.6,
+                    violations=[],
+                    chain_matches=[],
+                    resolution_status="open",
+                    resolved_by=user_id,
+                )
+            )
+            await db.commit()
+
+
+async def test_both_legitimate_resolver_states_insert_cleanly(org_with_user) -> None:
+    """open+NULL and resolved+resolver are the two valid states; both persist."""
+    org_id, user_id = org_with_user
+    c1, c2 = await _seed_call(org_id, "s1"), await _seed_call(org_id, "s2")
+    async with SessionLocal() as db:
+        db.add(
+            McpViolation(
+                id=uuid.uuid4(),
+                org_id=org_id,
+                call_id=c1,
+                session_id="s1",
+                tool_name="t",
+                recommendation="flag",
+                risk_score=0.6,
+                violations=[],
+                chain_matches=[],
+                resolution_status="open",
+                resolved_by=None,
+            )
+        )
+        db.add(
+            McpViolation(
+                id=uuid.uuid4(),
+                org_id=org_id,
+                call_id=c2,
+                session_id="s2",
+                tool_name="t",
+                recommendation="flag",
+                risk_score=0.6,
+                violations=[],
+                chain_matches=[],
+                resolution_status="resolved",
+                resolved_by=user_id,
+                resolved_at=datetime.now(UTC),
+            )
+        )
+        await db.commit()  # must not raise
+
+
+async def test_user_deletion_refused_while_a_profile_stamps_them(org_with_user) -> None:
+    """RESTRICT: a user who created a profile cannot be hard-deleted — the audit
+    trail blocks it. Deprovisioning is deactivation (SCIM), not deletion. Org
+    teardown (CASCADE) still works — verified by every other test's cleanup."""
+    org_id, _ = org_with_user
+    creator = await _seed_user(org_id)
+    await _seed_profile(org_id, tool_name="owned_profile", created_by=creator)
+    with pytest.raises(IntegrityError):
+        async with SessionLocal() as db:
+            await db.execute(text("DELETE FROM users WHERE id = :id"), {"id": creator})
+            await db.commit()
+
+
+async def test_create_tool_foreign_org_subject_is_403(app_client, two_org_users) -> None:
+    """F2: a token for org A whose subject is a user provisioned in org B is
+    refused — the subject check is org-scoped, so cross-tenant attribution is
+    impossible even with a real (but foreign) user id."""
+    org_a, _user_a, _org_b, user_b = two_org_users
+    # org A token, but sub = a user that exists only in org B
+    h = {"Authorization": f"Bearer {_token(org_a, 'admin', subject=user_b)}"}
+    async with app_client as client:
+        resp = await client.post(
+            "/v1/mcp/tools", headers=h, json={"tool_name": "x", "access_mode": "read"}
+        )
+    assert resp.status_code == 403, resp.text
+    assert "provisioned user" in resp.json().get("detail", "")
+
+
+@pytest_asyncio.fixture
+async def two_org_users() -> AsyncIterator[tuple[uuid.UUID, uuid.UUID, uuid.UUID, uuid.UUID]]:
+    """Two orgs, each with one provisioned user. Yields (org_a, user_a, org_b, user_b)."""
+    org_a, org_b = uuid.uuid4(), uuid.uuid4()
+    user_a, user_b = uuid.uuid4(), uuid.uuid4()
+    async with SessionLocal() as db:
+        for oid, uid, label in ((org_a, user_a, "a"), (org_b, user_b, "b")):
+            db.add(
+                Organization(id=oid, name=f"fo-{label}", slug=f"fo-{label}-{uuid.uuid4().hex[:8]}")
+            )
+            await db.flush()
+            db.add(
+                User(
+                    id=uid,
+                    org_id=oid,
+                    email=f"u-{uid.hex[:8]}@x.io",
+                    name="U",
+                    role="admin",
+                    idp_groups=[],
+                )
+            )
+        await db.commit()
+    yield org_a, user_a, org_b, user_b
+    async with SessionLocal() as db:
+        await db.execute(
+            text("DELETE FROM organizations WHERE id IN (:a, :b)"), {"a": org_a, "b": org_b}
+        )
+        await db.commit()
