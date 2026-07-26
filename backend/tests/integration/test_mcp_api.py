@@ -102,10 +102,10 @@ async def org_with_user() -> AsyncIterator[tuple[uuid.UUID, uuid.UUID]]:
         await db.commit()
 
 
-async def _seed_user(org_id: uuid.UUID, role: str = "admin") -> uuid.UUID:
-    """Insert a provisioned user in the org and return its id. created_by /
-    resolved_by are NOT NULL / state-tied FKs to users now (migration 0010), so
-    a seeded profile needs a real creator."""
+async def _seed_user(org_id: uuid.UUID, role: str = "admin", active: bool = True) -> uuid.UUID:
+    """Insert a user in the org and return its id. created_by / resolved_by are
+    NOT NULL / state-tied FKs to users now (migration 0010), so a seeded profile
+    needs a real creator. ``active=False`` seeds a deactivated user."""
     uid = uuid.uuid4()
     async with SessionLocal() as db:
         db.add(
@@ -116,6 +116,7 @@ async def _seed_user(org_id: uuid.UUID, role: str = "admin") -> uuid.UUID:
                 name="Seed User",
                 role=role,
                 idp_groups=[],
+                is_active=active,
             )
         )
         await db.commit()
@@ -917,3 +918,49 @@ async def two_org_users() -> AsyncIterator[tuple[uuid.UUID, uuid.UUID, uuid.UUID
             text("DELETE FROM organizations WHERE id IN (:a, :b)"), {"a": org_a, "b": org_b}
         )
         await db.commit()
+
+
+async def test_create_tool_deactivated_subject_is_403(app_client, org_with_user) -> None:
+    """A deactivated user's still-live token cannot stamp attribution: the
+    subject check requires is_active. Deprovisioning deactivates (SCIM), and a
+    deactivated principal must not write on a security surface."""
+    org_id, _ = org_with_user
+    dead = await _seed_user(org_id, active=False)
+    h = {"Authorization": f"Bearer {_token(org_id, 'admin', subject=dead)}"}
+    async with app_client as client:
+        resp = await client.post(
+            "/v1/mcp/tools", headers=h, json={"tool_name": "x", "access_mode": "read"}
+        )
+    assert resp.status_code == 403, resp.text
+    assert "provisioned user" in resp.json().get("detail", "")
+
+
+async def test_org_deletion_cascades_despite_restrict() -> None:
+    """RESTRICT blocks a DIRECT user delete, but org teardown (CASCADE through
+    users + profiles) must still succeed — Postgres orders the cascade so the
+    referencing profile goes before its creator. Proven incidentally by every
+    fixture teardown; asserted deliberately here so a future FK change that
+    breaks it fails loudly rather than silently wedging cleanup."""
+    org_id = uuid.uuid4()
+    async with SessionLocal() as db:
+        db.add(Organization(id=org_id, name="casc", slug=f"casc-{uuid.uuid4().hex[:8]}"))
+        await db.commit()
+    creator = await _seed_user(org_id)
+    await _seed_profile(org_id, tool_name="casc_owned", created_by=creator)
+
+    # Deleting the org must succeed (not raise on the created_by RESTRICT FK).
+    async with SessionLocal() as db:
+        await db.execute(text("DELETE FROM organizations WHERE id = :id"), {"id": org_id})
+        await db.commit()
+
+    # And everything is gone — the cascade completed, not half-applied.
+    async with SessionLocal() as db:
+        prof = (
+            await db.execute(
+                text("SELECT count(*) FROM mcp_tool_profiles WHERE org_id = :o"), {"o": org_id}
+            )
+        ).scalar_one()
+        usr = (
+            await db.execute(text("SELECT count(*) FROM users WHERE org_id = :o"), {"o": org_id})
+        ).scalar_one()
+    assert prof == 0 and usr == 0

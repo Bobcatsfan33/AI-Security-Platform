@@ -28,6 +28,15 @@ existing NULL/degraded stamps are attributed to a per-org sentinel "system"
 user (``system@platform.internal``, inactive, api_only), created only for orgs
 that actually need it. Documented here because a sentinel that isn't documented
 is indistinguishable from a real actor later.
+
+Accepted edge: the sentinel INSERT uses ``ON CONFLICT (org_id, email) DO
+NOTHING`` against the ``(org_id, email)`` unique constraint, so if an org already
+has a user at ``system@platform.internal`` the backfill ADOPTS it rather than
+creating a fresh row — that user then owns the backfilled stamps. This address
+is reserved for platform use; a real user occupying it is a misconfiguration we
+accept over failing the migration. Note it composes safely with the API guard:
+``_require_provisioned_subject`` requires ``is_active``, so even an adopted
+sentinel cannot stamp anything through the API afterward.
 """
 
 from __future__ import annotations
