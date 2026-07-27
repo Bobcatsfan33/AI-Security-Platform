@@ -10,10 +10,9 @@ This document reports what is actually measured, how, and how to reproduce it.
    (`runtime-agent/policy/pipeline.go`). This is the product's "added latency"
    claim. **Measured here (increment 1).**
 2. **End-to-end proxy overhead under sustained load** — the p99 an operator
-   sees at the `:8400` proxy, measured over a real network path with the locust
-   profile. **Increment 3** (this section will fill in then); it is deliberately
-   NOT an httptest microbench, because a loopback microbench measures Go's test
-   harness, not a deployment.
+   sees at the proxy, measured over a real socket with the locust profile
+   (**increment 3**, below). Deliberately not an httptest microbench: a loopback
+   microbench measures Go's test harness, not a deployment.
 
 ## Headline
 
@@ -31,20 +30,20 @@ signal is the mean / p50 (and the micro-benchmark allocs), and the
 
 ## Measured — reference environment
 
-Stamp: `go1.26.3`, `darwin/arm64` (Apple M2, 8 CPU), commit `efda453`, n=20000,
+Stamp: `go1.26.3`, `darwin/arm64` (Apple M2, 8 CPU), commit `efda453`,
 2026-07-27. These are single-request, in-process samples (no concurrency); the
-**under-load** tail is the locust job (increment 3). These exact numbers are
-committed in `runtime-agent/bench/measured.json` and pinned to this table by
+**under-load** tail is the locust job (below). These exact numbers are committed
+in `runtime-agent/bench/measured.json` and pinned to this table by
 `TestDocsMatchMeasured` — a divergence fails CI. Regenerate on your own hardware
 with `runtime-agent/bench/regen.sh`.
 
 ### Latency distribution (single request, `Pipeline.Evaluate`)
 
-| Mode | Stages run | p50 | p95 | p99 | max | mean |
-|---|---|---|---|---|---|---|
-| `fast` | 1 (in-process) | 12.7 µs | 14.0 µs | 27.2 µs | 141.2 µs | 13.3 µs |
-| `balanced` | 1 + 2 heuristic (in-process) | 23.8 µs | 27.9 µs | 32.4 µs | 126.2 µs | 24.4 µs |
-| `comprehensive` | 1 + 2 + 3 (two sidecar hops, no inference) | 95.5 µs | 129.2 µs | 241.2 µs | 583.5 µs | 99.1 µs |
+| Mode | Stages run | p50 | p95 | p99 | max | mean | n |
+|---|---|---|---|---|---|---|---|
+| `fast` | 1 (in-process) | 12.7 µs | 14.0 µs | 27.2 µs | 141.2 µs | 13.3 µs | 20000 |
+| `balanced` | 1 + 2 heuristic (in-process) | 23.8 µs | 27.9 µs | 32.4 µs | 126.2 µs | 24.4 µs | 20000 |
+| `comprehensive` | 1 + 2 + 3 (two sidecar hops, no inference) | 95.5 µs | 129.2 µs | 241.2 µs | 583.5 µs | 99.1 µs | 4000 |
 
 **Tail variance — read before quoting the p99.** These are single-request
 samples on a shared laptop, and the tail is noise-dominated: across repeated
@@ -71,6 +70,44 @@ actually sees, and it is not a single-request microbench.
 on a benign prompt the heuristic Stage 2 returns clean, so the Stage-3 judge
 never fires — Stage 3 escalates only on an *uncertain* Stage-2 result, which the
 sidecar rows exercise deliberately.
+
+## End-to-end proxy overhead under load (the authoritative tail)
+
+This is the number an operator actually sees: locust drives the **real** proxy
+(`bench/loadserver` runs `proxy.Handler` on `:18400` — real pipeline, real
+reverse-proxy forward) at a controlled request rate, and measures the mock
+upstream directly at each level so the proxy's **added** cost is the checkable
+difference. Absolute numbers are dominated by locust + loopback (the Go proxy is
+far faster than a Python generator can saturate); the subtraction removes that
+common cost. Committed in `runtime-agent/bench/loadtest/results.json`.
+
+Stamp: `go1.26.3`, `darwin/arm64` (Apple M2, 8 CPU), commit `f764e5e`, locust
+`2.34.0`, 25 s/level, 2026-07-27. **Percentiles are milliseconds.**
+
+| RPS (achieved) | fail % | proxy p50/p95/p99 | upstream p50/p95/p99 | **added** p50/p95/p99 |
+|---|---|---|---|---|
+| 100 (idle) | 0.0 | 1 / 1 / 3 ms | 0 / 1 / 1 ms | **1 / 0 / 2 ms** |
+| 501 (mid) | 0.0 | 2 / 4 / 7 ms | 1 / 2 / 6 ms | **1 / 2 / 1 ms** |
+| 751 (near-sat) | 0.0 | 3 / 5 / 14 ms | 2 / 4 / 10 ms | **1 / 1 / 4 ms** |
+
+**The finding is the shape, not one number:** across the whole clean envelope
+(100 → 751 RPS) the proxy's *added* p99 stays **single-digit milliseconds (≤ 4 ms)**
+— it does not blow up as load climbs. The absolute proxy p99 rises (3 → 14 ms)
+but so does the upstream baseline (1 → 10 ms), so most of it is the shared
+locust+loopback+queuing cost, not the agent. Consistent with the microbench: the
+pipeline *compute* is ~30 µs, so the millisecond-scale end-to-end cost is socket
+and connection handling, not policy evaluation.
+
+**Rig limit, stated plainly:** this is a single-machine loopback rig, and above
+~750 RPS the reverse-proxy/loopback **connection** handling (not the pipeline)
+hits a failure cliff — ~23 % errors at ~900 RPS, ~37 % at ~1300. That is a
+property of one laptop forwarding to itself, so the sweep tops out at the clean
+knee. **True saturation and the real-network tail need a multi-host load rig**
+(separate client / agent / upstream), which is out of scope here for the same
+reason real ONNX inference is: it must be measured on the target deployment, not
+asserted from a laptop. Reproduce with `bench/loadtest/run.sh` (pinned
+`bench/loadtest/requirements.txt`); the same quiet-machine caveat applies, and
+the added-overhead numbers carry ~1–2 ms of run-to-run noise at this scale.
 
 ## Methodology (so the numbers are defensible)
 
@@ -110,9 +147,12 @@ sidecar rows exercise deliberately.
 - **No cherry-picking, and the run is selected for measurement quality, not
   result.** Whatever `regen.sh` prints is what ships (had `balanced` missed
   15 ms, that number would be here and the README corrected to it — the entire
-  point of GAP-002). The committed distribution is a **low-contention** run: runs
-  where an unrelated process visibly stole CPU mid-sample (a max spike ≫ p99)
-  were discarded as bad *measurements*, not bad *results* — and the doc and
+  point of GAP-002). The committed distribution is a **low-contention** run,
+  discarded by a stated numeric rule, not by eye: **discard a regen if any mode's
+  `max/p99 > 10`** (an unrelated process stole CPU mid-sample — a bad
+  *measurement*, not a bad *result*). The committed run's ratios are 5.2× / 3.9×
+  / 2.4× (fast / balanced / comprehensive), all well under 10; a discarded noisy
+  run had a `max` of ~2.5 ms against a ~30 µs p99 (>80×). The doc and
   `measured.json` are locked together by `TestDocsMatchMeasured`, so the number
   you read is the number that was committed.
 

@@ -32,10 +32,11 @@ var representativeRegexPatterns = []string{
 	`override your (instructions|guidelines)`,
 }
 
-// RepresentativePolicy compiles a realistic policy at the given enforcement
-// level through the SAME CompileFromJSON path production uses — so the
-// benchmark exercises the real compiled ruleset, not a hand-built shortcut.
-func RepresentativePolicy(level policy.EnforcementLevel) *policy.CompiledPolicy {
+// RepresentativePolicyJSON is the control-plane JSON for a realistic policy at
+// the given enforcement level — a 12-pattern prompt-injection regex rule plus a
+// keyword rule. Exposed as raw JSON so the load server can feed it through the
+// same Cache/CompileFromJSON path the agent uses in production.
+func RepresentativePolicyJSON(level policy.EnforcementLevel) []byte {
 	raw, _ := json.Marshal(map[string]any{
 		"id":                           "bench-policy",
 		"org_id":                       "bench-org",
@@ -59,7 +60,14 @@ func RepresentativePolicy(level policy.EnforcementLevel) *policy.CompiledPolicy 
 			},
 		},
 	})
-	p, err := policy.CompileFromJSON(raw)
+	return raw
+}
+
+// RepresentativePolicy compiles RepresentativePolicyJSON through the SAME
+// CompileFromJSON path production uses — so the benchmark exercises the real
+// compiled ruleset, not a hand-built shortcut.
+func RepresentativePolicy(level policy.EnforcementLevel) *policy.CompiledPolicy {
+	p, err := policy.CompileFromJSON(RepresentativePolicyJSON(level))
 	if err != nil {
 		panic("bench: representative policy failed to compile: " + err.Error())
 	}

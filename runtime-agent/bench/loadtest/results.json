@@ -1,0 +1,58 @@
+{
+  "env": {
+    "timestamp": "2026-07-27T14:59:10+00:00",
+    "commit": "f764e5e",
+    "go_version": "go1.26.3",
+    "os": "darwin",
+    "arch": "arm64",
+    "num_cpu": 8,
+    "locust_ms": "percentiles are milliseconds"
+  },
+  "levels": [
+    {
+      "level": "idle",
+      "proxy_rps": 100,
+      "proxy_fail_pct": 0.0,
+      "proxy_p50": 1.0,
+      "proxy_p95": 1.0,
+      "proxy_p99": 3.0,
+      "proxy_failures": 0,
+      "upstream_p50": 0.0,
+      "upstream_p95": 1.0,
+      "upstream_p99": 1.0,
+      "added_p50": 1.0,
+      "added_p95": 0.0,
+      "added_p99": 2.0
+    },
+    {
+      "level": "mid",
+      "proxy_rps": 501,
+      "proxy_fail_pct": 0.0,
+      "proxy_p50": 2.0,
+      "proxy_p95": 4.0,
+      "proxy_p99": 7.0,
+      "proxy_failures": 0,
+      "upstream_p50": 1.0,
+      "upstream_p95": 2.0,
+      "upstream_p99": 6.0,
+      "added_p50": 1.0,
+      "added_p95": 2.0,
+      "added_p99": 1.0
+    },
+    {
+      "level": "high",
+      "proxy_rps": 751,
+      "proxy_fail_pct": 0.0,
+      "proxy_p50": 3.0,
+      "proxy_p95": 5.0,
+      "proxy_p99": 14.0,
+      "proxy_failures": 0,
+      "upstream_p50": 2.0,
+      "upstream_p95": 4.0,
+      "upstream_p99": 10.0,
+      "added_p50": 1.0,
+      "added_p95": 1.0,
+      "added_p99": 4.0
+    }
+  ]
+}
