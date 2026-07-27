@@ -24,10 +24,13 @@ from sqlalchemy.orm import Session
 from sqlalchemy.pool import NullPool
 
 from app.db.models.connector import Connector
+from app.db.models.mcp import McpToolProfile
 from app.db.models.organization import Organization
+
 # Aliased: the model's name starts with "Test", which pytest would otherwise
 # try (and warn it cannot) to collect as a test class.
 from app.db.models.test_case import TestCase as GovTestCase
+from app.db.models.user import User
 from app.db.session import SessionLocal
 from app.db.tenancy import _tenant_guard, current_org_id, install_tenant_guard
 
@@ -252,5 +255,89 @@ async def test_rls_blocks_raw_sql_as_unprivileged_role(org_a, org_b):
                 )
             ).fetchall()
         assert rows == []  # RLS hid org B's row from the org-A-scoped connection
+    finally:
+        await app_engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_rls_blocks_mcp_profile_raw_sql_as_unprivileged_role(org_a, org_b):
+    """Wall 2 for the MCP surface: a NOBYPASSRLS role with the GUC set to org A
+    cannot read org B's tool profile via raw SQL, ORM guard entirely out of the
+    picture. Proves migration 0009's mcp_tool_profiles_tenant_isolation policy
+    enforces alone, not just the application stack above it."""
+    # Seed org B: a creator user (created_by is NOT NULL now) + a profile.
+    creator, pid = uuid.uuid4(), uuid.uuid4()
+    async with SessionLocal() as db:
+        db.add(
+            User(
+                id=creator,
+                org_id=org_b,
+                email=f"b-{creator.hex[:8]}@x.io",
+                name="B",
+                role="admin",
+                idp_groups=[],
+            )
+        )
+        await db.flush()
+        db.add(
+            McpToolProfile(
+                id=pid,
+                org_id=org_b,
+                tool_name="b_secret",
+                access_mode="read",
+                description="",
+                allowed_params=[],
+                forbidden_params=[],
+                param_constraints={},
+                created_by=creator,
+            )
+        )
+        await db.commit()
+
+    # Unprivileged role + grant (idempotent; reused across tests in this module).
+    async with SessionLocal() as db:
+        await db.execute(
+            text(
+                "DO $$ BEGIN "
+                f"IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '{_APP_ROLE}') THEN "
+                f"CREATE ROLE {_APP_ROLE} LOGIN PASSWORD '{_APP_PW}' NOBYPASSRLS; "
+                "END IF; END $$;"
+            )
+        )
+        await db.execute(text(f"GRANT USAGE ON SCHEMA public TO {_APP_ROLE}"))
+        await db.execute(text(f"GRANT SELECT ON mcp_tool_profiles TO {_APP_ROLE}"))
+        await db.commit()
+
+    import os
+
+    parts = urlsplit(os.environ["DATABASE_URL"])
+    netloc = f"{_APP_ROLE}:{_APP_PW}@{parts.hostname}:{parts.port or 5432}"
+    app_dsn = urlunsplit((parts.scheme, netloc, parts.path, "", ""))
+
+    app_engine = create_async_engine(app_dsn, poolclass=NullPool)
+    try:
+        async with app_engine.connect() as conn:
+            # Scoped to org A — a MISMATCHED GUC for org B's row.
+            await conn.execute(
+                text("SELECT set_config('app.current_org', :o, true)"), {"o": str(org_a)}
+            )
+            mismatched = (
+                await conn.execute(
+                    text("SELECT id FROM mcp_tool_profiles WHERE id = :p"), {"p": str(pid)}
+                )
+            ).fetchall()
+            assert mismatched == []  # RLS hid org B's profile from an org-A scope
+
+            # Control: scoped to org B, the same raw query sees the row — proving
+            # the empty result above is RLS, not a broken query.
+            await conn.execute(
+                text("SELECT set_config('app.current_org', :o, true)"), {"o": str(org_b)}
+            )
+            matched = (
+                await conn.execute(
+                    text("SELECT id FROM mcp_tool_profiles WHERE id = :p"), {"p": str(pid)}
+                )
+            ).fetchall()
+            assert len(matched) == 1
     finally:
         await app_engine.dispose()

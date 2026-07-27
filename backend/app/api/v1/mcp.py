@@ -40,6 +40,11 @@ async def _require_provisioned_subject(db: AsyncSession, identity: IdentityConte
     turns that into a clean deny, and gives deny-by-default for free: a user
     deleted while their token is still live can no longer write. Org-scoped so a
     subject from another tenant cannot stamp attribution here.
+
+    The subject must also be ACTIVE: deprovisioning deactivates rather than
+    deletes (SCIM), so a deactivated user's still-live token must not stamp
+    attribution — and this forecloses the migration sentinel (``is_active`` =
+    False by construction) from ever writing through the API.
     """
     user_id = identity.user_id
     if user_id is None:
@@ -48,7 +53,13 @@ async def _require_provisioned_subject(db: AsyncSession, identity: IdentityConte
             detail="token subject is not a provisioned user",
         )
     exists = (
-        await db.execute(select(User.id).where(User.id == user_id, User.org_id == identity.org_id))
+        await db.execute(
+            select(User.id).where(
+                User.id == user_id,
+                User.org_id == identity.org_id,
+                User.is_active.is_(True),
+            )
+        )
     ).scalar_one_or_none()
     if exists is None:
         raise HTTPException(
