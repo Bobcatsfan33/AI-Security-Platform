@@ -1,0 +1,45 @@
+{
+  "_comment": "Regression baseline for the runtime-agent pipeline benchmarks. allocs_per_op and b_per_op are HARDWARE-INDEPENDENT (a function of the code path, identical on any CPU/OS) and are the authoritative CI regression signal wired in increment 2 — a jump here is real allocation rot. ns_per_op_local is HARDWARE-DEPENDENT reference only (captured on the env below); the CI gate compares ns/op against a runner-generated figure with a loose (~2x) ceiling that trips only on gross regressions, never on VM noise. Regenerate with bench/regen.sh.",
+  "env": {
+    "timestamp": "2026-07-27T00:29:39Z",
+    "go_version": "go1.26.3",
+    "os": "darwin",
+    "arch": "arm64",
+    "num_cpu": 8,
+    "cpu": "Apple M2"
+  },
+  "benchmarks": {
+    "BenchmarkEvaluate_Fast": {
+      "allocs_per_op": 2,
+      "b_per_op": 225,
+      "ns_per_op_local": 16879,
+      "deterministic": true
+    },
+    "BenchmarkEvaluate_BalancedHeuristic": {
+      "allocs_per_op": 3,
+      "b_per_op": 514,
+      "ns_per_op_local": 36591,
+      "deterministic": true
+    },
+    "BenchmarkEvaluate_ComprehensiveHeuristic": {
+      "allocs_per_op": 3,
+      "b_per_op": 513,
+      "ns_per_op_local": 29378,
+      "deterministic": true
+    },
+    "BenchmarkEvaluate_BalancedSidecar": {
+      "allocs_per_op": 109,
+      "b_per_op": 10958,
+      "ns_per_op_local": 65100,
+      "deterministic": false,
+      "note": "includes one localhost HTTP hop (httptest client+server); allocs vary with net/http, reported not gated"
+    },
+    "BenchmarkEvaluate_ComprehensiveSidecar": {
+      "allocs_per_op": 219,
+      "b_per_op": 22626,
+      "ns_per_op_local": 126601,
+      "deterministic": false,
+      "note": "two localhost HTTP hops (Stage-2 uncertain + Stage-3 judge); reported not gated"
+    }
+  }
+}

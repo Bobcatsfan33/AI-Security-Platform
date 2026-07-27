@@ -14,14 +14,17 @@ pipeline, and streams telemetry back to the control plane.
 
 - Go 1.22+ (the blueprint forbids Python here — Python's GIL is
   incompatible with the intended hot-path concurrency).
-- **Latency: sub-15ms added latency for `balanced` mode is a TARGET, and is
-  currently UNMEASURED.** Nothing in this repo benchmarks it: there is no
-  `Benchmark*` function and no load test against the proxy path. Per-stage
-  `LatencyUS` is stamped at runtime and shipped as telemetry, but no test
-  asserts a bound. Phase 2 lands `runtime-agent/bench/` with p50/p99 per stage
-  against a mock upstream and a CI regression gate; until those numbers are
-  published in `docs/BENCHMARKS.md`, treat this as an intention, not a
-  property. Tracked in [`docs/GAPS.md`](../docs/GAPS.md) as GAP-002.
+- **Latency: MEASURED, and it beats the sub-15ms target by ~430×.** On the
+  reference environment (Apple M2, go1.26.3), `Pipeline.Evaluate` adds a **p99
+  of 34.6 µs in `balanced` mode** (Stage 1 + in-process heuristic Stage 2) and
+  **23.4 µs in `fast` mode** — full distribution, methodology and reproduction in
+  [`docs/BENCHMARKS.md`](../docs/BENCHMARKS.md), harness in `runtime-agent/bench/`.
+  This is *pipeline-added* latency (the product claim); end-to-end proxy overhead
+  under sustained load is measured separately by the locust profile (Phase 2
+  increment 3). The `comprehensive` sidecar figure measures the agent's
+  transport overhead for a Stage-2/3 hop and is **not** an ONNX inference-time
+  claim. GAP-002 closed for the pipeline-latency claim; see it for the remaining
+  CI-gate and load-test increments.
 - The Rust+CGo bridge for ONNX inference lives in `classifier/` (also
   deferred to follow-on). For now, Stage 2 is wired into the pipeline
   but returns `no-match` — the Python control plane runs Stage 2 for

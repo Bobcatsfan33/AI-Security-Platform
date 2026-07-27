@@ -196,15 +196,28 @@ answer in the repo.
 **Unblocks:** license-compatible public corpora (needs review before pinning).
 Phases 1 and 3.
 
-### GAP-002 — Agent latency is a target, not a measurement
-**What:** `runtime-agent/README.md` presented "sub-15ms for `balanced` mode" as
-a *binding architectural decision* justifying Go over Python. Nothing in the
-repo measures latency: zero `Benchmark*` functions, no load test against the
-proxy path. Corrected to "target, unmeasured" in Phase 0.
-**Why it matters:** an inline proxy's added latency is the first number an
-evaluator asks for, and the one that decides whether they run it inline at all.
-**Unblocks:** nothing external. Phase 2 — `runtime-agent/bench/`, p50/p99 per
-stage vs a mock upstream, results to `docs/BENCHMARKS.md`, CI regression gate.
+### GAP-002 — Agent latency is a target, not a measurement — 🟡 pipeline latency MEASURED (Phase 2 inc 1)
+**Was:** `runtime-agent/README.md` presented "sub-15ms for `balanced` mode" as a
+*binding architectural decision* justifying Go over Python, with nothing in the
+repo measuring it: zero `Benchmark*` functions, no load test. An inline proxy's
+added latency is the first number an evaluator asks for.
+**Measured (Phase 2 increment 1):** `runtime-agent/bench/` now benchmarks
+`Pipeline.Evaluate` per mode. On the reference env (Apple M2, go1.26.3),
+**`balanced` adds a p99 of 34.6 µs, `fast` 23.4 µs** — the 15 ms target met by
+~430×/~640×. Full distribution + methodology + one-command reproduction
+(`bench/regen.sh`) in [`docs/BENCHMARKS.md`](BENCHMARKS.md); README claim
+corrected from "target, unmeasured" to the measured number. The harness commits
+to publishing whatever it measures (no cherry-picking) — the target being *met*
+is the honest outcome here, not the designed one.
+**Still open (later Phase 2 increments):**
+* **CI regression gate (inc 2):** wire `bench/baseline.json` (hardware-independent
+  allocs/op + B/op as the deterministic signal, plus a loose ns/op ceiling) into
+  a CI step — today the benchmarks run but nothing gates on drift.
+* **End-to-end proxy overhead under load (inc 3):** the p99 at the `:8400` proxy
+  under sustained RPS via a locust profile over a real network path — the
+  in-process microbench here deliberately does not stand in for that.
+* **Real ONNX inference time:** model-dependent, measured in a POC with the
+  actual model; the sidecar rows measure only the agent's transport overhead.
 
 ### GAP-010 — `management` and `cmd/agent` are 0% covered
 **What:** the kill switch (`management/killswitch.go`) has no test — the
