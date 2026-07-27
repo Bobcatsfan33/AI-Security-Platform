@@ -1,6 +1,6 @@
 """End-to-end load profile for the runtime agent proxy (Phase 2 increment 3).
 
-Drives the REAL proxy on :8400 over a socket at a controlled request rate, so
+Drives the REAL proxy on :18400 over a socket at a controlled request rate, so
 the reported p50/p95/p99 are the tail an operator sees under load — the
 authoritative tail the single-request microbench (docs/BENCHMARKS.md) defers to.
 

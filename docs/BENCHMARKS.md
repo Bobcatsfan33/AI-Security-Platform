@@ -81,8 +81,9 @@ difference. Absolute numbers are dominated by locust + loopback (the Go proxy is
 far faster than a Python generator can saturate); the subtraction removes that
 common cost. Committed in `runtime-agent/bench/loadtest/results.json`.
 
-Stamp: `go1.26.3`, `darwin/arm64` (Apple M2, 8 CPU), commit `f764e5e`, locust
-`2.34.0`, 25 s/level, 2026-07-27. **Percentiles are milliseconds.**
+Stamp: `go1.26.3`, `darwin/arm64` (Apple M2, 8 CPU), commit `a4967eb` (the PR-98
+merge — checkout-able on main), locust `2.34.0`, 25 s/level, 2026-07-27.
+**Percentiles are milliseconds.**
 
 | RPS (achieved) | fail % | proxy p50/p95/p99 | upstream p50/p95/p99 | **added** p50/p95/p99 |
 |---|---|---|---|---|

@@ -115,7 +115,7 @@ func (h *HTTPStage3) Judge(ctx context.Context, in *Input, p *CompiledPolicy) St
 
 	latency := time.Since(start).Microseconds()
 	if !out.IsViolation {
-		return StageResult{Stage: ExitStage3Judge, Matched: false, Action: ActionAllowed, Confidence: out.Confidence, LatencyUS: latency}
+		return StageResult{Stage: ExitStage3Judge, Mode: "stage3_http", Matched: false, Action: ActionAllowed, Confidence: out.Confidence, LatencyUS: latency}
 	}
 	action := ActionAllowed
 	matched := false
@@ -126,7 +126,7 @@ func (h *HTTPStage3) Judge(ctx context.Context, in *Input, p *CompiledPolicy) St
 		action, matched = ActionEscalated, true
 	}
 	if !matched {
-		return StageResult{Stage: ExitStage3Judge, Matched: false, Action: ActionAllowed, Confidence: out.Confidence, LatencyUS: latency}
+		return StageResult{Stage: ExitStage3Judge, Mode: "stage3_http", Matched: false, Action: ActionAllowed, Confidence: out.Confidence, LatencyUS: latency}
 	}
 	category := out.Category
 	if category == "" {
@@ -134,6 +134,7 @@ func (h *HTTPStage3) Judge(ctx context.Context, in *Input, p *CompiledPolicy) St
 	}
 	return StageResult{
 		Stage:      ExitStage3Judge,
+		Mode:       "stage3_http",
 		Matched:    true,
 		Action:     action,
 		Severity:   SeverityHigh,
@@ -146,9 +147,14 @@ func (h *HTTPStage3) Judge(ctx context.Context, in *Input, p *CompiledPolicy) St
 }
 
 func stage3Fail(start time.Time, failClosed bool) StageResult {
+	// Mode "stage3_unavailable" (mirrors Stage 2's ModeStage2Unavailable, GAP-004):
+	// a judge that never answered must be distinguishable in telemetry from one
+	// that ran and found nothing — "allowed because the judge was down" and
+	// "allowed because the judge cleared it" are different facts.
 	if failClosed {
 		return StageResult{
 			Stage:     ExitStage3Judge,
+			Mode:      "stage3_unavailable",
 			Matched:   true,
 			Action:    ActionBlocked,
 			Severity:  SeverityHigh,
@@ -157,5 +163,5 @@ func stage3Fail(start time.Time, failClosed bool) StageResult {
 			LatencyUS: time.Since(start).Microseconds(),
 		}
 	}
-	return StageResult{Stage: ExitStage3Judge, Matched: false, Action: ActionAllowed, LatencyUS: time.Since(start).Microseconds()}
+	return StageResult{Stage: ExitStage3Judge, Mode: "stage3_unavailable", Matched: false, Action: ActionAllowed, LatencyUS: time.Since(start).Microseconds()}
 }

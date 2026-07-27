@@ -97,3 +97,82 @@ func parseDocTableP99(md string) map[string]float64 {
 func round1(f float64) float64 {
 	return float64(int(f*10+0.5)) / 10
 }
+
+// TestLoadDocMatchesResults is the same doc-vs-artifact ratchet for the
+// end-to-end load table: the ADDED p50/p95/p99 quoted in BENCHMARKS.md must
+// match bench/loadtest/results.json (within integer-ms rounding, how the doc
+// prints them). results.json is committed but nothing pinned the doc to it —
+// the same divergence risk TestDocsMatchMeasured closed for the microbench.
+func TestLoadDocMatchesResults(t *testing.T) {
+	raw, err := os.ReadFile("loadtest/results.json")
+	if err != nil {
+		t.Fatalf("read results.json: %v", err)
+	}
+	var results struct {
+		Levels []struct {
+			AddedP50 float64 `json:"added_p50"`
+			AddedP95 float64 `json:"added_p95"`
+			AddedP99 float64 `json:"added_p99"`
+		} `json:"levels"`
+	}
+	if err := json.Unmarshal(raw, &results); err != nil {
+		t.Fatalf("parse results.json: %v", err)
+	}
+	if len(results.Levels) != 3 {
+		t.Fatalf("results.json has %d levels, want 3 (idle/mid/high)", len(results.Levels))
+	}
+
+	md, err := os.ReadFile("../../docs/BENCHMARKS.md")
+	if err != nil {
+		t.Fatalf("read BENCHMARKS.md: %v", err)
+	}
+	docAdded := parseDocLoadtestAdded(string(md))
+	if len(docAdded) != 3 {
+		t.Fatalf("found %d end-to-end table rows in BENCHMARKS.md, want 3", len(docAdded))
+	}
+
+	for i, lvl := range results.Levels {
+		want := [3]int{roundInt(lvl.AddedP50), roundInt(lvl.AddedP95), roundInt(lvl.AddedP99)}
+		if docAdded[i] != want {
+			t.Errorf("load level %d ADDED p50/p95/p99: BENCHMARKS.md says %v ms, results.json says %v ms — update the doc table and results.json together (bench/loadtest/run.sh)", i, docAdded[i], want)
+		}
+	}
+}
+
+// loadRowRe matches an end-to-end table data row, which begins "| <rps> (label)".
+var (
+	loadRowRe    = regexp.MustCompile(`^\|\s*[0-9]+\s*\(`)
+	intOrFloatRe = regexp.MustCompile(`[0-9]+(?:\.[0-9]+)?`)
+)
+
+// parseDocLoadtestAdded pulls the three integers of the ADDED column (the last
+// cell) from each end-to-end table row, in order.
+func parseDocLoadtestAdded(md string) [][3]int {
+	var out [][3]int
+	for _, line := range strings.Split(md, "\n") {
+		if !loadRowRe.MatchString(strings.TrimSpace(line)) {
+			continue
+		}
+		cells := strings.Split(line, "|")
+		last := ""
+		for i := len(cells) - 1; i >= 0; i-- {
+			if strings.TrimSpace(cells[i]) != "" {
+				last = cells[i]
+				break
+			}
+		}
+		nums := intOrFloatRe.FindAllString(last, -1)
+		if len(nums) != 3 {
+			continue
+		}
+		var row [3]int
+		for i, n := range nums {
+			f, _ := strconv.ParseFloat(n, 64)
+			row[i] = roundInt(f)
+		}
+		out = append(out, row)
+	}
+	return out
+}
+
+func roundInt(f float64) int { return int(f + 0.5) }
