@@ -14,10 +14,10 @@ pipeline, and streams telemetry back to the control plane.
 
 - Go 1.22+ (the blueprint forbids Python here — Python's GIL is
   incompatible with the intended hot-path concurrency).
-- **Latency: MEASURED, and it beats the sub-15ms target by ~430×.** On the
+- **Latency: MEASURED, and it beats the sub-15ms target by ~460×.** On the
   reference environment (Apple M2, go1.26.3), `Pipeline.Evaluate` adds a **p99
-  of 34.6 µs in `balanced` mode** (Stage 1 + in-process heuristic Stage 2) and
-  **23.4 µs in `fast` mode** — full distribution, methodology and reproduction in
+  of 32.4 µs in `balanced` mode** (Stage 1 + in-process heuristic Stage 2) and
+  **27.2 µs in `fast` mode** — full distribution, methodology and reproduction in
   [`docs/BENCHMARKS.md`](../docs/BENCHMARKS.md), harness in `runtime-agent/bench/`.
   This is *pipeline-added* latency (the product claim); end-to-end proxy overhead
   under sustained load is measured separately by the locust profile (Phase 2

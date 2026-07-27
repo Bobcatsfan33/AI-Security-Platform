@@ -1,38 +1,39 @@
 {
   "env": {
-    "timestamp": "2026-07-27T00:29:39Z",
+    "timestamp": "2026-07-27T14:31:05Z",
     "go_version": "go1.26.3",
     "os": "darwin",
     "arch": "arm64",
-    "num_cpu": 8
+    "num_cpu": 8,
+    "commit": "efda453"
   },
   "distributions": [
     {
       "mode": "fast (stage1, in-process)",
-      "n": 5000,
-      "mean_us": 13.577374000000043,
-      "p50_us": 12.958,
-      "p95_us": 17.125,
-      "p99_us": 23.416,
-      "max_us": 129.75
+      "n": 20000,
+      "mean_us": 13.26221925000009,
+      "p50_us": 12.667,
+      "p95_us": 13.958,
+      "p99_us": 27.208,
+      "max_us": 141.25
     },
     {
       "mode": "balanced (stage1+2 heuristic, in-process)",
-      "n": 5000,
-      "mean_us": 25.16004700000008,
-      "p50_us": 24.167,
-      "p95_us": 30.375,
-      "p99_us": 34.583,
-      "max_us": 150.625
+      "n": 20000,
+      "mean_us": 24.423383799999325,
+      "p50_us": 23.75,
+      "p95_us": 27.917,
+      "p99_us": 32.375,
+      "max_us": 126.25
     },
     {
-      "mode": "comprehensive (stage1+2+3, sidecar hop, no inference)",
-      "n": 2500,
-      "mean_us": 101.81387679999985,
-      "p50_us": 96.75,
-      "p95_us": 132.25,
-      "p99_us": 226.459,
-      "max_us": 427.667
+      "mode": "comprehensive (stage1+2+3, two sidecar hops, no inference)",
+      "n": 4000,
+      "mean_us": 99.1445282500001,
+      "p50_us": 95.459,
+      "p95_us": 129.209,
+      "p99_us": 241.166,
+      "max_us": 583.542
     }
   ]
 }

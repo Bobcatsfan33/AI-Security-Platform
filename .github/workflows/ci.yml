@@ -118,6 +118,32 @@ jobs:
         working-directory: runtime-agent
         run: go test -race -cover ./...
 
+  agent-bench-gate:
+    name: Agent bench gate (regression)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          # PINNED (not "stable") on purpose: the gate compares allocs/op + B/op
+          # against a committed baseline generated on this exact toolchain. A Go
+          # minor bump can shift allocation behaviour, which would read as a
+          # regression that is really a toolchain change. Bump this together with
+          # bench/baseline.json (regenerate via runtime-agent/bench/regen.sh).
+          go-version: "1.26.3"
+          cache-dependency-path: runtime-agent/go.sum
+      - name: Run pipeline benchmarks
+        working-directory: runtime-agent
+        # -benchtime=2s stabilises the auto-tuned N so allocs/B are steady.
+        run: go test -bench=. -benchmem -run='^$' -benchtime=2s ./bench/ | tee bench_out.txt
+      - name: Gate against committed baseline
+        working-directory: runtime-agent
+        # allocs/op gated exactly (hardware-independent), B/op with a small
+        # tolerance for amortization jitter, ns/op only against a generous ~8x
+        # ceiling for gross regressions. The anti-flake rationale is documented
+        # in bench/gate/main.go — do NOT turn this into an absolute-latency SLA.
+        run: go run ./bench/gate -baseline bench/baseline.json < bench_out.txt
+
   frontend:
     name: Frontend (Next.js)
     runs-on: ubuntu-latest

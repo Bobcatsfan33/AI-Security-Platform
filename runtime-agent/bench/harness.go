@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"runtime"
 	"runtime/debug"
 	"sort"
@@ -186,9 +187,11 @@ type EnvStamp struct {
 	Commit    string `json:"commit,omitempty"`
 }
 
-// CaptureEnv stamps the current environment. Commit is best-effort from the
-// build's embedded VCS info; the regeneration script injects it explicitly when
-// running under `go test` (where ReadBuildInfo carries no revision).
+// CaptureEnv stamps the current environment. Commit is taken from the
+// BENCH_COMMIT env var when set (regen.sh injects `git rev-parse` there, since
+// `go test` runs carry no VCS revision in ReadBuildInfo), falling back to the
+// build's embedded VCS info. A stamp without a commit is a number you cannot
+// trace back to the code that produced it — the one thing evidence must never be.
 func CaptureEnv() EnvStamp {
 	e := EnvStamp{
 		Timestamp: time.Now().UTC().Format(time.RFC3339),
@@ -197,7 +200,9 @@ func CaptureEnv() EnvStamp {
 		Arch:      runtime.GOARCH,
 		NumCPU:    runtime.NumCPU(),
 	}
-	if info, ok := debug.ReadBuildInfo(); ok {
+	if c := os.Getenv("BENCH_COMMIT"); c != "" {
+		e.Commit = c
+	} else if info, ok := debug.ReadBuildInfo(); ok {
 		for _, s := range info.Settings {
 			if s.Key == "vcs.revision" {
 				e.Commit = s.Value
