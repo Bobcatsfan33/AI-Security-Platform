@@ -66,10 +66,21 @@ func BenchmarkEvaluate_ComprehensiveSidecar(b *testing.B) {
 // assertion gate: the CI regression gate lives in the benchmarks' allocs/op
 // (increment 2), and the tail numbers are reported evidence, not pass/fail.
 func TestLatencyDistribution(t *testing.T) {
-	if testing.Short() {
-		t.Skip("latency sampling skipped under -short")
+	// Regeneration-only: this is a measurement tool, not a CI assertion (the
+	// gate is the benchmarks' allocs/op; doc-vs-artifact consistency is
+	// TestDocsMatchMeasured). It samples a large N and would slow every `go test`
+	// run for no gate value, so it runs only when regen.sh sets BENCH_WRITE=1.
+	if os.Getenv("BENCH_WRITE") != "1" {
+		t.Skip("latency sampling runs only during regeneration (BENCH_WRITE=1); see bench/regen.sh")
 	}
-	const n, warmup = 5000, 300
+	// N is a balance, not a noise cure: single-request µs-scale sampling on a
+	// shared machine is noise-dominated, and more samples just accumulate more
+	// scheduler/GC events (p99 varied ~2x run-to-run at both 5k and 50k). The
+	// mean and the micro-benchmarks are the stable signals; the sampled tail is
+	// reported WITH its variance. See docs/BENCHMARKS.md "Reproduce" for the
+	// recommended conditions (quiet, AC-powered) and the under-load tail (locust,
+	// increment 3) which is the authoritative p99.
+	const n, warmup = 20000, 2000
 	ctx := context.Background()
 
 	fastPol := RepresentativePolicy(policy.EnforcementFast)
@@ -92,7 +103,7 @@ func TestLatencyDistribution(t *testing.T) {
 	dists := []Percentiles{
 		Sample("fast (stage1, in-process)", n, warmup, func() { _ = fastPl.Evaluate(ctx, in, fastPol, "production") }),
 		Sample("balanced (stage1+2 heuristic, in-process)", n, warmup, func() { _ = balPl.Evaluate(ctx, in, balPol, "production") }),
-		Sample("comprehensive (stage1+2+3, two sidecar hops, no inference)", n/2, warmup, func() { _ = compPl.Evaluate(ctx, in, compPol, "production") }),
+		Sample("comprehensive (stage1+2+3, two sidecar hops, no inference)", n/5, warmup, func() { _ = compPl.Evaluate(ctx, in, compPol, "production") }),
 	}
 
 	for _, d := range dists {
