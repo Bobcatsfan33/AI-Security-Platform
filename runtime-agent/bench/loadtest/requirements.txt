@@ -1,0 +1,5 @@
+# Pinned load-test harness (Phase 2 increment 3). Install into a throwaway venv:
+#   python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+#   LOCUST=.venv/bin/locust ./bench/loadtest/run.sh
+# Pinned so a reported number is reproducible against the same generator.
+locust==2.34.0

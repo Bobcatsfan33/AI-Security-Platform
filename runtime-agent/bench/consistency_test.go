@@ -30,6 +30,12 @@ func TestDocsMatchMeasured(t *testing.T) {
 		t.Fatalf("parse measured.json: %v", err)
 	}
 
+	// Guard the vacuous-pass corner: an empty distributions array would make the
+	// loop below assert nothing. We know exactly three modes are sampled.
+	if len(report.Distributions) != 3 {
+		t.Fatalf("measured.json has %d distributions, want 3 (fast/balanced/comprehensive) — regenerate with bench/regen.sh", len(report.Distributions))
+	}
+
 	md, err := os.ReadFile("../../docs/BENCHMARKS.md")
 	if err != nil {
 		t.Fatalf("read BENCHMARKS.md: %v", err)
