@@ -209,10 +209,14 @@ added latency is the first number an evaluator asks for.
 corrected from "target, unmeasured" to the measured number. The harness commits
 to publishing whatever it measures (no cherry-picking) — the target being *met*
 is the honest outcome here, not the designed one.
+**CI regression gate (inc 2) — DONE:** the `Agent bench gate` CI job (pinned to
+`go1.26.3`) runs the benchmarks and pipes them through `runtime-agent/bench/gate`
+against `bench/baseline.json`. `allocs/op` is gated exactly (hardware-independent),
+`B/op` with a 10% jitter tolerance, `ns/op` only against a generous ~8× ceiling
+for gross regressions — the anti-flake rationale is documented in `gate/main.go`
+so nobody tightens it into a flaky latency SLA. A drift fails CI and demands a
+baseline regeneration in the same PR.
 **Still open (later Phase 2 increments):**
-* **CI regression gate (inc 2):** wire `bench/baseline.json` (hardware-independent
-  allocs/op + B/op as the deterministic signal, plus a loose ns/op ceiling) into
-  a CI step — today the benchmarks run but nothing gates on drift.
 * **End-to-end proxy overhead under load (inc 3):** the p99 at the `:8400` proxy
   under sustained RPS via a locust profile over a real network path — the
   in-process microbench here deliberately does not stand in for that.

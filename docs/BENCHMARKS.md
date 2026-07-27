@@ -20,8 +20,8 @@ This document reports what is actually measured, how, and how to reproduce it.
 > On the reference environment below, **`balanced` mode adds a p99 of 34.6 µs**
 > of pipeline latency (Stage 1 + in-process heuristic Stage 2), and **`fast`
 > mode a p99 of 23.4 µs** (Stage 1 only) — against the 15 ms target, ~430× and
-> ~640× of margin. `comprehensive` with a mock sidecar hop (Stage 1+2+3, **no
-> model inference** — see scope) is a p99 of 226 µs.
+> ~640× of margin. `comprehensive` across two mock sidecar hops (Stage 1+2+3,
+> **no model inference** — see scope) is a p99 of 226 µs.
 
 We lead with p99, not p50: the tail is what an SRE reads first, and a p50
 headline reads as hiding the tail.
@@ -40,7 +40,7 @@ because that command reproduces them.
 |---|---|---|---|---|---|---|
 | `fast` | 1 (in-process) | 13.0 µs | 17.1 µs | 23.4 µs | 129.8 µs | 13.6 µs |
 | `balanced` | 1 + 2 heuristic (in-process) | 24.2 µs | 30.4 µs | 34.6 µs | 150.6 µs | 25.2 µs |
-| `comprehensive` | 1 + 2 + 3 (sidecar hop, no inference) | 96.8 µs | 132.2 µs | 226.5 µs | 427.7 µs | 101.8 µs |
+| `comprehensive` | 1 + 2 + 3 (two sidecar hops, no inference) | 96.8 µs | 132.2 µs | 226.5 µs | 427.7 µs | 101.8 µs |
 
 ### Micro-benchmarks (`go test -bench`, allocations)
 
@@ -69,15 +69,29 @@ sidecar rows exercise deliberately.
   number is the agent's *marshal + one-localhost-hop transport* cost. **It is
   NOT an ONNX inference-time claim.** Real inference is model-dependent and is
   measured in a POC with the actual model; it is explicitly out of scope here.
-- **What is gated vs. reported** (the anti-flake split):
-  - **Gated (CI, increment 2):** `allocs/op` and `B/op` against
-    `bench/baseline.json`. These are hardware-independent — identical on any
-    CPU/OS — so an allocation regression is a variance-free signal. Plus a loose
-    (~2×) `ns/op` ceiling that trips only on gross regressions.
-  - **Reported (here):** the p50/p95/p99 tail. It is environment-sensitive, so
-    it is published with a stamp and a regeneration command, never asserted in
-    CI (an absolute-latency gate on shared CI runners flakes, then gets muted —
-    the worst outcome).
+- **What is gated vs. reported** (the anti-flake split). The CI job
+  `Agent bench gate` (pinned to `go1.26.3` — the toolchain the baseline was
+  taken on) runs the benchmarks and pipes them through `bench/gate`
+  (`runtime-agent/bench/gate/main.go`) against `bench/baseline.json`:
+  - **`allocs/op` — gated exactly.** Hardware-independent (a function of the code
+    path, identical on any CPU/OS given a pinned toolchain) and a variance-free
+    integer count. Current > baseline for a deterministic benchmark fails the
+    build. This is the primary signal.
+  - **`B/op` — gated with a small (10%) tolerance.** It tracks allocations but
+    carries ±1–2 bytes of jitter (the run's total is amortized over an auto-tuned
+    N), so an exact gate would flake; the tolerance ignores the jitter and still
+    catches a real byte-growth regression.
+  - **`ns/op` — generous ~8× ceiling only.** ns/op is hardware-dependent (CI
+    silicon ≠ the M2 baseline), so a *tight* ns bound would flake on the runner,
+    get muted, and the gate would be worthless. It is checked only against
+    `baseline_local × 8` — a gross-regression tripwire (a hot-path network call, a
+    sleep, an O(n²)) with deliberate hardware headroom. **Do not tighten it into
+    an absolute-latency assertion** — the rationale is in `gate/main.go`.
+  - **Reported, never gated:** the p50/p95/p99 tail. Environment-sensitive, so it
+    is published with a stamp and a regeneration command.
+  - The sidecar benchmarks are `deterministic: false` in the baseline (they cross
+    one/two localhost `net/http` hops whose allocations vary) — reported, not
+    gated. Bumping `go1.26.3` means regenerating `baseline.json` in the same PR.
 - **No cherry-picking.** Whatever `regen.sh` prints is what ships. Had `balanced`
   missed 15 ms, that number would be here and the README claim corrected to it —
   which is the entire point of GAP-002.

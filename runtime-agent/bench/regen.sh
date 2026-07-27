@@ -21,5 +21,5 @@ echo "## Micro-benchmarks (ns/op, B/op, allocs/op)"
 go test -bench=. -benchmem -run='^$' -benchtime=2s ./bench/
 
 echo
-echo "## Latency distribution (writes bench/measured.json)"
-BENCH_WRITE=1 go test -run TestLatencyDistribution -v ./bench/ 2>&1 | grep -E 'p50=|wrote'
+echo "## Latency distribution (writes bench/measured.json, stamped with ${commit})"
+BENCH_COMMIT="${commit}" BENCH_WRITE=1 go test -run TestLatencyDistribution -v ./bench/ 2>&1 | grep -E 'p50=|wrote'

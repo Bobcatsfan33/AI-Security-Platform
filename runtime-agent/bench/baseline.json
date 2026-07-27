@@ -2,6 +2,7 @@
   "_comment": "Regression baseline for the runtime-agent pipeline benchmarks. allocs_per_op and b_per_op are HARDWARE-INDEPENDENT (a function of the code path, identical on any CPU/OS) and are the authoritative CI regression signal wired in increment 2 — a jump here is real allocation rot. ns_per_op_local is HARDWARE-DEPENDENT reference only (captured on the env below); the CI gate compares ns/op against a runner-generated figure with a loose (~2x) ceiling that trips only on gross regressions, never on VM noise. Regenerate with bench/regen.sh.",
   "env": {
     "timestamp": "2026-07-27T00:29:39Z",
+    "commit": "efda453",
     "go_version": "go1.26.3",
     "os": "darwin",
     "arch": "arm64",

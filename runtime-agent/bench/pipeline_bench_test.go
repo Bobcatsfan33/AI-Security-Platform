@@ -92,7 +92,7 @@ func TestLatencyDistribution(t *testing.T) {
 	dists := []Percentiles{
 		Sample("fast (stage1, in-process)", n, warmup, func() { _ = fastPl.Evaluate(ctx, in, fastPol, "production") }),
 		Sample("balanced (stage1+2 heuristic, in-process)", n, warmup, func() { _ = balPl.Evaluate(ctx, in, balPol, "production") }),
-		Sample("comprehensive (stage1+2+3, sidecar hop, no inference)", n/2, warmup, func() { _ = compPl.Evaluate(ctx, in, compPol, "production") }),
+		Sample("comprehensive (stage1+2+3, two sidecar hops, no inference)", n/2, warmup, func() { _ = compPl.Evaluate(ctx, in, compPol, "production") }),
 	}
 
 	for _, d := range dists {
