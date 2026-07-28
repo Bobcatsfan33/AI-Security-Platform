@@ -133,6 +133,16 @@ func (p *Pipeline) Evaluate(
 		if uncertain && policy.EnforcementLevel == EnforcementComprehensive {
 			s3 := p.Stage3.Judge(ctx, in, policy)
 			results = append(results, s3)
+
+			// The judge could not answer, so fail_behavior decided — not the
+			// judge. Exit explicitly, exactly as Stage 2 does above: a
+			// fail-closed block must not wear ExitStage3Judge (a real ruling),
+			// and a fail-open allow must not fall through to ExitNoMatch. Taken
+			// for BOTH behaviours because both carry Mode stage3_unavailable.
+			if s3.Mode == ModeStage3Unavailable {
+				return decide(results, policy, ExitStage3Unavailable, start)
+			}
+
 			if s3.Matched {
 				return decide(results, policy, ExitStage3Judge, start)
 			}

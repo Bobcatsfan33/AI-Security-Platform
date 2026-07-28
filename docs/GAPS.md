@@ -235,13 +235,18 @@ multi-host rig (out of scope, like real inference).
   connection knee (~750 RPS); the real-network saturation curve needs separate
   client/agent/upstream hosts.
 
-### GAP-010 — `management` and `cmd/agent` are 0% covered
-**What:** the kill switch (`management/killswitch.go`) has no test — the
-block-all path at `handler.go:111` is never exercised. Heartbeat untested.
-`KillSwitchState.Snapshot()` is documented as feeding `/metrics` but is never
-called: dead code.
-**Why it matters:** the kill switch is the control you demo to a security team.
-**Unblocks:** nothing external. Phase 2.
+### GAP-010 — `management` and `cmd/agent` are 0% covered — 🟡 kill-switch block path now tested (Phase 2 inc 4)
+**Was:** the kill switch (`management/killswitch.go`) had no test — the block-all
+path at `handler.go:122` was never exercised, despite being the control you demo
+to a security team. Heartbeat untested. `KillSwitchState.Snapshot()` documented
+as feeding `/metrics` but never called (dead code).
+**Done (Phase 2 increment 4):** `proxy/killswitch_proxy_test.go` drives real
+requests through `serveProxy` while the switch is flipped — proving the
+emergency block takes effect on the very next request (451, before the policy
+pipeline) and lifts cleanly, and that flipping it under concurrent traffic is
+race-safe. Documented in [`docs/AGENT-FAILURE-MODES.md`](AGENT-FAILURE-MODES.md).
+**Still open:** heartbeat and `cmd/agent` wiring coverage; `Snapshot()` dead code
+(revisit with the GAP-011 `/metrics` work).
 
 ### GAP-011 — `/metrics` has no security metrics
 **What:** the agent's `/metrics` exposes six telemetry/uptime counters and

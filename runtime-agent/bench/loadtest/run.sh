@@ -13,8 +13,12 @@ cd "$(dirname "$0")/../.."   # runtime-agent/
 LOCUST="${LOCUST:-locust}"
 PROXY="127.0.0.1:18400"
 UPSTREAM="127.0.0.1:19000"
-DUR="${DUR:-30s}"
+DUR="${DUR:-25s}"   # matches the docs/BENCHMARKS.md stamp; override with DUR=…
 OUT="${OUT:-/tmp/agent-loadtest}"
+# Stamp the dev HEAD. NOTE the convention: on a squash merge this commit is
+# discarded, so when you commit a refreshed results.json update its "commit" to
+# the PR's merge commit (checkout-able on main) — a stamp nobody can check out
+# is half a stamp. See bench/measured.json (stamped with its merge commit).
 COMMIT="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
 mkdir -p "$OUT"
 

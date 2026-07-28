@@ -2,10 +2,12 @@
 // against a mock upstream, for the end-to-end load test (docs/BENCHMARKS.md).
 //
 // It is the honest end-to-end rig the single-request microbench deliberately is
-// not: locust drives the proxy on :8400 over a real socket, the proxy runs the
-// real pipeline + reverse-proxy forward, and a mock upstream on :9000 returns a
-// canned completion at near-zero delay. Point locust at :8400 to measure
-// proxy+upstream, and at :9000 to measure the upstream baseline to subtract.
+// not: locust drives the proxy on :18400 over a real socket, the proxy runs the
+// real pipeline + reverse-proxy forward, and a mock upstream on :19000 returns a
+// canned completion at near-zero delay. Point locust at :18400 to measure
+// proxy+upstream, and at :19000 to measure the upstream baseline to subtract.
+// (High ports on purpose — :8400/:9000 collide with the real agent and other
+// dev services.)
 //
 // This is a benchmark rig, not a deployment: the policy is seeded from an
 // in-process stub fetcher (no control plane), telemetry is discarded, the kill
@@ -49,8 +51,8 @@ func env(key, def string) string {
 }
 
 func main() {
-	proxyAddr := env("PROXY_ADDR", "127.0.0.1:8400")
-	upstreamAddr := env("UPSTREAM_ADDR", "127.0.0.1:9000")
+	proxyAddr := env("PROXY_ADDR", "127.0.0.1:18400")
+	upstreamAddr := env("UPSTREAM_ADDR", "127.0.0.1:19000")
 	mode := policy.EnforcementLevel(env("MODE", "balanced"))
 	const policyID = "bench-policy"
 

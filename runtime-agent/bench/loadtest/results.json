@@ -1,7 +1,8 @@
 {
   "env": {
     "timestamp": "2026-07-27T14:59:10+00:00",
-    "commit": "f764e5e",
+    "commit": "a4967eb",
+    "_commit_note": "the PR-98 merge commit these numbers landed in (checkout-able on main); run.sh stamps the dev HEAD, updated here to the merge commit per the convention in run.sh",
     "go_version": "go1.26.3",
     "os": "darwin",
     "arch": "arm64",
