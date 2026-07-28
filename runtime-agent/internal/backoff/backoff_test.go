@@ -27,6 +27,22 @@ func TestBaseDelayGrowsAndCaps(t *testing.T) {
 	}
 }
 
+func TestZeroValueConfigIsSanitizedNotAHotLoop(t *testing.T) {
+	// A Config nobody filled in must never yield a 0 delay — that would turn a
+	// reconnect loop into a busy spin against the control plane.
+	var zero Config
+	if d := zero.baseDelay(0); d <= 0 {
+		t.Fatalf("zero-value baseDelay(0) = %v, want a sane positive default", d)
+	}
+	// And it still grows and caps.
+	if zero.baseDelay(0) >= zero.baseDelay(3) {
+		t.Errorf("zero-value config should still grow with attempts")
+	}
+	if got := zero.baseDelay(100); got > 30*time.Second {
+		t.Errorf("zero-value baseDelay must cap, got %v", got)
+	}
+}
+
 func TestDelayStaysWithinFullJitterBounds(t *testing.T) {
 	c := Config{Base: 200 * time.Millisecond, Max: 1 * time.Second, Factor: 2}
 	for attempt := 0; attempt < 6; attempt++ {
