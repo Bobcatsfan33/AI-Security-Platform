@@ -24,7 +24,7 @@ and "allowed because the backend was down" are distinguishable in telemetry.
 | **Kill switch activated mid-traffic** | Control plane sends `block_all` | The **next** request is blocked (451) — the check is a microsecond atomic gate *before* the policy pipeline, so it needs no cache refresh. `unblock_all` restores traffic immediately. Race-safe under concurrent flips. | `proxy/killswitch_proxy_test.go` | The emergency stop is immediate and reversible; it does not wait on policy propagation. (GAP-010: this path was previously untested.) |
 | **Cert rotation mid-traffic** | Client cert files rewritten (cert-manager / installer cron) while the agent is making control-plane calls | Hot-reloaded on a timer under an `RWMutex`; a concurrent TLS handshake never observes a nil or torn certificate. No restart needed. | `internal/controlplane/client_test.go` (`TestCertReloaderPicksUpRotation`), `cert_rotation_concurrent_test.go` | Rotate freely; no coordination with the agent required. |
 | **Malformed / erroring upstream RESPONSE** | Upstream returns garbage body, a 5xx, or is unreachable | A garbage body and a 5xx are **streamed through verbatim** (the upstream's output is the upstream's, not the agent's); an unreachable upstream yields **502**. The agent inspects the *request*, not the *response*. | `proxy/upstream_malformed_test.go` | **Stated scope decision:** the agent does NOT inspect or sanitize upstream responses today — response-side interception is a documented follow-on. If your threat model includes a compromised upstream returning malicious content, that is not covered by the inline agent yet. |
-| **Redis policy-invalidation drop** | Redis blips; the pub/sub subscriber's channel closes | Reconnects with jittered backoff, forever, and **re-fetches the policy on every reconnect** — so any invalidation missed while deaf is caught up (GAP-012 closed). The distinct hazard here was staleness, not disconnection: a reconnected subscriber that didn't re-fetch would keep serving what it cached when it went deaf while looking healthy. Staleness is also independently visible (`LoadedAt`/`IsStale`, emitted in the heartbeat). | `policy/cache_retry_test.go` (`TestReconnectLoopRefetchesAndStops`) | No action needed across a Redis outage — the agent self-heals and catches up. |
+| **Redis policy-invalidation drop** | Redis blips; the pub/sub subscriber's channel closes | Reconnects with jittered backoff, forever, and **re-fetches the policy INSIDE the re-established subscription** — the subscription is confirmed live first, so an invalidation racing the catch-up is buffered and delivered, not lost in a fetch-then-subscribe gap. The catch-up is bounded-retried; if it still fails it forces another reconnect rather than proceeding deaf (GAP-012 closed). The hazard was staleness, not disconnection: a reconnected subscriber that didn't catch up keeps serving what it cached when it went deaf while looking healthy. Also independently visible (`LoadedAt`/`IsStale`, heartbeat). | `policy/cache_pubsub_test.go` (real Redis: `TestSubscribePublishDuringCatchupIsCaught`), `policy/cache_retry_test.go` (`TestReconnectForcesReconnectOnPersistentRefetchFailure`) | No action needed across a Redis outage — the agent self-heals and catches up. |
 
 ## Retry / backoff: the whole class, enumerated
 
@@ -47,6 +47,17 @@ policy is not): cold-start is **bounded** (it must proceed to
 that gives up is a silently-stale policy). And the reconnect loop adds
 **re-fetch-on-reconnect** — reconnection alone would leave the staleness hazard
 open.
+
+**Cold-start boot time — size your readiness probe.** The bounded cold-start
+backoff is 8 attempts (base 500 ms, ×2, cap 8 s). If the control plane is merely
+slow, boot is quick. But if it **black-holes** (connections hang to the fetcher's
+10 s timeout), worst case is ~8 × 10 s of hung fetches + ~31 s of backoff ≈
+**~1.9 minutes** before the agent gives up and proceeds to fail-closed. That is
+by design — the agent starts and serves (fail-closed, safe), it does not hang
+forever — but set the pod's **readiness** probe so a healthy boot isn't flagged
+(initial-delay comfortably over 2 min, or gate readiness on a loaded policy).
+During that window the agent is correctly *not ready to enforce a real policy*;
+a readiness probe that reflects that is the right behavior, not a bug to mask.
 
 ## How to reproduce
 

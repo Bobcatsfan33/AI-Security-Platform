@@ -24,14 +24,27 @@ type Config struct {
 	Factor float64
 }
 
-// baseDelay is the un-jittered, capped delay for a 0-based attempt number.
+// baseDelay is the un-jittered, capped delay for a 0-based attempt number. The
+// zero-value Config is sanitized to a sane default rather than yielding a 0
+// delay — a Config nobody filled in must not turn a reconnect loop into a busy
+// spin against the control plane.
 func (c Config) baseDelay(attempt int) time.Duration {
 	if attempt < 0 {
 		attempt = 0
 	}
-	d := float64(c.Base) * math.Pow(c.Factor, float64(attempt))
-	if math.IsInf(d, 1) || d > float64(c.Max) {
-		return c.Max
+	base, max, factor := c.Base, c.Max, c.Factor
+	if base <= 0 {
+		base = 500 * time.Millisecond
+	}
+	if factor < 1 {
+		factor = 2
+	}
+	if max <= 0 {
+		max = 30 * time.Second
+	}
+	d := float64(base) * math.Pow(factor, float64(attempt))
+	if math.IsInf(d, 1) || d > float64(max) {
+		return max
 	}
 	return time.Duration(d)
 }

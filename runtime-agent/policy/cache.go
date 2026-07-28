@@ -127,25 +127,42 @@ func (c *Cache) swap(policyID string, p *CompiledPolicy) {
 	c.loadedAt[policyID] = time.Now()
 }
 
-// Subscribe subscribes to the org's Redis invalidation channel and
-// refreshes the cache on every message. Blocks until ctx is cancelled.
-// Wire-compatible with backend/app/services/policy_pubsub.py.
-func (c *Cache) Subscribe(ctx context.Context, rdb *redis.Client, orgID string) error {
+// Subscribe subscribes to the org's Redis invalidation channel and refreshes
+// the cache on every message. Blocks until ctx is cancelled or the connection
+// drops. Wire-compatible with backend/app/services/policy_pubsub.py.
+//
+// onReady (may be nil) runs AFTER the subscription is confirmed live but BEFORE
+// the receive loop. This ordering is load-bearing: `pubsub.Receive` blocks until
+// Redis acks the SUBSCRIBE, and every publish after that ack is buffered on the
+// connection — so a catch-up fetch in onReady runs INSIDE an established
+// subscription, and a publish during catch-up is delivered by the loop below,
+// not lost in a fetch-then-subscribe gap. If onReady returns an error (its
+// bounded catch-up retries were exhausted), Subscribe returns it so the caller
+// reconnects rather than serving deaf. Manual Receive (not Channel()) so the
+// confirm → onReady → receive ordering is explicit.
+func (c *Cache) Subscribe(
+	ctx context.Context, rdb *redis.Client, orgID string, onReady func() error,
+) error {
 	channel := fmt.Sprintf("policy:invalidation:%s", orgID)
 	pubsub := rdb.Subscribe(ctx, channel)
 	defer pubsub.Close()
 
+	if _, err := pubsub.Receive(ctx); err != nil {
+		return err // could not confirm the subscription
+	}
 	c.log.Info().Str("channel", channel).Msg("policy_cache_subscriber_started")
-	ch := pubsub.Channel()
+	if onReady != nil {
+		if err := onReady(); err != nil {
+			return err
+		}
+	}
 	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case msg, ok := <-ch:
-			if !ok {
-				return fmt.Errorf("policy_cache_subscriber_channel_closed")
-			}
-			c.handleMessage(ctx, msg.Payload)
+		msg, err := pubsub.Receive(ctx)
+		if err != nil {
+			return err // ctx cancelled or connection dropped
+		}
+		if m, ok := msg.(*redis.Message); ok {
+			c.handleMessage(ctx, m.Payload)
 		}
 	}
 }
@@ -169,6 +186,12 @@ func (c *Cache) LoadWithRetry(
 	return loaded, err
 }
 
+// refetchMaxAttempts bounds the catch-up fetch inside one (re)connect before it
+// gives up and forces another reconnect cycle. Bounded so a persistently-failing
+// fetch keeps cycling loudly rather than sitting in an established-but-deaf
+// subscription.
+const refetchMaxAttempts = 5
+
 // SubscribeWithReconnect keeps the invalidation subscriber alive across Redis
 // blips, forever (until ctx is cancelled). It closes GAP-012: previously the
 // subscriber returned on the first channel close and never came back, so policy
@@ -176,29 +199,54 @@ func (c *Cache) LoadWithRetry(
 //
 // The distinct hazard is STALENESS, not just disconnection: a subscriber that
 // reconnects but does not catch up keeps serving whatever it cached when it went
-// deaf, while looking healthy. So every reconnect RE-FETCHES the policy — any
-// invalidation missed during the outage is caught up on return. (The staleness
-// is also visible independently: LoadedAt/IsStale, emitted in the heartbeat.)
+// deaf, while looking healthy. So every (re)connect RE-FETCHES the policy, INSIDE
+// the established subscription (see Subscribe's onReady ordering), with bounded
+// retry; a catch-up that still fails forces another reconnect rather than
+// proceeding deaf. Staleness is also visible independently: LoadedAt/IsStale,
+// emitted in the heartbeat.
 func (c *Cache) SubscribeWithReconnect(
 	ctx context.Context, rdb *redis.Client, orgID, policyID string, cfg backoff.Config,
 ) {
-	c.reconnectLoop(ctx, policyID, cfg, func(ctx context.Context) error {
-		return c.Subscribe(ctx, rdb, orgID)
+	c.reconnectLoop(ctx, policyID, cfg, func(ctx context.Context, onReady func() error) error {
+		return c.Subscribe(ctx, rdb, orgID, onReady)
 	})
 }
 
-// reconnectLoop is SubscribeWithReconnect with the blocking subscription
-// injected, so the reconnect orchestration is testable without a real Redis.
+// reconnectLoop is SubscribeWithReconnect with the blocking session injected, so
+// the reconnect orchestration is testable without a real Redis. session must
+// call onReady once the subscription is live (real Subscribe does).
 func (c *Cache) reconnectLoop(
-	ctx context.Context, policyID string, cfg backoff.Config, subscribe func(context.Context) error,
+	ctx context.Context, policyID string, cfg backoff.Config,
+	session func(ctx context.Context, onReady func() error) error,
 ) {
 	for attempt := 0; ; {
 		if ctx.Err() != nil {
 			return
 		}
-		_ = subscribe(ctx) // blocks until the channel drops or ctx is cancelled
+		reconnected := false
+		onReady := func() error {
+			// Catch up INSIDE the live subscription, bounded-retry on the shared
+			// backoff. If it still fails, return the error so the session aborts
+			// and we reconnect — never proceed deaf.
+			err := backoff.Retry(ctx, cfg, refetchMaxAttempts, func(ctx context.Context) error {
+				_, e := c.Load(ctx, policyID)
+				return e
+			})
+			if err != nil {
+				c.log.Warn().Err(err).Msg("policy_refetch_on_reconnect_failed_forcing_reconnect")
+				return err
+			}
+			reconnected = true
+			c.log.Info().Msg("policy_refetched_on_reconnect")
+			return nil
+		}
+
+		_ = session(ctx, onReady) // blocks until drop / ctx / a failed catch-up
 		if ctx.Err() != nil {
 			return
+		}
+		if reconnected {
+			attempt = 0 // healthy: connected AND caught up — reset the backoff
 		}
 		c.log.Warn().Int("attempt", attempt+1).Msg("policy_subscriber_dropped_reconnecting")
 		select {
@@ -207,13 +255,6 @@ func (c *Cache) reconnectLoop(
 		case <-time.After(cfg.Delay(attempt)):
 		}
 		attempt++
-		// Re-fetch on reconnect: catch up any invalidation missed while deaf.
-		if _, err := c.Load(ctx, policyID); err != nil {
-			c.log.Warn().Err(err).Msg("policy_refetch_on_reconnect_failed")
-		} else {
-			c.log.Info().Msg("policy_refetched_on_reconnect")
-			attempt = 0 // healthy again — reset the backoff
-		}
 	}
 }
 
