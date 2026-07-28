@@ -12,6 +12,8 @@ import (
 
 	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog"
+
+	"github.com/Bobcatsfan33/ai-security-platform/runtime-agent/internal/backoff"
 )
 
 // PolicyFetcher returns a JSON-encoded policy from the control plane.
@@ -144,6 +146,73 @@ func (c *Cache) Subscribe(ctx context.Context, rdb *redis.Client, orgID string) 
 				return fmt.Errorf("policy_cache_subscriber_channel_closed")
 			}
 			c.handleMessage(ctx, msg.Payload)
+		}
+	}
+}
+
+// LoadWithRetry loads a policy with bounded, jittered exponential backoff. It is
+// BOUNDED on purpose: the cold-start caller (cmd/agent) must eventually PROCEED
+// — after give-up, `AGENT_NO_POLICY_BEHAVIOR` governs (fail-closed by default in
+// production), so an unreachable control plane at boot means fail-closed traffic
+// (safe), NOT a hung startup. Backoff-then-proceed, never backoff-forever.
+func (c *Cache) LoadWithRetry(
+	ctx context.Context, policyID string, cfg backoff.Config, maxAttempts int,
+) (*CompiledPolicy, error) {
+	var loaded *CompiledPolicy
+	err := backoff.Retry(ctx, cfg, maxAttempts, func(ctx context.Context) error {
+		p, e := c.Load(ctx, policyID)
+		if e == nil {
+			loaded = p
+		}
+		return e
+	})
+	return loaded, err
+}
+
+// SubscribeWithReconnect keeps the invalidation subscriber alive across Redis
+// blips, forever (until ctx is cancelled). It closes GAP-012: previously the
+// subscriber returned on the first channel close and never came back, so policy
+// changes stopped propagating silently until a process restart.
+//
+// The distinct hazard is STALENESS, not just disconnection: a subscriber that
+// reconnects but does not catch up keeps serving whatever it cached when it went
+// deaf, while looking healthy. So every reconnect RE-FETCHES the policy — any
+// invalidation missed during the outage is caught up on return. (The staleness
+// is also visible independently: LoadedAt/IsStale, emitted in the heartbeat.)
+func (c *Cache) SubscribeWithReconnect(
+	ctx context.Context, rdb *redis.Client, orgID, policyID string, cfg backoff.Config,
+) {
+	c.reconnectLoop(ctx, policyID, cfg, func(ctx context.Context) error {
+		return c.Subscribe(ctx, rdb, orgID)
+	})
+}
+
+// reconnectLoop is SubscribeWithReconnect with the blocking subscription
+// injected, so the reconnect orchestration is testable without a real Redis.
+func (c *Cache) reconnectLoop(
+	ctx context.Context, policyID string, cfg backoff.Config, subscribe func(context.Context) error,
+) {
+	for attempt := 0; ; {
+		if ctx.Err() != nil {
+			return
+		}
+		_ = subscribe(ctx) // blocks until the channel drops or ctx is cancelled
+		if ctx.Err() != nil {
+			return
+		}
+		c.log.Warn().Int("attempt", attempt+1).Msg("policy_subscriber_dropped_reconnecting")
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(cfg.Delay(attempt)):
+		}
+		attempt++
+		// Re-fetch on reconnect: catch up any invalidation missed while deaf.
+		if _, err := c.Load(ctx, policyID); err != nil {
+			c.log.Warn().Err(err).Msg("policy_refetch_on_reconnect_failed")
+		} else {
+			c.log.Info().Msg("policy_refetched_on_reconnect")
+			attempt = 0 // healthy again — reset the backoff
 		}
 	}
 }

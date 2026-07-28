@@ -69,9 +69,11 @@ Tested in `runtime-agent/proxy/nopolicy_test.go`.
 the agent now **fails closed on cold start by default**. That is deliberate
 (guardrail 3) and it means **deploy ordering matters** — a control-plane outage
 now becomes a traffic outage rather than a silent lapse in protection.
-**Still open:** the retry/backoff contract for "agent up before control plane"
-is undocumented. Phase 2 covers it in `docs/AGENT-FAILURE-MODES.md` and verifies
-it under fault injection.
+**Closed (Phase 2 inc 5):** the retry/backoff contract for "agent up before
+control plane" now exists — `Cache.LoadWithRetry` (bounded, jittered backoff,
+then proceed to `AGENT_NO_POLICY_BEHAVIOR`), documented in
+`docs/AGENT-FAILURE-MODES.md` and verified under fault injection
+(`policy/cache_retry_test.go`).
 
 ### GAP-004 — Stage 2 fail-open is hardcoded, ignoring `fail_behavior` ✅ CLOSED (Phase 1)
 **Was:** `stage2_http.go` discarded the policy argument (`_ *CompiledPolicy`) and
@@ -258,14 +260,22 @@ agent is blocking anything or whether Stage 2 is silently failing open
 (GAP-004). An SRE cannot operate this.
 **Unblocks:** nothing external. Phase 4.
 
-### GAP-012 — Redis policy-invalidation subscriber never reconnects
-**What:** [`cache.go:143`](../runtime-agent/policy/cache.go) returns on channel
-close; [`main.go:187`](../runtime-agent/cmd/agent/main.go) logs
-`policy_subscriber_exited` and never restarts it. After one Redis blip,
-invalidation is dead for the life of the process — policy changes stop
-propagating, silently, until restart.
-**Why it matters:** a policy the operator believes they revoked stays live.
-**Unblocks:** nothing external. Phase 2.
+### GAP-012 — Redis policy-invalidation subscriber never reconnects ✅ CLOSED (Phase 2 inc 5)
+**Was:** `cache.go` returned on channel close and `main.go` logged
+`policy_subscriber_exited` and never restarted it. After one Redis blip,
+invalidation was dead for the life of the process — a policy the operator
+believed they revoked stayed live, silently, until restart.
+**Closed by:** `Cache.SubscribeWithReconnect` — an unbounded, jittered-backoff
+reconnect loop that **re-fetches the policy on every reconnect**. The distinct
+hazard was staleness, not disconnection (a reconnected subscriber that didn't
+re-fetch keeps serving what it cached when it went deaf while looking healthy),
+so reconnection alone was not the fix; the re-fetch catches up any missed
+invalidation, and `LoadedAt`/`IsStale` (emitted in the heartbeat) make staleness
+independently visible. Shares the `internal/backoff` primitive with the
+cold-start retry (GAP-003 follow-up), but keeps its own give-up policy
+(unbounded, vs cold-start's bounded). Proven by
+`policy/cache_retry_test.go::TestReconnectLoopRefetchesAndStops`; documented in
+[`docs/AGENT-FAILURE-MODES.md`](AGENT-FAILURE-MODES.md).
 
 ### GAP-007 — The CI/CD gate action is untested
 **What:** [`actions/ai-security-gate/run.sh`](../actions/ai-security-gate/run.sh)
