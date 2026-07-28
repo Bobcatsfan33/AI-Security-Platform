@@ -9,15 +9,15 @@ import (
 )
 
 // Failure-mode coverage for Stage 3 (the LLM judge), mirroring
-// stage2_failbehavior_test.go. Two claims:
+// stage2_failbehavior_test.go in full. Three claims — the same three the Stage-2
+// fix (GAP-004) established, applied one stage over:
 //
-//  1. A down/erroring judge honours the policy's fail_behavior — blocks under
-//     "closed", allows under "open" — at EVERY backend failure mode.
-//  2. A judge that never answered is DISTINGUISHABLE from one that ran and
-//     cleared the input: the fail path reports Mode "stage3_unavailable", the
-//     real path "stage3_http". Before this, HTTPStage3 set no Mode at all, so a
-//     failed-open judge looked identical to a clean verdict in telemetry — the
-//     same honesty gap GAP-004 closed for Stage 2.
+//  1. A down/erroring judge honours the policy's fail_behavior at EVERY backend
+//     failure mode (unreachable / timeout / 5xx / malformed), in BOTH directions.
+//  2. Such a result carries Mode "stage3_unavailable" (vs "stage3_http" for a
+//     real ruling), so a failed-open judge is not mistaken for a clean verdict.
+//  3. It carries NO RuleID — a judge that never answered fired nothing, and
+//     decide() folds RuleIDs into Decision.MatchedRules (the rules that FIRED).
 
 func downStage3() *HTTPStage3 { return NewHTTPStage3("http://127.0.0.1:0", 50*time.Millisecond) }
 
@@ -26,8 +26,11 @@ func TestStage3FailClosedBlocksWhenJudgeDown(t *testing.T) {
 	if !r.Matched || r.Action != ActionBlocked {
 		t.Fatalf("fail-closed policy must block when the judge is down, got %+v", r)
 	}
-	if r.Mode != "stage3_unavailable" {
-		t.Errorf("Mode = %q, want stage3_unavailable — a block must not masquerade as a real ruling", r.Mode)
+	if r.Mode != ModeStage3Unavailable {
+		t.Errorf("Mode = %q, want %q — a block must not masquerade as a real ruling", r.Mode, ModeStage3Unavailable)
+	}
+	if r.RuleID != "" {
+		t.Errorf("RuleID = %q, want empty — a judge that never answered fired no rule", r.RuleID)
 	}
 }
 
@@ -36,8 +39,8 @@ func TestStage3FailOpenAllowsWhenJudgeDown(t *testing.T) {
 	if r.Matched || r.Action != ActionAllowed {
 		t.Fatalf("fail-open policy must allow when the judge is down, got %+v", r)
 	}
-	if r.Mode != "stage3_unavailable" {
-		t.Errorf("Mode = %q, want stage3_unavailable — failing open must still be visible in telemetry", r.Mode)
+	if r.Mode != ModeStage3Unavailable {
+		t.Errorf("Mode = %q, want %q — failing open must still be visible in telemetry", r.Mode, ModeStage3Unavailable)
 	}
 }
 
@@ -45,6 +48,9 @@ func TestStage3NilPolicyFailsOpen(t *testing.T) {
 	r := downStage3().Judge(context.Background(), &Input{Text: "x"}, nil)
 	if r.Matched || r.Action != ActionAllowed {
 		t.Fatalf("nil policy must fail open (historical default), got %+v", r)
+	}
+	if r.Mode != ModeStage3Unavailable {
+		t.Errorf("Mode = %q, want %q — a nil-policy fail-open is still a non-verdict", r.Mode, ModeStage3Unavailable)
 	}
 }
 
@@ -56,17 +62,19 @@ func TestStage3RealVerdictIsLabelledHTTP(t *testing.T) {
 	}))
 	defer srv.Close()
 	r := NewHTTPStage3(srv.URL, time.Second).Judge(context.Background(), &Input{Text: "x"}, &CompiledPolicy{FailBehavior: FailClosed})
-	if r.Mode != "stage3_http" {
-		t.Errorf("Mode = %q, want stage3_http for a real answered verdict", r.Mode)
+	if r.Mode != ModeStage3HTTP {
+		t.Errorf("Mode = %q, want %q for a real answered verdict", r.Mode, ModeStage3HTTP)
 	}
 	if r.Matched {
 		t.Errorf("a clean verdict must not match, got %+v", r)
 	}
 }
 
-func TestStage3AllBackendFailuresHonourFailClosed(t *testing.T) {
+func TestStage3AllBackendFailuresHonourFailBehavior(t *testing.T) {
 	// Every way the judge can fail to produce a verdict must route through the
-	// same fail_behavior decision — not just an unreachable endpoint.
+	// same fail_behavior decision, in BOTH directions — not just an unreachable
+	// endpoint failing closed. They all funnel through one stage3Fail, so the
+	// full matrix is cheap and worth pinning.
 	slow := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		time.Sleep(200 * time.Millisecond)
 		_, _ = w.Write([]byte(`{"is_violation":false}`))
@@ -81,7 +89,7 @@ func TestStage3AllBackendFailuresHonourFailClosed(t *testing.T) {
 	}))
 	defer garbage.Close()
 
-	cases := []struct {
+	modes := []struct {
 		name  string
 		judge *HTTPStage3
 	}{
@@ -90,15 +98,31 @@ func TestStage3AllBackendFailuresHonourFailClosed(t *testing.T) {
 		{"http_500", NewHTTPStage3(fivexx.URL, time.Second)},
 		{"malformed_json", NewHTTPStage3(garbage.URL, time.Second)},
 	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			r := tc.judge.Judge(context.Background(), &Input{Text: "x"}, &CompiledPolicy{FailBehavior: FailClosed})
-			if !r.Matched || r.Action != ActionBlocked {
-				t.Errorf("%s under fail-closed must block, got %+v", tc.name, r)
-			}
-			if r.Mode != "stage3_unavailable" {
-				t.Errorf("%s: Mode = %q, want stage3_unavailable", tc.name, r.Mode)
-			}
-		})
+	behaviors := []struct {
+		name        string
+		fb          FailBehavior
+		wantBlocked bool
+	}{
+		{"fail_closed", FailClosed, true},
+		{"fail_open", FailOpen, false},
+	}
+	for _, m := range modes {
+		for _, b := range behaviors {
+			t.Run(m.name+"/"+b.name, func(t *testing.T) {
+				r := m.judge.Judge(context.Background(), &Input{Text: "x"}, &CompiledPolicy{FailBehavior: b.fb})
+				if b.wantBlocked && (!r.Matched || r.Action != ActionBlocked) {
+					t.Errorf("%s/%s must block, got %+v", m.name, b.name, r)
+				}
+				if !b.wantBlocked && (r.Matched || r.Action != ActionAllowed) {
+					t.Errorf("%s/%s must allow, got %+v", m.name, b.name, r)
+				}
+				if r.Mode != ModeStage3Unavailable {
+					t.Errorf("%s/%s: Mode = %q, want %q", m.name, b.name, r.Mode, ModeStage3Unavailable)
+				}
+				if r.RuleID != "" {
+					t.Errorf("%s/%s: RuleID = %q, want empty", m.name, b.name, r.RuleID)
+				}
+			})
+		}
 	}
 }

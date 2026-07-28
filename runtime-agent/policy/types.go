@@ -53,6 +53,11 @@ const (
 	// was no model" are different facts, and an exit label that cannot tell them
 	// apart is how a degraded pipeline looks healthy.
 	ExitStage2Unavailable PipelineExitStage = "stage2_unavailable"
+	// ExitStage3Unavailable — the judge was asked for a verdict and could not
+	// give one; fail_behavior decided. Same reasoning as ExitStage2Unavailable,
+	// one stage over: a fail-closed block must not wear ExitStage3Judge (a real
+	// ruling), and a fail-open allow must not fall through to ExitNoMatch.
+	ExitStage3Unavailable PipelineExitStage = "stage3_unavailable"
 )
 
 // Severity ranks finding criticality. Ordering matters: higher index =

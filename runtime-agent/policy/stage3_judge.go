@@ -61,6 +61,17 @@ func (DeterministicStage3) Judge(_ context.Context, in *Input, _ *CompiledPolicy
 // Verdict → action: confidence ≥ 0.8 → blocked; ≥ 0.5 → escalated; else allow.
 // On error/timeout the FailBehavior decides: FailOpen → allow (matched=false);
 // FailClosed → block (the judge couldn't clear the request).
+// Mode values for Stage 3, mirroring Stage 2's (stage2_http.go): Mode names how
+// the verdict was ACTUALLY computed, so a judge that never answered is never
+// labelled as one that did.
+const (
+	// ModeStage3HTTP — the judge answered and this is its ruling.
+	ModeStage3HTTP = "stage3_http"
+	// ModeStage3Unavailable — the judge did not answer. The Action here comes
+	// from the policy's fail behaviour, NOT from the judge.
+	ModeStage3Unavailable = "stage3_unavailable"
+)
+
 type HTTPStage3 struct {
 	Endpoint string
 	client   *http.Client
@@ -115,7 +126,7 @@ func (h *HTTPStage3) Judge(ctx context.Context, in *Input, p *CompiledPolicy) St
 
 	latency := time.Since(start).Microseconds()
 	if !out.IsViolation {
-		return StageResult{Stage: ExitStage3Judge, Mode: "stage3_http", Matched: false, Action: ActionAllowed, Confidence: out.Confidence, LatencyUS: latency}
+		return StageResult{Stage: ExitStage3Judge, Mode: ModeStage3HTTP, Matched: false, Action: ActionAllowed, Confidence: out.Confidence, LatencyUS: latency}
 	}
 	action := ActionAllowed
 	matched := false
@@ -126,7 +137,7 @@ func (h *HTTPStage3) Judge(ctx context.Context, in *Input, p *CompiledPolicy) St
 		action, matched = ActionEscalated, true
 	}
 	if !matched {
-		return StageResult{Stage: ExitStage3Judge, Mode: "stage3_http", Matched: false, Action: ActionAllowed, Confidence: out.Confidence, LatencyUS: latency}
+		return StageResult{Stage: ExitStage3Judge, Mode: ModeStage3HTTP, Matched: false, Action: ActionAllowed, Confidence: out.Confidence, LatencyUS: latency}
 	}
 	category := out.Category
 	if category == "" {
@@ -134,7 +145,7 @@ func (h *HTTPStage3) Judge(ctx context.Context, in *Input, p *CompiledPolicy) St
 	}
 	return StageResult{
 		Stage:      ExitStage3Judge,
-		Mode:       "stage3_http",
+		Mode:       ModeStage3HTTP,
 		Matched:    true,
 		Action:     action,
 		Severity:   SeverityHigh,
@@ -153,15 +164,18 @@ func stage3Fail(start time.Time, failClosed bool) StageResult {
 	// "allowed because the judge cleared it" are different facts.
 	if failClosed {
 		return StageResult{
-			Stage:     ExitStage3Judge,
-			Mode:      "stage3_unavailable",
-			Matched:   true,
-			Action:    ActionBlocked,
-			Severity:  SeverityHigh,
-			RuleID:    "llm-judge",
+			Stage:    ExitStage3Judge,
+			Mode:     ModeStage3Unavailable,
+			Matched:  true,
+			Action:   ActionBlocked,
+			Severity: SeverityHigh,
+			// Deliberately NO RuleID (mirrors stage2Fail). decide() folds RuleIDs
+			// into Decision.MatchedRules — the rules that FIRED. A judge that never
+			// answered fired nothing; "llm-judge" there would claim a ruling it
+			// never made. The Mode field is where this result explains itself.
 			Reason:    "judge unavailable; fail-closed",
 			LatencyUS: time.Since(start).Microseconds(),
 		}
 	}
-	return StageResult{Stage: ExitStage3Judge, Mode: "stage3_unavailable", Matched: false, Action: ActionAllowed, LatencyUS: time.Since(start).Microseconds()}
+	return StageResult{Stage: ExitStage3Judge, Mode: ModeStage3Unavailable, Matched: false, Action: ActionAllowed, LatencyUS: time.Since(start).Microseconds()}
 }
