@@ -123,13 +123,15 @@ takes them (`proxy_no_policy_fail_closed` / `proxy_no_policy_fail_open`;
 cold start is an outage and must be diagnosable in seconds; a fail-open one must
 never look identical to a protected request.
 
-**Operational consequence:** `closed` is the default in production, so **deploy
-ordering matters** — an agent that starts before the control plane is reachable
-refuses traffic until it can load a policy. Bring the control plane up first, or
-accept the agent's retry window. The full retry/backoff story does not exist yet
-— Phase 2 lands it in `docs/AGENT-FAILURE-MODES.md` alongside the fault-injection
-matrix that verifies it. Until then, treat deploy ordering as an operator
-responsibility with no documented backoff contract.
+**Operational consequence:** `closed` is the default in production, so a
+control-plane outage is a traffic outage — but deploy ordering is now forgiving.
+The warm load retries with bounded, jittered exponential backoff
+(`LoadWithRetry`), so a briefly-late control plane is absorbed; a permanently-
+absent one fails closed (safe), never hangs startup — **backoff-then-proceed, not
+backoff-forever**. The full contract, and the Redis subscriber reconnect it
+shares a primitive with, are documented in
+[`docs/AGENT-FAILURE-MODES.md`](../docs/AGENT-FAILURE-MODES.md) with the
+fault-injection tests that verify them.
 
 See [`docs/GAPS.md`](../docs/GAPS.md) for the gaps this closed (GAP-003,
 GAP-004).

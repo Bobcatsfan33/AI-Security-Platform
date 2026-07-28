@@ -16,6 +16,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog"
 
+	"github.com/Bobcatsfan33/ai-security-platform/runtime-agent/internal/backoff"
 	"github.com/Bobcatsfan33/ai-security-platform/runtime-agent/internal/controlplane"
 	"github.com/Bobcatsfan33/ai-security-platform/runtime-agent/management"
 	"github.com/Bobcatsfan33/ai-security-platform/runtime-agent/policy"
@@ -190,16 +191,20 @@ func main() {
 			log.Error().Err(err).Msg("telemetry_runner_exited")
 		}
 	}()
-	go func() {
-		if err := cache.Subscribe(rootCtx, rdb, cfg.orgID); err != nil &&
-			!errors.Is(err, context.Canceled) {
-			log.Error().Err(err).Msg("policy_subscriber_exited")
-		}
-	}()
+	// Redis invalidation subscriber — reconnects forever across Redis blips and
+	// re-fetches on each reconnect (GAP-012). Unbounded on purpose: a subscriber
+	// that gives up is a silently-stale policy.
+	reconnectBackoff := backoff.Config{Base: 500 * time.Millisecond, Max: 30 * time.Second, Factor: 2}
+	go cache.SubscribeWithReconnect(rootCtx, rdb, cfg.orgID, cfg.policyID, reconnectBackoff)
 
-	// Warm load
-	if _, err := cache.Load(rootCtx, cfg.policyID); err != nil {
-		log.Warn().Err(err).Msg("policy_initial_load_failed")
+	// Warm load with BOUNDED backoff (backoff-then-proceed, never hang startup):
+	// on give-up, AGENT_NO_POLICY_BEHAVIOR governs — fail-closed by default in
+	// production, so an unreachable control plane at boot means safe traffic, not
+	// a hung process. See docs/AGENT-FAILURE-MODES.md.
+	coldStartBackoff := backoff.Config{Base: 500 * time.Millisecond, Max: 8 * time.Second, Factor: 2}
+	const coldStartMaxAttempts = 8
+	if _, err := cache.LoadWithRetry(rootCtx, cfg.policyID, coldStartBackoff, coldStartMaxAttempts); err != nil {
+		log.Warn().Err(err).Msg("policy_initial_load_gave_up_falling_through_to_no_policy_behavior")
 	}
 
 	pipeline := policy.NewPipeline(policy.StageConfig{
