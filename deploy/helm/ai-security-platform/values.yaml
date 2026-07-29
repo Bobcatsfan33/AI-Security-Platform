@@ -9,8 +9,9 @@ image:
 
 environment: production
 
-# Non-secret config. Point these at your managed Postgres/ClickHouse/Redis/
-# Redpanda — NOT the docker-compose containers.
+# Development-only connection defaults. Production does not render these into
+# the release: secrets.existingSecret must contain database-url, redis-url,
+# clickhouse-url, and redpanda-brokers alongside jwt-secret.
 config:
   databaseUrl: "postgresql+asyncpg://platform:platform@postgres:5432/platform"
   redisUrl: "redis://redis:6379/0"
@@ -37,12 +38,43 @@ stage2:
   # PVC/RWX volume so replicas share one cached copy.
   cacheSizeLimit: "2Gi"
 
-# JWT secret + crypto keyring refs. In production set existingSecret to a Secret
-# managed by Vault/ASM/KMS (key "jwt-secret"); the literal is dev-only and the
-# control plane fails closed at startup if JWT_SECRET is unset (secret_gate.py).
+# JWT and connection refs. In production, existingSecret must be managed by
+# Vault/ASM/KMS and contain jwt-secret, database-url, redis-url, clickhouse-url,
+# and redpanda-brokers. Literal values are development-only.
 secrets:
   existingSecret: ""
   jwtSecret: ""
+  # Optional Secrets Store CSI integration. The driver and provider must
+  # already be installed. `secretObjects` must synchronize the Kubernetes
+  # Secret named by `existingSecret`, because workloads consume secretKeyRef.
+  secretProviderClass:
+    enabled: false
+    name: "" # defaults to the chart fullname
+    provider: "" # aws, azure, gcp, vault, or another installed provider
+    mountPath: "/mnt/secrets-store"
+    parameters: {}
+    secretObjects: []
+    # Example:
+    # parameters:
+    #   objects: |
+    #     - objectName: "prod/ai-security-platform"
+    #       objectType: "secretsmanager"
+    #       jmesPath:
+    #         - { path: jwt_secret, objectAlias: jwt-secret }
+    # secretObjects:
+    #   - secretName: aisp-secrets
+    #     type: Opaque
+    #     data:
+    #       - { objectName: jwt-secret, key: jwt-secret }
+
+# Dedicated identity for cloud workload identity (IRSA, GKE Workload Identity,
+# Azure Workload Identity). API tokens are not mounted unless explicitly
+# enabled; cloud identity webhooks can inject their own scoped projection.
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+  automountServiceAccountToken: false
 
 # Shared HA / security defaults applied to every workload.
 podSecurityContext:
@@ -59,6 +91,33 @@ containerSecurityContext:
 affinity: {}
 nodeSelector: {}
 tolerations: []
+
+# Default-deny pod isolation. Kubernetes NetworkPolicy cannot authorize a DNS
+# name, so managed databases/private endpoints must be represented as explicit
+# CIDR or namespace rules in additionalEgress.
+networkPolicy:
+  enabled: true
+  # Same-namespace callers may reach the API. Add ingress-controller or
+  # monitoring namespaces explicitly when those components run elsewhere.
+  additionalIngress: []
+  # DNS is limited to the cluster DNS namespace. Override the selectors for
+  # distributions that do not label kube-system this way.
+  dns:
+    namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: kube-system
+    podSelector: {}
+  # Backing services installed in the release namespace.
+  backingServicePorts: [5432, 6379, 8123, 9092]
+  # Model downloads, OIDC discovery, webhooks, and SIEM HTTPS delivery.
+  allowExternalHttps: true
+  # Example managed database rule:
+  # additionalEgress:
+  #   - to:
+  #       - ipBlock: { cidr: "10.20.0.0/16" }
+  #     ports:
+  #       - { protocol: TCP, port: 5432 }
+  additionalEgress: []
 
 # ── Control-plane API ──────────────────────────────────────────────────────
 api:

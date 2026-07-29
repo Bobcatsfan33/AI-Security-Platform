@@ -1,0 +1,16 @@
+{{- if eq .Values.environment "production" }}
+  {{- if not .Values.secrets.existingSecret }}
+    {{- fail "production requires secrets.existingSecret; literal Helm values must not carry JWT signing material" }}
+  {{- end }}
+{{- end }}
+{{- if .Values.secrets.secretProviderClass.enabled }}
+  {{- if not .Values.secrets.existingSecret }}
+    {{- fail "Secrets Store CSI integration requires secrets.existingSecret for secretKeyRef consumers" }}
+  {{- end }}
+  {{- if not .Values.secrets.secretProviderClass.provider }}
+    {{- fail "Secrets Store CSI integration requires secrets.secretProviderClass.provider" }}
+  {{- end }}
+  {{- if not .Values.secrets.secretProviderClass.secretObjects }}
+    {{- fail "Secrets Store CSI integration requires secretObjects to synchronize secrets.existingSecret" }}
+  {{- end }}
+{{- end }}

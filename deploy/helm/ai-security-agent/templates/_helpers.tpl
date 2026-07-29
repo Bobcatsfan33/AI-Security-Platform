@@ -36,3 +36,11 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{ include "agent.fullname" . }}-api-key
 {{- end -}}
 {{- end -}}
+
+{{- define "agent.serviceAccountName" -}}
+{{- if .Values.serviceAccount.create -}}
+{{- default (include "agent.fullname" .) .Values.serviceAccount.name -}}
+{{- else -}}
+{{- default "default" .Values.serviceAccount.name -}}
+{{- end -}}
+{{- end -}}

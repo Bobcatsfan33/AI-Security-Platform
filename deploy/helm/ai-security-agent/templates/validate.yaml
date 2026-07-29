@@ -1,0 +1,11 @@
+{{- if eq .Values.config.environment "production" }}
+  {{- if not (hasPrefix "https://" .Values.config.platformUrl) }}
+    {{- fail "production requires config.platformUrl to use https://" }}
+  {{- end }}
+  {{- if not .Values.mtls.enabled }}
+    {{- fail "production requires mtls.enabled=true for agent-to-control-plane identity" }}
+  {{- end }}
+  {{- if not .Values.mtls.secretName }}
+    {{- fail "production requires mtls.secretName containing ca.crt, tls.crt, and tls.key" }}
+  {{- end }}
+{{- end }}

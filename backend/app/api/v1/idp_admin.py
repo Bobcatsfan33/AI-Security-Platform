@@ -22,7 +22,13 @@ from app.db.session import get_db
 from app.identity.types import IdentityContext
 from app.scim.auth import generate_scim_token
 from app.security.audit_log import AuditEventType, AuditOutcome, log_event
-from app.security.field_crypto import FieldCryptoError, encrypt as fc_encrypt
+from app.security.field_crypto import FieldCryptoError
+from app.security.field_crypto import encrypt as fc_encrypt
+from app.security.outbound_url import (
+    OutboundURLPolicyError,
+    pinned_async_transport,
+    validate_public_https_url,
+)
 
 router = APIRouter(tags=["admin", "idp"])
 
@@ -102,9 +108,7 @@ def _maybe_encrypt_pending_secret(oidc_config: dict[str, Any]) -> dict[str, Any]
         return oidc_config
     plaintext = ref[len(ENC_PENDING_PREFIX) :]
     if not plaintext:
-        raise HTTPException(
-            status_code=400, detail="enc_pending_empty_plaintext"
-        )
+        raise HTTPException(status_code=400, detail="enc_pending_empty_plaintext")
     try:
         ciphertext = fc_encrypt(plaintext)
     except FieldCryptoError as exc:
@@ -137,10 +141,10 @@ async def list_idp_configs(
     db: AsyncSession = Depends(get_db),
 ) -> list[IdpConfigResponse]:
     rows = (
-        await db.execute(
-            select(IdpConfig).where(IdpConfig.org_id == identity.org_id)
-        )
-    ).scalars().all()
+        (await db.execute(select(IdpConfig).where(IdpConfig.org_id == identity.org_id)))
+        .scalars()
+        .all()
+    )
     return [_to_response(r) for r in rows]
 
 
@@ -205,9 +209,7 @@ async def update_idp_config(
         row.status = payload.status
     if payload.oidc_config is not None:
         await _validate_oidc_discovery(str(payload.oidc_config.issuer_url))
-        row.oidc_config = _maybe_encrypt_pending_secret(
-            payload.oidc_config.model_dump(mode="json")
-        )
+        row.oidc_config = _maybe_encrypt_pending_secret(payload.oidc_config.model_dump(mode="json"))
     if payload.saml_config is not None:
         row.saml_config = payload.saml_config.model_dump(mode="json")
     if payload.directory_sync is not None:
@@ -311,14 +313,25 @@ async def _validate_oidc_discovery(issuer_url: str) -> None:
     a misconfigured IDP fails fast rather than at first user login."""
     url = issuer_url.rstrip("/") + "/.well-known/openid-configuration"
     try:
-        async with httpx.AsyncClient(timeout=10.0) as http:
+        transport = await pinned_async_transport(url)
+        async with httpx.AsyncClient(
+            transport=transport,
+            timeout=10.0,
+            follow_redirects=False,
+            trust_env=False,
+        ) as http:
             resp = await http.get(url)
             resp.raise_for_status()
             data = resp.json()
-    except Exception as e:  # noqa: BLE001
+    except OutboundURLPolicyError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"oidc_discovery_failed: {e}",
+            detail=f"oidc_discovery_destination_blocked: {e}",
+        ) from e
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="oidc_discovery_failed",
         ) from e
 
     for required in ("authorization_endpoint", "token_endpoint", "jwks_uri", "issuer"):
@@ -327,3 +340,11 @@ async def _validate_oidc_discovery(issuer_url: str) -> None:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"oidc_discovery_missing_field: {required}",
             )
+        if required.endswith("_endpoint") or required == "jwks_uri":
+            try:
+                await validate_public_https_url(str(data[required]))
+            except OutboundURLPolicyError as e:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"oidc_discovery_{required}_blocked: {e}",
+                ) from e

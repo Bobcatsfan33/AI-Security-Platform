@@ -23,6 +23,18 @@ helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version }}
 {{- if .Values.secrets.existingSecret -}}{{ .Values.secrets.existingSecret }}{{- else -}}{{ include "aisp.fullname" . }}-secrets{{- end -}}
 {{- end -}}
 
+{{- define "aisp.serviceAccountName" -}}
+{{- if .Values.serviceAccount.create -}}
+{{- default (include "aisp.fullname" .) .Values.serviceAccount.name -}}
+{{- else -}}
+{{- default "default" .Values.serviceAccount.name -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "aisp.secretProviderClassName" -}}
+{{- default (include "aisp.fullname" .) .Values.secrets.secretProviderClass.name -}}
+{{- end -}}
+
 {{/*
 Shared env block for every workload: non-secret config from the ConfigMap +
 JWT_SECRET from the Secret. Usage: {{- include "aisp.env" . | nindent 12 }}
@@ -31,13 +43,33 @@ JWT_SECRET from the Secret. Usage: {{- include "aisp.env" . | nindent 12 }}
 - name: ENVIRONMENT
   value: {{ .Values.environment | quote }}
 - name: DATABASE_URL
-  valueFrom: { configMapKeyRef: { name: {{ include "aisp.fullname" . }}-config, key: database-url } }
+  valueFrom:
+    {{- if eq .Values.environment "production" }}
+    secretKeyRef: { name: {{ include "aisp.secretName" . }}, key: database-url }
+    {{- else }}
+    configMapKeyRef: { name: {{ include "aisp.fullname" . }}-config, key: database-url }
+    {{- end }}
 - name: REDIS_URL
-  valueFrom: { configMapKeyRef: { name: {{ include "aisp.fullname" . }}-config, key: redis-url } }
+  valueFrom:
+    {{- if eq .Values.environment "production" }}
+    secretKeyRef: { name: {{ include "aisp.secretName" . }}, key: redis-url }
+    {{- else }}
+    configMapKeyRef: { name: {{ include "aisp.fullname" . }}-config, key: redis-url }
+    {{- end }}
 - name: CLICKHOUSE_URL
-  valueFrom: { configMapKeyRef: { name: {{ include "aisp.fullname" . }}-config, key: clickhouse-url } }
+  valueFrom:
+    {{- if eq .Values.environment "production" }}
+    secretKeyRef: { name: {{ include "aisp.secretName" . }}, key: clickhouse-url }
+    {{- else }}
+    configMapKeyRef: { name: {{ include "aisp.fullname" . }}-config, key: clickhouse-url }
+    {{- end }}
 - name: REDPANDA_BROKERS
-  valueFrom: { configMapKeyRef: { name: {{ include "aisp.fullname" . }}-config, key: redpanda-brokers } }
+  valueFrom:
+    {{- if eq .Values.environment "production" }}
+    secretKeyRef: { name: {{ include "aisp.secretName" . }}, key: redpanda-brokers }
+    {{- else }}
+    configMapKeyRef: { name: {{ include "aisp.fullname" . }}-config, key: redpanda-brokers }
+    {{- end }}
 - name: STREAMING_ENABLED
   valueFrom: { configMapKeyRef: { name: {{ include "aisp.fullname" . }}-config, key: streaming-enabled } }
 - name: JWT_SECRET

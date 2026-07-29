@@ -20,6 +20,8 @@ spec:
         {{- include "aisp.labels" . | nindent 8 }}
         app.kubernetes.io/component: api
     spec:
+      serviceAccountName: {{ include "aisp.serviceAccountName" . }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}
       {{- with .Values.image.pullSecrets }}
       imagePullSecrets: {{ toYaml . | nindent 8 }}
       {{- end }}
@@ -62,6 +64,11 @@ spec:
           volumeMounts:
             - name: model-cache
               mountPath: {{ .Values.stage2.cacheDir | quote }}
+            {{- if .Values.secrets.secretProviderClass.enabled }}
+            - name: external-secrets
+              mountPath: {{ .Values.secrets.secretProviderClass.mountPath | quote }}
+              readOnly: true
+            {{- end }}
           readinessProbe:
             httpGet: { path: /v1/health, port: http }
             initialDelaySeconds: 5
@@ -75,6 +82,14 @@ spec:
         - name: model-cache
           emptyDir:
             sizeLimit: {{ .Values.stage2.cacheSizeLimit | quote }}
+        {{- if .Values.secrets.secretProviderClass.enabled }}
+        - name: external-secrets
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: {{ include "aisp.secretProviderClassName" . | quote }}
+        {{- end }}
 ---
 apiVersion: v1
 kind: Service
