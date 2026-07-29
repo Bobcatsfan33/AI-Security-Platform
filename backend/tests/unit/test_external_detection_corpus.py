@@ -14,7 +14,7 @@ pytestmark = pytest.mark.unit
 
 # Ratchets pinned below the first measurement. They may be raised as the
 # detector improves, but lowering one requires an explicit efficacy review.
-_DETECTION_FLOOR = 0.80
+_DETECTION_FLOOR = 0.90
 _FALSE_POSITIVE_CEILING = 0.02
 _P99_LATENCY_CEILING_MS = 25.0
 

@@ -70,6 +70,28 @@ _PI_SIGNALS: tuple[tuple[re.Pattern[str], float], ...] = (
     (re.compile(r"\bolvide\s+todo\s+(?:lo\s+)?que\s+(?:dije|he\s+dicho)\b", re.I), 0.8),
 )
 
+# These structures are strong override evidence only when the text crossed an
+# explicit untrusted-content boundary. In a direct user prompt, translation,
+# roleplay, and forced-response games can be legitimate requests. In retrieved
+# documents/tool output, they are instructions attempting to steer the model.
+_UNTRUSTED_PI_SIGNALS: tuple[tuple[re.Pattern[str], float], ...] = (
+    (
+        re.compile(
+            r"\b(?:ignore|ignroe|ingore|igmre)\b.{0,45}\bwhat\s+i\s+said\s+before\b",
+            re.I,
+        ),
+        0.8,
+    ),
+    (
+        re.compile(
+            r"\bif\s+you\s+(?:do\s+not|don't)\s+know\s*,\s*" r"(?:say|answer|respond)\b",
+            re.I,
+        ),
+        0.75,
+    ),
+    (re.compile(r"\bsi\s+yo\s+digo\b.{0,60}\bt[uú]\s+dices\b", re.I), 0.8),
+)
+
 
 class PromptInjectionDetector:
     name = "prompt_injection"
@@ -81,7 +103,10 @@ class PromptInjectionDetector:
     def detect(self, text: str, ctx: DetectorContext) -> DetectorResult:
         score = 0.0
         hits: list[str] = []
-        for pat, w in _PI_SIGNALS:
+        signals = _PI_SIGNALS
+        if ctx.extra.get("content_trust") == "untrusted":
+            signals += _UNTRUSTED_PI_SIGNALS
+        for pat, w in signals:
             if pat.search(text):
                 hits.append(pat.pattern)
                 score = max(score, w)

@@ -190,7 +190,8 @@ with env-var refs:
 **What:** the Stage 1+2 pipeline now has a reproducible in-repo scorecard, a
 digest-pinned CC-BY-4.0 train/test split, and a checksum-verified linear model
 that is applied only at explicit untrusted-content boundaries. The independent
-test moved from 23/60 attacks and 2/56 false positives to 49/60 and 0/56. The
+test moved from 23/60 attacks and 2/56 false positives to 57/60 and 0/56,
+clearing the 90% single-corpus recall ratchet. The
 attack graph and anomaly detector still lack an efficacy suite, and this
 single-source public corpus does not cover broad multilingual traffic,
 multi-turn attacks, tool-call abuse, or realistic customer distribution shift.
