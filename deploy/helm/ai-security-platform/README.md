@@ -1,14 +1,16 @@
 # ai-security-platform Helm chart (control plane)
 
-Deploys the multi-tenant **control-plane API**, the **EPA detection consumer
-fleet**, and an optional **background worker** — HA-ready, with secrets via a
-managed or external Secret.
+Deploys the multi-tenant **control-plane API**, **operator dashboard**, the
+**EPA detection consumer fleet**, and an optional **background worker** —
+HA-ready, with secrets via a managed or external Secret.
 
 ```bash
 helm install aisp deploy/helm/ai-security-platform \
   --namespace ai-security --create-namespace \
   --set image.repository=ghcr.io/you/ai-security-platform \
   --set image.digest=sha256:REPLACE_WITH_APPROVED_RELEASE_DIGEST \
+  --set frontend.image.repository=ghcr.io/you/asp-frontend \
+  --set frontend.image.digest=sha256:REPLACE_WITH_APPROVED_FRONTEND_DIGEST \
   --set secrets.existingSecret=aisp-secrets
 ```
 
@@ -17,6 +19,7 @@ helm install aisp deploy/helm/ai-security-platform \
 | Component | Workload | HA |
 | --- | --- | --- |
 | API (`uvicorn app.main:app`) | Deployment + Service (+ optional Ingress/TLS) | HPA (2–10) + PDB + anti-affinity |
+| Operator dashboard (Next.js) | Deployment + Service (+ same-origin Ingress/TLS) | HPA (2–6) + PDB + anti-affinity |
 | EPA consumer (`scripts.epa_consumer`) | Deployment | replicas (≤ partition count) + PDB |
 | Worker (optional) | Deployment | — |
 | Config / secret | ConfigMap + Secret (or external) | — |
@@ -24,9 +27,14 @@ helm install aisp deploy/helm/ai-security-platform \
 
 ## Production checklist
 
-- **Release identity:** use the digest from an approved release receipt and
-  verify its signature, SPDX attestation, and provenance as described in
-  `docs/RELEASE-ASSURANCE.md`. Production rendering rejects tags.
+- **Release identity:** use the backend and frontend digests from their
+  approved release receipts and verify each signature, SPDX attestation, and
+  provenance as described in `docs/RELEASE-ASSURANCE.md`. Production rendering
+  rejects tags for both enabled images.
+- **Same-origin browser routing:** enable `frontend.ingress` (or configure an
+  equivalent enterprise gateway) so `/v1` routes to the API Service and `/`
+  routes to the frontend Service. This avoids environment-specific rebuilds
+  and keeps browser API calls and OIDC redirects on one TLS origin.
 - **Stateful deps are NOT in this chart.** Point `config.*` at managed
   Postgres+pgvector, ClickHouse (replicated), Redis (cluster/sentinel), and
   Redpanda (RF≥3). See `docs/HA-DR-RUNBOOK.md`.
@@ -53,9 +61,12 @@ helm install aisp deploy/helm/ai-security-platform \
 ```bash
 helm lint deploy/helm/ai-security-platform \
   --set secrets.existingSecret=aisp-secrets \
-  --set image.digest=sha256:REPLACE_WITH_APPROVED_RELEASE_DIGEST
+  --set image.digest=sha256:REPLACE_WITH_APPROVED_RELEASE_DIGEST \
+  --set frontend.image.digest=sha256:REPLACE_WITH_APPROVED_FRONTEND_DIGEST
 helm template aisp deploy/helm/ai-security-platform \
   --set secrets.existingSecret=aisp-secrets \
   --set image.digest=sha256:REPLACE_WITH_APPROVED_RELEASE_DIGEST \
+  --set frontend.image.digest=sha256:REPLACE_WITH_APPROVED_FRONTEND_DIGEST \
+  --set frontend.ingress.enabled=true \
   | kubectl apply --dry-run=server -f -
 ```

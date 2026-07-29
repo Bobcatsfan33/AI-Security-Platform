@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useEffect, useState } from "react";
+import { use, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 
 import {
@@ -23,13 +23,8 @@ export default function AssetDetailPage({ params }: PageProps) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  useEffect(() => {
-    void load();
-  }, [id]);
-
-  async function load(): Promise<void> {
+  const load = useCallback(async (): Promise<void> => {
     try {
-      setError(null);
       // Evaluations/findings routes are quarantined since the v2 pivot
       // (see backend tests/unit/test_no_broken_imports.py). Degrade to
       // empty lists instead of failing the whole page.
@@ -38,13 +33,20 @@ export default function AssetDetailPage({ params }: PageProps) {
         api.get<Evaluation[]>(`/v1/evaluations?asset_id=${id}`).catch(() => []),
         api.get<Finding[]>(`/v1/findings?asset_id=${id}`).catch(() => []),
       ]);
+      setError(null);
       setAsset(a);
       setEvaluations(e);
       setFindings(f);
     } catch (err: unknown) {
       setError(err instanceof ApiError ? err.message : "load failed");
     }
-  }
+  }, [id]);
+
+  useEffect(() => {
+    // The callback only updates state after its API promises settle.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void load();
+  }, [load]);
 
   async function runEvaluation(): Promise<void> {
     setBusy(true);

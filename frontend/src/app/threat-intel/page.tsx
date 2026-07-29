@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 
 import {
+  API_BASE,
   api,
   ApiError,
   type ThreatIntelCluster,
@@ -16,23 +17,25 @@ export default function ThreatIntelPage() {
   const [error, setError] = useState<string | null>(null);
   const [rebuilding, setRebuilding] = useState(false);
 
-  useEffect(() => {
-    void load();
-  }, []);
-
-  async function load(): Promise<void> {
+  const load = useCallback(async (): Promise<void> => {
     try {
-      setError(null);
       const [s, c] = await Promise.all([
         api.get<ThreatIntelStatus>("/v1/threat-intel/status"),
         api.get<ThreatIntelCluster[]>("/v1/threat-intel/clusters"),
       ]);
+      setError(null);
       setStatus(s);
       setClusters(c);
     } catch (err: unknown) {
       setError(err instanceof ApiError ? err.message : "load failed");
     }
-  }
+  }, []);
+
+  useEffect(() => {
+    // The callback only updates state after its API promises settle.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void load();
+  }, [load]);
 
   async function rebuild(): Promise<void> {
     try {
@@ -67,9 +70,7 @@ export default function ThreatIntelPage() {
         </div>
         <div className="flex items-center gap-2">
           <a
-            href={`${
-              process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000"
-            }/v1/threat-intel/stix`}
+            href={`${API_BASE}/v1/threat-intel/stix`}
             target="_blank"
             rel="noreferrer"
             className="rounded-md border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50"

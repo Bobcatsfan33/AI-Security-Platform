@@ -2,9 +2,18 @@
   {{- if not (regexMatch "^sha256:[a-f0-9]{64}$" .Values.image.digest) }}
     {{- fail "production requires image.digest to be an exact sha256 release digest" }}
   {{- end }}
+  {{- if and .Values.frontend.enabled (not (regexMatch "^sha256:[a-f0-9]{64}$" .Values.frontend.image.digest)) }}
+    {{- fail "production with frontend.enabled requires frontend.image.digest to be an exact sha256 release digest" }}
+  {{- end }}
+  {{- if and .Values.frontend.ingress.enabled (not .Values.frontend.ingress.tls.enabled) }}
+    {{- fail "production frontend ingress requires TLS" }}
+  {{- end }}
   {{- if not .Values.secrets.existingSecret }}
     {{- fail "production requires secrets.existingSecret; literal Helm values must not carry JWT signing material" }}
   {{- end }}
+{{- end }}
+{{- if and .Values.frontend.ingress.enabled (not .Values.api.enabled) }}
+  {{- fail "frontend ingress requires api.enabled=true because /v1 routes to the API service" }}
 {{- end }}
 {{- if .Values.secrets.secretProviderClass.enabled }}
   {{- if not .Values.secrets.existingSecret }}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 
 import {
@@ -15,23 +15,25 @@ export default function McpPage() {
   const [violations, setViolations] = useState<McpViolation[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    void load();
-  }, []);
-
-  async function load(): Promise<void> {
+  const load = useCallback(async (): Promise<void> => {
     try {
-      setError(null);
       const [t, v] = await Promise.all([
         api.get<McpToolProfile[]>("/v1/mcp/tools"),
         api.get<McpViolation[]>("/v1/mcp/violations"),
       ]);
+      setError(null);
       setTools(t);
       setViolations(v);
     } catch (err: unknown) {
       setError(err instanceof ApiError ? err.message : "load failed");
     }
-  }
+  }, []);
+
+  useEffect(() => {
+    // The callback only updates state after its API promises settle.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void load();
+  }, [load]);
 
   if (error) {
     return (

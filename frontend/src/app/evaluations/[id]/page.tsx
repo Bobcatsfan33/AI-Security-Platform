@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useEffect, useState } from "react";
+import { use, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 
 import {
@@ -20,25 +20,27 @@ export default function EvaluationDetailPage({ params }: PageProps) {
   const [findings, setFindings] = useState<Finding[]>([]);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    void load();
-    const t = setInterval(() => void load(), 3000);
-    return () => clearInterval(t);
-  }, [id]);
-
-  async function load(): Promise<void> {
+  const load = useCallback(async (): Promise<void> => {
     try {
-      setError(null);
       const [e, f] = await Promise.all([
         api.get<Evaluation>(`/v1/evaluations/${id}`),
         api.get<Finding[]>(`/v1/findings?evaluation_id=${id}`),
       ]);
+      setError(null);
       setEvaluation(e);
       setFindings(f);
     } catch (err: unknown) {
       setError(err instanceof ApiError ? err.message : "load failed");
     }
-  }
+  }, [id]);
+
+  useEffect(() => {
+    // The callback only updates state after its API promises settle.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void load();
+    const t = setInterval(() => void load(), 3000);
+    return () => clearInterval(t);
+  }, [load]);
 
   if (error) {
     return (

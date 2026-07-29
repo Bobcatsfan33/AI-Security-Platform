@@ -1,7 +1,7 @@
 "use client";
 
 import { PreviewBadge } from "@/components/PreviewBadge";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 
 import { api, ApiError, type Finding } from "@/lib/api";
@@ -15,24 +15,26 @@ export default function FindingsPage() {
   const [status, setStatus] = useState("open");
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    void load();
-  }, [severity, status]);
-
-  async function load(): Promise<void> {
+  const load = useCallback(async (): Promise<void> => {
     try {
-      setError(null);
       const params = new URLSearchParams();
       if (severity) params.set("severity", severity);
       if (status) params.set("remediation_status", status);
       const data = await api.get<Finding[]>(
         `/v1/findings?${params.toString()}`,
       );
+      setError(null);
       setFindings(data);
     } catch (err: unknown) {
       setError(err instanceof ApiError ? err.message : "load failed");
     }
-  }
+  }, [severity, status]);
+
+  useEffect(() => {
+    // The callback only updates state after its API promise settles.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void load();
+  }, [load]);
 
   async function changeStatus(id: string, newStatus: string): Promise<void> {
     try {

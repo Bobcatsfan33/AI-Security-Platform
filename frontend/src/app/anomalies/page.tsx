@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 
 import { api, ApiError, type Anomaly, type Asset } from "@/lib/api";
@@ -17,29 +17,18 @@ export default function AnomaliesPage() {
   const [anomalies, setAnomalies] = useState<Anomaly[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    void loadAssets();
-  }, []);
-
-  useEffect(() => {
-    if (assetId) void loadAnomalies();
-  }, [assetId, currentWindow, baselineWindow]);
-
-  async function loadAssets(): Promise<void> {
+  const loadAssets = useCallback(async (): Promise<void> => {
     try {
       const data = await api.get<Asset[]>("/v1/assets");
       setAssets(data);
-      if (data.length > 0 && !assetId) {
-        setAssetId(data[0].id);
-      }
+      setAssetId((current) => current || data[0]?.id || "");
     } catch (err: unknown) {
       setError(err instanceof ApiError ? err.message : "load failed");
     }
-  }
+  }, []);
 
-  async function loadAnomalies(): Promise<void> {
+  const loadAnomalies = useCallback(async (): Promise<void> => {
     try {
-      setError(null);
       const params = new URLSearchParams({
         asset_id: assetId,
         current_window: currentWindow,
@@ -48,11 +37,24 @@ export default function AnomaliesPage() {
       const data = await api.get<Anomaly[]>(
         `/v1/anomalies?${params.toString()}`,
       );
+      setError(null);
       setAnomalies(data);
     } catch (err: unknown) {
       setError(err instanceof ApiError ? err.message : "load failed");
     }
-  }
+  }, [assetId, baselineWindow, currentWindow]);
+
+  useEffect(() => {
+    // The callback only updates state after its API promise settles.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void loadAssets();
+  }, [loadAssets]);
+
+  useEffect(() => {
+    // The callback only updates state after its API promise settles.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (assetId) void loadAnomalies();
+  }, [assetId, loadAnomalies]);
 
   return (
     <div>

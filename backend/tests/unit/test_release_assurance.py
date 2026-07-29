@@ -63,3 +63,18 @@ def test_production_charts_require_digest_identity() -> None:
         assert 'regexMatch "^sha256:[a-f0-9]{64}$"' in validation
         assert "image.digest" in validation
         assert "@%s" in helper
+
+
+def test_control_plane_requires_and_routes_the_frontend_release() -> None:
+    chart_root = _ROOT / "deploy" / "helm" / "ai-security-platform"
+    validation = (chart_root / "templates" / "validate.yaml").read_text()
+    frontend = (chart_root / "templates" / "frontend.yaml").read_text()
+    helper = (chart_root / "templates" / "_helpers.tpl").read_text()
+
+    assert "frontend.image.digest" in validation
+    assert 'define "aisp.frontendImage"' in helper
+    assert 'include "aisp.frontendImage"' in frontend
+    assert "path: /v1" in frontend
+    assert 'name: {{ include "aisp.fullname" . }}-api' in frontend
+    assert "path: /" in frontend
+    assert 'name: {{ include "aisp.fullname" . }}-frontend' in frontend
