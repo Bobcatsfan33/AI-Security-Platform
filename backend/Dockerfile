@@ -3,8 +3,8 @@
 #
 # Build context is backend/ (the control plane), e.g.:
 #   docker build -f backend/Dockerfile backend/
-# syntax=docker/dockerfile:1.7
-FROM python:3.12-slim AS builder
+ARG PYTHON_IMAGE=python:3.12-slim@sha256:423ed6ab25b1921a477529254bfeeabf5855151dc2c3141699a1bfc852199fbf
+FROM ${PYTHON_IMAGE} AS builder
 ENV PIP_NO_CACHE_DIR=1 PIP_DISABLE_PIP_VERSION_CHECK=1
 # Build-only toolchain: gcc + libpq (psycopg/asyncpg) and the xmlsec/libxml2
 # headers python3-saml compiles against. None of this reaches the runtime image.
@@ -12,7 +12,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         gcc libpq-dev libxml2-dev libxmlsec1-dev libxmlsec1-openssl pkg-config \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /build
-COPY pyproject.toml requirements-runtime.lock ./
+COPY requirements-runtime.lock ./
 COPY app ./app
 COPY alembic.ini ./
 COPY alembic ./alembic
@@ -29,13 +29,15 @@ COPY alembic ./alembic
 # production. The all-extras lock would put pytest, ruff, mypy and bandit in the
 # shipped image. Runtime deps only — the header of this file is a promise.
 #
-# Two steps because pip refuses to mix --require-hashes with a project install:
-# deps from the lock, then the project itself with --no-deps (its dependencies
-# are already satisfied above, and re-resolving them is exactly what we removed).
-RUN pip install --prefix=/install --no-compile --require-hashes -r requirements-runtime.lock \
- && pip install --prefix=/install --no-compile --no-deps .
+# The application is copied as source into /app in the runtime stage, so there
+# is deliberately no `pip install .` here. That would invoke PEP 517 build
+# isolation and fetch floating setuptools/wheel build dependencies despite the
+# runtime hash lock.
+RUN pip install --prefix=/install --no-compile --require-hashes -r requirements-runtime.lock
 
-FROM python:3.12-slim AS runtime
+FROM ${PYTHON_IMAGE} AS runtime
+ARG PYTHON_IMAGE
+LABEL org.opencontainers.image.base.name="${PYTHON_IMAGE}"
 # Runtime shared libraries only (no -dev headers, no compiler): libpq for the
 # DB driver, libxmlsec/libxml2 for SAML signature verification.
 RUN groupadd -g 10001 app && useradd -u 10001 -g app -s /usr/sbin/nologin app \

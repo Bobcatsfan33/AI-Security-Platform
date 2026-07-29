@@ -8,6 +8,7 @@ managed or external Secret.
 helm install aisp deploy/helm/ai-security-platform \
   --namespace ai-security --create-namespace \
   --set image.repository=ghcr.io/you/ai-security-platform \
+  --set image.digest=sha256:REPLACE_WITH_APPROVED_RELEASE_DIGEST \
   --set secrets.existingSecret=aisp-secrets
 ```
 
@@ -23,6 +24,9 @@ helm install aisp deploy/helm/ai-security-platform \
 
 ## Production checklist
 
+- **Release identity:** use the digest from an approved release receipt and
+  verify its signature, SPDX attestation, and provenance as described in
+  `docs/RELEASE-ASSURANCE.md`. Production rendering rejects tags.
 - **Stateful deps are NOT in this chart.** Point `config.*` at managed
   Postgres+pgvector, ClickHouse (replicated), Redis (cluster/sentinel), and
   Redpanda (RF≥3). See `docs/HA-DR-RUNBOOK.md`.
@@ -47,6 +51,11 @@ helm install aisp deploy/helm/ai-security-platform \
 ## Validate before applying
 
 ```bash
-helm lint deploy/helm/ai-security-platform --set secrets.existingSecret=aisp-secrets
-helm template aisp deploy/helm/ai-security-platform --set secrets.existingSecret=aisp-secrets | kubectl apply --dry-run=server -f -
+helm lint deploy/helm/ai-security-platform \
+  --set secrets.existingSecret=aisp-secrets \
+  --set image.digest=sha256:REPLACE_WITH_APPROVED_RELEASE_DIGEST
+helm template aisp deploy/helm/ai-security-platform \
+  --set secrets.existingSecret=aisp-secrets \
+  --set image.digest=sha256:REPLACE_WITH_APPROVED_RELEASE_DIGEST \
+  | kubectl apply --dry-run=server -f -
 ```

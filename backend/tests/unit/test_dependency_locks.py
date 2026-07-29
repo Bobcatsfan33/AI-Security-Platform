@@ -117,7 +117,7 @@ def test_the_full_lock_carries_the_dev_tooling() -> None:
         assert package in pins, f"{package} missing from requirements.lock"
 
 
-def test_the_dockerfile_installs_from_the_runtime_lock_with_hashes() -> None:
+def test_the_dockerfile_installs_only_from_the_runtime_lock_with_hashes() -> None:
     """The lock only protects the image if the image actually uses it.
 
     This is the gap that shipped: GAP-016 pinned CI and dev while the Dockerfile
@@ -130,21 +130,17 @@ def test_the_dockerfile_installs_from_the_runtime_lock_with_hashes() -> None:
     assert "--require-hashes -r requirements-runtime.lock" in dockerfile, (
         "the production image must install from the hashed runtime lock"
     )
-    assert "--no-deps ." in dockerfile, (
-        "the project itself must install with --no-deps, or pip re-resolves the "
-        "dependencies the lock just pinned"
+    assert "pip install --prefix=/install --no-compile --no-deps ." not in dockerfile, (
+        "the image copies application source directly, so building the project "
+        "would only introduce floating PEP 517 build-isolation dependencies"
     )
-    # A bare `pip install .` (no --no-deps, no -r) into the builder prefix is
-    # the floating resolution this fix removed. `--no-deps .` is the legitimate
-    # project install and must not trip this.
-    floating = [
+    project_installs = [
         line
         for line in dockerfile.splitlines()
         if "pip install" in line
         and "--prefix=/install" in line
         and line.rstrip().endswith(" .")
-        and "--no-deps" not in line
     ]
-    assert not floating, (
-        f"floating resolution in the artifact we attest: {floating}"
+    assert not project_installs, (
+        f"unnecessary project build in the artifact we attest: {project_installs}"
     )

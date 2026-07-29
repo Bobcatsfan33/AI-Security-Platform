@@ -1,4 +1,7 @@
 {{- if eq .Values.environment "production" }}
+  {{- if not (regexMatch "^sha256:[a-f0-9]{64}$" .Values.image.digest) }}
+    {{- fail "production requires image.digest to be an exact sha256 release digest" }}
+  {{- end }}
   {{- if not .Values.secrets.existingSecret }}
     {{- fail "production requires secrets.existingSecret; literal Helm values must not carry JWT signing material" }}
   {{- end }}

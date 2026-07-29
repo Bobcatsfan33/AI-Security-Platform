@@ -7,6 +7,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
@@ -137,6 +138,11 @@ func buildControlPlaneClient(cfg config, log zerolog.Logger) *http.Client {
 }
 
 func main() {
+	if len(os.Args) == 2 && os.Args[1] == "--version" {
+		fmt.Println(agentVersion)
+		return
+	}
+
 	log := zerolog.New(os.Stdout).With().
 		Timestamp().
 		Str("component", "agent").

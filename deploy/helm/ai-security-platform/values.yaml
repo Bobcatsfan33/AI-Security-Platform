@@ -3,6 +3,9 @@
 
 image:
   repository: ghcr.io/bobcatsfan33/ai-security-platform
+  # Production requires the approved sha256 digest from the signed release
+  # receipt. Tags remain available only for non-production development.
+  digest: ""
   tag: "" # defaults to .Chart.AppVersion
   pullPolicy: IfNotPresent
   pullSecrets: []

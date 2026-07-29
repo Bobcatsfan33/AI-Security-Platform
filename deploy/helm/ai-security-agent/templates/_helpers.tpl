@@ -25,8 +25,12 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end -}}
 
 {{- define "agent.image" -}}
+{{- if .Values.image.digest -}}
+{{- printf "%s@%s" .Values.image.repository .Values.image.digest -}}
+{{- else -}}
 {{- $tag := default .Chart.AppVersion .Values.image.tag -}}
-{{ printf "%s:%s" .Values.image.repository $tag }}
+{{- printf "%s:%s" .Values.image.repository $tag -}}
+{{- end -}}
 {{- end -}}
 
 {{- define "agent.apiKeySecretName" -}}
