@@ -8,6 +8,10 @@ inline proxy on production traffic without knowing its blast radius.
 """
 
 from app.benchmark.corpus import DETECTION_CORPUS, CorpusCase
+from app.benchmark.external_corpus import (
+    external_corpus_manifest,
+    load_external_prompt_injection_corpus,
+)
 from app.benchmark.scorecard import (
     ClassScore,
     Scorecard,
@@ -20,6 +24,8 @@ __all__ = [
     "ClassScore",
     "CorpusCase",
     "Scorecard",
+    "external_corpus_manifest",
+    "load_external_prompt_injection_corpus",
     "render_scorecard_markdown",
     "run_detection_benchmark",
 ]

@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "dataset": "deepset/prompt-injections",
+  "source_revision": "4f61ecb038e9c3fb77e21034b22511b523772cdd",
+  "source_file": "data/test-00000-of-00001-701d16158af87368.parquet",
+  "source_url": "https://huggingface.co/datasets/deepset/prompt-injections/resolve/4f61ecb038e9c3fb77e21034b22511b523772cdd/data/test-00000-of-00001-701d16158af87368.parquet",
+  "source_sha256": "39ac797cabc157eeed58435a08593b2952bb6cb16fc394a2d383f447cc7b246e",
+  "output_sha256": "daf099d1ff7ce95a7907b2878baef8e972d4d05c81e43c52121c2140b4bddf3d",
+  "license": "CC-BY-4.0",
+  "license_note": "Conservative selection: upstream card metadata also declares Apache-2.0, but dataset_info declares CC-BY-4.0.",
+  "attribution": "deepset/prompt-injections, adapted to normalized JSONL",
+  "adaptation": "Column names normalized; labels mapped from 0/1 to benign/attack; text unchanged.",
+  "license_url": "https://huggingface.co/datasets/deepset/prompt-injections/blob/4f61ecb038e9c3fb77e21034b22511b523772cdd/README.md",
+  "rows": 116,
+  "attacks": 60,
+  "benign": 56
+}
