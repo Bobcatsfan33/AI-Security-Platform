@@ -18,6 +18,7 @@ from app.policy.types import PolicyInput
 def test_catalogue_complete():
     expected = {
         "prompt_injection",
+        "prompt_injection_model",
         "jailbreak",
         "invisible_text",
         "toxicity",
@@ -133,6 +134,18 @@ def test_service_clean_text_allows():
     assert r.triggered == ()
 
 
+def test_prompt_model_requires_explicit_untrusted_content_boundary():
+    svc = AIGuardService()
+    text = "Generate SQL code to access a database."
+    direct = svc.inspect(text=text, context=DetectorContext(extra={"content_trust": "direct"}))
+    untrusted = svc.inspect(
+        text=text,
+        context=DetectorContext(extra={"content_trust": "untrusted"}),
+    )
+    assert "prompt_injection_model" not in direct.triggered
+    assert "prompt_injection_model" in untrusted.triggered
+
+
 def test_sliding_threshold_changes_outcome():
     svc = AIGuardService()
     text = "Should I buy Tesla stock?"
@@ -198,3 +211,23 @@ def test_stage2_adapter_allows_clean():
     inp = PolicyInput(text="What time is the meeting tomorrow?", direction=PolDirection.INBOUND)
     res = asyncio.run(stage.classify(input_=inp, policy=policy))
     assert not res.matched
+
+
+def test_stage2_adapter_propagates_untrusted_content_boundary():
+    stage = DetectorSuiteStage2()
+    policy = _compiled(
+        {
+            "detector_extra": {"content_trust": "untrusted"},
+            "detectors": {
+                "source_code": {"action": "off"},
+                "programming_language": {"action": "off"},
+            },
+        }
+    )
+    inp = PolicyInput(
+        text="Generate SQL code to access a database.",
+        direction=PolDirection.INBOUND,
+    )
+    res = asyncio.run(stage.classify(input_=inp, policy=policy))
+    assert res.matched
+    assert res.rule_id == "detector:prompt_injection_model"

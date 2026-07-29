@@ -22,6 +22,9 @@ class CorpusCase:
     text: str
     label: str  # "attack" | "benign"
     attack_class: str = ""  # set for attacks; "" for benign
+    # ML injection labels are meaningful only at a trust boundary. "direct"
+    # is normal user input; "untrusted" is retrieved/tool/document content.
+    content_trust: str = "direct"
 
 
 def _b64(s: str) -> str:

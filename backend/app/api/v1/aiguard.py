@@ -32,6 +32,7 @@ class DetectorConfig(BaseModel):
 class InspectRequest(BaseModel):
     text: str
     direction: Literal["inbound", "outbound"] = "inbound"
+    content_trust: Literal["direct", "untrusted"] = "direct"
     config: dict[str, DetectorConfig] = Field(default_factory=dict)
     allowed_topics: list[str] = Field(default_factory=list)
     competitor_terms: list[str] = Field(default_factory=list)
@@ -58,6 +59,7 @@ async def inspect(
         competitor_terms=tuple(body.competitor_terms),
         brand_terms=tuple(body.brand_terms),
         allowed_languages=tuple(body.allowed_languages),
+        extra={"content_trust": body.content_trust},
     )
     config = {k: v.model_dump(exclude_none=True) for k, v in body.config.items()}
     resp = get_service().inspect(text=body.text, direction=direction, config=config, context=ctx)

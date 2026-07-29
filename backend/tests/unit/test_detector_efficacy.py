@@ -28,7 +28,7 @@ class TestEvaluate:
         assert r["samples"] > 0
         assert r["detectors_scored"] > 0
         assert 0.0 <= r["macro_f1"] <= 1.0
-        assert len(r["per_detector"]) == 18  # full catalogue
+        assert len(r["per_detector"]) == 19  # full catalogue
         for m in r["per_detector"]:
             assert 0.0 <= m["f1"] <= 1.0
             assert 0.0 <= m["fpr"] <= 1.0

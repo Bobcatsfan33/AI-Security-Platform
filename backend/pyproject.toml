@@ -89,6 +89,7 @@ include = ["app*"]
 # installs can load it via importlib/Path.
 "app.patterns.library" = ["*.json"]
 "app.benchmark.external" = ["*.json", "*.jsonl"]
+"app.detectors" = ["models/*.json"]
 
 [tool.ruff]
 line-length = 100
