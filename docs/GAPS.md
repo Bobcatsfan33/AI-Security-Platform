@@ -243,7 +243,7 @@ multi-host rig (out of scope, like real inference).
   connection knee (~750 RPS); the real-network saturation curve needs separate
   client/agent/upstream hosts.
 
-### GAP-010 — `management` and `cmd/agent` are 0% covered — 🟡 kill-switch block path now tested (Phase 2 inc 4)
+### GAP-010 — `management` and `cmd/agent` are 0% covered — 🟡 management security metrics now tested (Phase 7)
 **Was:** the kill switch (`management/killswitch.go`) had no test — the block-all
 path at `handler.go:122` was never exercised, despite being the control you demo
 to a security team. Heartbeat untested. `KillSwitchState.Snapshot()` documented
@@ -253,18 +253,28 @@ requests through `serveProxy` while the switch is flipped — proving the
 emergency block takes effect on the very next request (451, before the policy
 pipeline) and lifts cleanly, and that flipping it under concurrent traffic is
 race-safe. Documented in [`docs/AGENT-FAILURE-MODES.md`](AGENT-FAILURE-MODES.md).
-**Still open:** heartbeat and `cmd/agent` wiring coverage; `Snapshot()` dead code
-(revisit with the GAP-011 `/metrics` work).
+**Phase 7 follow-up:** the diagnostic handler and bounded kill-switch metric
+view now have direct scrape and concurrent race coverage. The old
+identifier-bearing `Snapshot()` is not used for Prometheus; `/metrics` exports
+counts only so asset and tool names cannot become sensitive, unbounded labels.
+**Still open:** heartbeat and `cmd/agent` wiring coverage.
 
-### GAP-011 — `/metrics` has no security metrics
-**What:** the agent's `/metrics` exposes six telemetry/uptime counters and
-nothing about its actual function: no request/allow/block counters, no
-per-stage latency histograms, no stage-error or fail-open counters, no
-kill-switch gauge. Hand-rolled exposition with no `# HELP`/`# TYPE` headers.
-**Why it matters:** you cannot currently observe from `/metrics` whether the
-agent is blocking anything or whether Stage 2 is silently failing open
-(GAP-004). An SRE cannot operate this.
-**Unblocks:** nothing external. Phase 4.
+### GAP-011 — `/metrics` has no security metrics ✅ CLOSED (Phase 7)
+**Was:** the agent exposed six telemetry/uptime values and nothing about its
+actual security function. Operators could not distinguish blocks from allows,
+observe per-stage latency or unavailability, detect fail-open traffic, or see
+kill-switch state. The hand-written exposition also omitted Prometheus
+`# HELP`/`# TYPE` metadata.
+**Closed by:** bounded decision and fail-open counters, stage-unavailability
+counters, request and per-stage histograms, and identifier-free kill-switch
+gauges in `management/diagnostic.go`. Metrics are observed before the bounded
+telemetry queue can drop an event, unknown label values collapse to `other`,
+and the race test scrapes while decisions and kill-switch state change.
+The Helm chart now optionally renders a `PrometheusRule` with critical alerts
+for fail-open, stage-open unavailability, stale policy, and global kill switch,
+plus a warning for dropped telemetry. The operator runbook owns the triage
+contract. Production SLO approval and alert exercise evidence remain external
+readiness gates, not implementation claims.
 
 ### GAP-012 — Redis policy-invalidation subscriber never reconnects ✅ CLOSED (Phase 2 inc 5)
 **Was:** `cache.go` returned on channel close and `main.go` logged

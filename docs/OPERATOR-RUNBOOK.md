@@ -62,6 +62,36 @@ Action:
 - File a postmortem; the kill switch must NEVER fire without an audit
   entry — verify `system.config_changed` for the operator who pushed it
 
+### Runtime agent security alerts
+
+Enable `metrics.enabled`, `metrics.serviceMonitor.enabled`, and
+`metrics.prometheusRule.enabled` in the agent Helm release to install the
+scrape target and the following starter alerts. Tune routing and duration only
+after a production-topology load and failure-mode exercise; any fail-open is a
+security event, not an availability-only warning.
+
+| Alert | Default condition | Immediate action |
+| --- | --- | --- |
+| `AISecurityAgentFailOpen` | `increase(platform_agent_fail_open_total[5m]) > 0` | Page security/on-call; identify `reason`, contain affected traffic, and preserve agent/control-plane logs. |
+| `AISecurityAgentStageUnavailableOpen` | Stage 2 or 3 unavailable with `behavior="open"` | Restore the classifier/judge dependency or switch the policy to fail closed under the approved outage procedure. |
+| `AISecurityAgentPolicyStale` | `platform_agent_policy_stale == 1` for 5m | Validate Redis invalidation and control-plane reachability; confirm the last approved policy version before traffic continues. |
+| `AISecurityAgentKillSwitchActive` | Global block-all gauge equals 1 | Confirm the command and audit actor. Leave active if authorized; otherwise follow the audited emergency-unblock procedure. |
+| `AISecurityAgentTelemetryDropped` | Dropped-event counter increases | Preserve local logs, inspect uploader/control-plane health and buffer pressure, and treat the monitoring record as incomplete until reconciled. |
+
+Useful investigation queries:
+
+```promql
+sum by (reason) (increase(platform_agent_fail_open_total[15m]))
+sum by (stage, behavior) (increase(platform_agent_stage_unavailable_total[15m]))
+sum by (action) (rate(platform_agent_requests_total[5m]))
+histogram_quantile(0.99, sum by (le) (rate(platform_agent_request_duration_milliseconds_bucket[5m])))
+histogram_quantile(0.99, sum by (stage, le) (rate(platform_agent_stage_duration_milliseconds_bucket[5m])))
+```
+
+The metric vocabulary is deliberately bounded. Do not add organization,
+policy, asset, user, prompt, tool, or model identifiers as labels; use
+structured logs and audit records for scoped investigation.
+
 ## Routine maintenance
 
 ### Rotating the audit HMAC key

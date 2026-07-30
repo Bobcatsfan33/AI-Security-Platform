@@ -1,0 +1,58 @@
+{{- if and .Values.metrics.enabled .Values.metrics.prometheusRule.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ include "agent.fullname" . }}
+  {{- with .Values.metrics.prometheusRule.namespace }}
+  namespace: {{ . }}
+  {{- end }}
+  labels:
+    {{- include "agent.labels" . | nindent 4 }}
+    {{- with .Values.metrics.prometheusRule.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  groups:
+    - name: {{ include "agent.fullname" . }}.security
+      rules:
+        - alert: AISecurityAgentFailOpen
+          expr: increase(platform_agent_fail_open_total[5m]) > 0
+          for: 0m
+          labels:
+            severity: critical
+          annotations:
+            summary: AI security agent allowed traffic without its full intended controls
+            runbook_url: https://github.com/Bobcatsfan33/AI-Security-Platform/blob/main/docs/OPERATOR-RUNBOOK.md#runtime-agent-security-alerts
+        - alert: AISecurityAgentStageUnavailableOpen
+          expr: increase(platform_agent_stage_unavailable_total{behavior="open"}[5m]) > 0
+          for: 0m
+          labels:
+            severity: critical
+          annotations:
+            summary: AI security agent policy stage failed open
+            runbook_url: https://github.com/Bobcatsfan33/AI-Security-Platform/blob/main/docs/OPERATOR-RUNBOOK.md#runtime-agent-security-alerts
+        - alert: AISecurityAgentPolicyStale
+          expr: platform_agent_policy_stale == 1
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: AI security agent policy cache is stale
+            runbook_url: https://github.com/Bobcatsfan33/AI-Security-Platform/blob/main/docs/OPERATOR-RUNBOOK.md#runtime-agent-security-alerts
+        - alert: AISecurityAgentKillSwitchActive
+          expr: platform_agent_kill_switch_block_all == 1
+          for: 0m
+          labels:
+            severity: critical
+          annotations:
+            summary: AI security agent global kill switch is active
+            runbook_url: https://github.com/Bobcatsfan33/AI-Security-Platform/blob/main/docs/OPERATOR-RUNBOOK.md#runtime-agent-security-alerts
+        - alert: AISecurityAgentTelemetryDropped
+          expr: increase(platform_agent_telemetry_dropped_total[5m]) > 0
+          for: 0m
+          labels:
+            severity: warning
+          annotations:
+            summary: AI security agent dropped decision telemetry
+            runbook_url: https://github.com/Bobcatsfan33/AI-Security-Platform/blob/main/docs/OPERATOR-RUNBOOK.md#runtime-agent-security-alerts
+{{- end }}

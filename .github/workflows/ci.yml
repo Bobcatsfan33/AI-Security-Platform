@@ -96,11 +96,14 @@ jobs:
           CI_IMAGE_DIGEST: sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
         run: |
           helm lint deploy/helm/ai-security-agent --set mtls.enabled=true --set config.platformUrl=https://api.platform.svc.cluster.local:8000 --set image.digest="${CI_IMAGE_DIGEST}"
-          helm template ci deploy/helm/ai-security-agent --set mtls.enabled=true --set config.platformUrl=https://api.platform.svc.cluster.local:8000 --set image.digest="${CI_IMAGE_DIGEST}" > /tmp/runtime-agent.yaml
+          helm template ci deploy/helm/ai-security-agent --set mtls.enabled=true --set config.platformUrl=https://api.platform.svc.cluster.local:8000 --set image.digest="${CI_IMAGE_DIGEST}" --set metrics.enabled=true --set metrics.serviceMonitor.enabled=true --set metrics.prometheusRule.enabled=true > /tmp/runtime-agent.yaml
           grep -q "ghcr.io/bobcatsfan33/ai-security-platform-agent@${CI_IMAGE_DIGEST}" /tmp/runtime-agent.yaml
           grep -q "kind: NetworkPolicy" /tmp/runtime-agent.yaml
           grep -q "kind: ServiceAccount" /tmp/runtime-agent.yaml
           grep -q "automountServiceAccountToken: false" /tmp/runtime-agent.yaml
+          grep -q "kind: ServiceMonitor" /tmp/runtime-agent.yaml
+          grep -q "kind: PrometheusRule" /tmp/runtime-agent.yaml
+          grep -q "platform_agent_fail_open_total" /tmp/runtime-agent.yaml
           if helm template unsafe deploy/helm/ai-security-agent > /dev/null 2>&1; then
             echo "::error::production agent accepted plaintext control-plane transport"
             exit 1
