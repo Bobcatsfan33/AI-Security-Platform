@@ -37,6 +37,7 @@ type Buffer struct {
 	enqueued atomicCounter
 	uploaded atomicCounter
 	dropped  atomicCounter
+	security securityMetrics
 }
 
 // NewBuffer constructs a bounded buffer. maxQueue is the hard cap;
@@ -71,6 +72,9 @@ func NewBuffer(
 // Enqueue adds an event. Never blocks for more than the buffer's mutex.
 // Drops on overflow and increments the dropped counter.
 func (b *Buffer) Enqueue(event Event) {
+	// Security metrics describe decisions, not telemetry delivery. Observe
+	// before the bounded queue can drop the event.
+	b.security.observe(event)
 	b.mu.Lock()
 	if len(b.events) >= cap(b.events)*10 { // hard cap ~10x batch
 		b.mu.Unlock()
@@ -87,6 +91,18 @@ func (b *Buffer) Enqueue(event Event) {
 		default:
 		}
 	}
+}
+
+// RecordFailOpen counts a fail-open condition that is not derivable from the
+// final event alone, such as continuing under an explicitly stale policy.
+func (b *Buffer) RecordFailOpen(reason string) {
+	b.security.recordFailOpen(reason)
+}
+
+// SecurityStats returns a bounded copy of the security decision counters and
+// histograms for the diagnostic Prometheus endpoint.
+func (b *Buffer) SecurityStats() SecuritySnapshot {
+	return b.security.snapshot()
 }
 
 // Run drains the buffer until ctx is cancelled. Returns the error from

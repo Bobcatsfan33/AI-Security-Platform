@@ -131,9 +131,8 @@
       "title": "Operational observability and SLO evidence",
       "status": "partial",
       "frameworks": ["csa-ccm-caiq-4.1", "csa-ai-caiq-1.0.2"],
-      "evidence": ["backend/app/observability/metrics.py", "backend/app/observability/tracing.py", "docs/BENCHMARKS.md", "docs/OPERATOR-RUNBOOK.md"],
+      "evidence": ["backend/app/observability/metrics.py", "backend/app/observability/tracing.py", "runtime-agent/management/diagnostic.go", "runtime-agent/management/diagnostic_test.go", "deploy/helm/ai-security-agent/templates/prometheusrule.yaml", "docs/BENCHMARKS.md", "docs/OPERATOR-RUNBOOK.md"],
       "gaps": [
-        "The runtime-agent metrics surface lacks required security decision metrics.",
         "Approved production SLOs, alert validation, and sustained customer-topology evidence remain open."
       ]
     },
@@ -219,7 +218,7 @@
       "status": "open",
       "blocking": true,
       "ownerRole": "Engineering",
-      "acceptanceCriteria": "SCIM and IdP administration are safely mounted, production security metrics and the 80 percent coverage goal pass, data residency and fairness controls are implemented, and release-candidate deployment evidence is retained.",
+      "acceptanceCriteria": "SCIM and IdP administration are safely mounted, the 80 percent coverage goal passes, data residency and fairness controls are implemented, and release-candidate deployment evidence is retained.",
       "evidence": []
     }
   ]

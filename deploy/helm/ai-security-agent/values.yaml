@@ -142,3 +142,7 @@ metrics:
     namespace: ""
     labels: {}
     interval: "30s"
+  prometheusRule:
+    enabled: false
+    namespace: ""
+    labels: {}

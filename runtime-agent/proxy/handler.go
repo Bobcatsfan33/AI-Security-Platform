@@ -173,6 +173,9 @@ func serveProxy(cfg Config, w http.ResponseWriter, r *http.Request) {
 		emitEvent(cfg, &extracted, compiled, nil, body, nil, start, "blocked_stale_cache", r.Header)
 		return
 	}
+	if cfg.Cache.IsStale(cfg.PolicyID) {
+		cfg.Telemetry.RecordFailOpen("policy_stale")
+	}
 
 	// Build the policy input
 	input := &policy.Input{
@@ -297,8 +300,19 @@ func emitEvent(
 			event.PoliciesFailed = 1
 		}
 		for _, sr := range decision.StageResults {
-			if sr.Stage == policy.ExitStage1Regex {
-				event.Stage1LatencyUS = uint32(sr.LatencyUS)
+			latencyUS := sr.LatencyUS
+			if latencyUS < 0 {
+				latencyUS = 0
+			}
+			switch sr.Stage {
+			case policy.ExitStage1Regex:
+				event.Stage1LatencyUS = uint32(latencyUS)
+			case policy.ExitStage2ML, policy.ExitStage2Unavailable:
+				latency := uint32(latencyUS)
+				event.Stage2LatencyUS = &latency
+			case policy.ExitStage3Judge, policy.ExitStage3Unavailable:
+				latency := uint32((latencyUS + 999) / 1000)
+				event.Stage3LatencyMS = &latency
 			}
 		}
 		if pr, err := json.Marshal(decision.StageResults); err == nil {

@@ -136,6 +136,22 @@ fault-injection tests that verify them.
 See [`docs/GAPS.md`](../docs/GAPS.md) for the gaps this closed (GAP-003,
 GAP-004).
 
+### Security metrics and alerts
+
+`/metrics` exports Prometheus metadata and bounded operational signals:
+decision counters by action, fail-open counters by reason, stage-unavailability
+counters by open/closed behavior, request and per-stage duration histograms,
+telemetry delivery statistics, stale-policy state, and identifier-free
+kill-switch gauges. Unknown action and reason values collapse to `other`;
+tenant, policy, asset, tool, and user identifiers are intentionally excluded
+from labels.
+
+For Kubernetes, set `metrics.enabled=true` plus
+`metrics.serviceMonitor.enabled=true` to render the scrape target. Set
+`metrics.prometheusRule.enabled=true` to install the starter security alerts.
+Alert meaning, triage, and PromQL investigation queries are maintained in the
+[`operator runbook`](../docs/OPERATOR-RUNBOOK.md#runtime-agent-security-alerts).
+
 ## Wire compatibility with the Python control plane
 
 - Policy invalidation channel: `policy:invalidation:{org_id}` (same as

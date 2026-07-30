@@ -297,7 +297,7 @@ func main() {
 		NoPolicyBehavior:           noPolicyBehavior,
 	})
 
-	diagHandler := management.DiagnosticHandler(cache, buf, cfg.policyID, agentVersion)
+	diagHandler := management.DiagnosticHandler(cache, buf, killSwitch, cfg.policyID, agentVersion)
 
 	proxyServer := &http.Server{
 		Addr:              cfg.bindProxy,

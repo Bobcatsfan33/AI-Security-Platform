@@ -32,9 +32,9 @@ type KillSwitchCommand struct {
 // so kill-switch commands take effect in microseconds, regardless of
 // what the cached policy says.
 type KillSwitchState struct {
-	blockAll       atomic.Bool
-	blockedAssets  *concurrentSet
-	disabledTools  *concurrentSet
+	blockAll      atomic.Bool
+	blockedAssets *concurrentSet
+	disabledTools *concurrentSet
 }
 
 // NewKillSwitchState returns an empty state.
@@ -86,9 +86,29 @@ func (s *KillSwitchState) Apply(cmd KillSwitchCommand) {
 // Snapshot returns a serializable view for /metrics.
 func (s *KillSwitchState) Snapshot() map[string]any {
 	return map[string]any{
-		"block_all":          s.blockAll.Load(),
-		"blocked_assets":     s.blockedAssets.List(),
-		"disabled_tools":     s.disabledTools.List(),
+		"block_all":      s.blockAll.Load(),
+		"blocked_assets": s.blockedAssets.List(),
+		"disabled_tools": s.disabledTools.List(),
+	}
+}
+
+// KillSwitchMetrics is the bounded operational view exported to Prometheus.
+type KillSwitchMetrics struct {
+	BlockAll      bool
+	BlockedAssets int
+	DisabledTools int
+}
+
+// Metrics returns counts only; asset and tool identifiers are intentionally
+// excluded from metric labels to prevent sensitive, unbounded cardinality.
+func (s *KillSwitchState) Metrics() KillSwitchMetrics {
+	if s == nil {
+		return KillSwitchMetrics{}
+	}
+	return KillSwitchMetrics{
+		BlockAll:      s.blockAll.Load(),
+		BlockedAssets: len(s.blockedAssets.List()),
+		DisabledTools: len(s.disabledTools.List()),
 	}
 }
 
