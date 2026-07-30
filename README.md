@@ -14,6 +14,8 @@ admin UI, and supporting SDKs for OpenAI / Anthropic.
 > not third-party certification. See [`docs/ROADMAP.md`](docs/ROADMAP.md) for
 > the sprint sequence and [`docs/OPERATOR-RUNBOOK.md`](docs/OPERATOR-RUNBOOK.md)
 > for day-2 ops.
+> The current enterprise deployment decision and expiring evidence index are in
+> [`docs/procurement-readiness.md`](docs/procurement-readiness.md).
 
 ---
 

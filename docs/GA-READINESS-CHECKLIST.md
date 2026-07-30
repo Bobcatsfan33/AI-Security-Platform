@@ -45,8 +45,7 @@
 - ☐ Support runbooks, SLA definition, on-call, status page
 
 ## Coverage-ratchet exit (carried from Phase 0)
-- ☐ Raise the backend coverage floor (currently 24%, an honest ratchet) toward
-  the 80% standard as the testing workstream adds tests. The RAPIDE modules
-  added this cycle (poset/EPA/patterns/narratives/feedback/validation) ship with
-  high coverage; legacy domain modules (siem, soar, threat_intel, scim filters)
-  remain the gap.
+- ☐ Raise the backend coverage floor (currently 70%, with 73.82% measured by
+  the full Postgres + Redis suite on 2026-07-29) to the 80% standard. The
+  remaining concentration is in connector generation paths, API routes,
+  policy cache, reports, and SCIM services; CI prevents regression below 70%.
