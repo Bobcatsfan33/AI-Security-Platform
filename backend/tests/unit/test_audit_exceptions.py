@@ -21,9 +21,7 @@ import pytest
 
 pytestmark = pytest.mark.unit
 
-_EXCEPTIONS = (
-    pathlib.Path(__file__).resolve().parents[3] / "frontend" / "audit-exceptions.json"
-)
+_EXCEPTIONS = pathlib.Path(__file__).resolve().parents[3] / "frontend" / "audit-exceptions.json"
 _MAX_DAYS = 90
 # 30 is the default; anything longer must justify itself in the entry.
 _DEFAULT_DAYS = 30
@@ -105,6 +103,6 @@ def test_no_exception_window_exceeds_the_max() -> None:
         added = datetime.date.fromisoformat(e["added"])
         expires = datetime.date.fromisoformat(e["expires"])
         span = (expires - added).days
-        assert 0 < span <= _MAX_DAYS, (
-            f"exception {e['id']}: window is {span}d (must be 1..{_MAX_DAYS})"
-        )
+        assert (
+            0 < span <= _MAX_DAYS
+        ), f"exception {e['id']}: window is {span}d (must be 1..{_MAX_DAYS})"

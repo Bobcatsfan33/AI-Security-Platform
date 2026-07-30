@@ -27,9 +27,7 @@ EvalStatus = Literal["created", "running", "completed", "failed", "cancelled"]
 class EvaluationCreate(BaseModel):
     asset_id: uuid.UUID
     eval_type: EvalType = "full"
-    triggered_by: Literal[
-        "manual", "scheduled", "ci_cd", "drift_detection", "webhook"
-    ] = "manual"
+    triggered_by: Literal["manual", "scheduled", "ci_cd", "drift_detection", "webhook"] = "manual"
     trigger_context: dict[str, Any] = Field(default_factory=dict)
     connector_id: uuid.UUID | None = None
     test_case_ids: list[uuid.UUID] = Field(default_factory=list)
@@ -127,9 +125,7 @@ async def list_evaluations(
     return [_to_response(r) for r in rows]
 
 
-@router.post(
-    "", response_model=EvaluationResponse, status_code=status.HTTP_201_CREATED
-)
+@router.post("", response_model=EvaluationResponse, status_code=status.HTTP_201_CREATED)
 async def create_evaluation(
     payload: EvaluationCreate,
     background_tasks: BackgroundTasks,

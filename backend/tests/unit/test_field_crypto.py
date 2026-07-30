@@ -19,10 +19,7 @@ from app.security.field_crypto import (
 
 
 def _engine_with(*versions: int, active: int | None = None) -> FieldCrypto:
-    keys = {
-        v: _KeyEntry(version=v, fernet=Fernet(Fernet.generate_key()))
-        for v in versions
-    }
+    keys = {v: _KeyEntry(version=v, fernet=Fernet(Fernet.generate_key())) for v in versions}
     return FieldCrypto(keys=keys, active_version=active or max(versions))
 
 
@@ -186,9 +183,7 @@ class TestEncryptedInlineResolver:
         with pytest.raises(secrets_mod.SecretResolutionError):
             secrets_mod.EncryptedInlineResolver().resolve("env:VAR")
 
-    def test_corrupted_inline_ciphertext_raises(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_corrupted_inline_ciphertext_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
         engine = _engine_with(1)
         monkeypatch.setattr(field_crypto, "_INSTANCE", engine)
         ct = engine.encrypt("x")

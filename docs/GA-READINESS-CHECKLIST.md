@@ -52,3 +52,5 @@
 - ☑ Enforce the repository-wide Ruff baseline in CI. The full `app` and
   `tests` trees are clean; narrowly documented exceptions preserve FastAPI,
   SCIM, and public plugin naming contracts rather than disabling rule families.
+- ☑ Normalize and enforce the repository-wide Black baseline in CI so formatter
+  drift is rejected on every backend change.

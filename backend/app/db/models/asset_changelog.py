@@ -39,9 +39,7 @@ class AssetChangelog(Base, TenantScoped):
         ForeignKey("ai_assets.id", ondelete="CASCADE"), nullable=False, index=True
     )
     change_type: Mapped[str] = mapped_column(CHANGE_TYPE_ENUM, nullable=False)
-    previous_value: Mapped[dict[str, Any] | None] = mapped_column(
-        JSONB, nullable=True
-    )
+    previous_value: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     new_value: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     changed_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

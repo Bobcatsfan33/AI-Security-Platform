@@ -35,9 +35,7 @@ def register(connector_type: str, connector_class: type[BaseConnector]) -> None:
     if not connector_type:
         raise ValueError("connector_type must be a non-empty string")
     if not issubclass(connector_class, BaseConnector):
-        raise TypeError(
-            f"{connector_class!r} does not subclass BaseConnector"
-        )
+        raise TypeError(f"{connector_class!r} does not subclass BaseConnector")
     if connector_type in _REGISTRY:
         logger.warning(
             "connector_registry_overwrite",

@@ -31,9 +31,7 @@ MIN_SECRET_BYTES: int = 32
 
 # Env vars that MUST be operator-supplied in production. Add new entries
 # as additional security-critical config is added.
-REQUIRED_PRODUCTION_SECRETS: tuple[str, ...] = (
-    "JWT_SECRET",
-)
+REQUIRED_PRODUCTION_SECRETS: tuple[str, ...] = ("JWT_SECRET",)
 
 # Dev fallback values that have been published in this repo. Anything
 # matching these in production is rejected — an attacker reading the source
@@ -61,16 +59,12 @@ def assert_production_secrets() -> None:
 
     if failures:
         joined = "\n  - ".join(failures)
-        raise ConfigurationError(
-            "Production secret gate failed. Refusing to start.\n  - " + joined
-        )
+        raise ConfigurationError("Production secret gate failed. Refusing to start.\n  - " + joined)
 
 
 def _enforce_prod_secret(env_var: str, raw: str | None) -> None:
     if raw is None or raw == "":
-        raise ConfigurationError(
-            f"{env_var} is not set. Production deployments must supply this."
-        )
+        raise ConfigurationError(f"{env_var} is not set. Production deployments must supply this.")
     if raw == KNOWN_DEV_DEFAULTS.get(env_var):
         raise ConfigurationError(
             f"{env_var} is set to the published dev default. "

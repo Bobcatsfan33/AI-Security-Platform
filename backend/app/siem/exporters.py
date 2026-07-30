@@ -62,9 +62,7 @@ TIER_B_EXPORTER_TYPES: frozenset[str] = frozenset({"splunk_hec", "elastic"})
 
 # Tier C — frozen, dark until customer pull. The code stays and stays tested;
 # the capability requires PLATFORM_ENABLE_SIEM_EXTENDED=true.
-TIER_C_EXPORTER_TYPES: frozenset[str] = frozenset(
-    {"sentinel", "datadog", "chronicle", "webhook"}
-)
+TIER_C_EXPORTER_TYPES: frozenset[str] = frozenset({"sentinel", "datadog", "chronicle", "webhook"})
 
 
 def extended_siem_enabled() -> bool:
@@ -114,9 +112,9 @@ class SiemEvent:
 
     timestamp: datetime
     org_id: str
-    event_type: str            # "finding" | "audit" | "runtime_event"
+    event_type: str  # "finding" | "audit" | "runtime_event"
     severity: str
-    source: str                # "evaluation" | "runtime_agent" | "red_team"
+    source: str  # "evaluation" | "runtime_agent" | "red_team"
     title: str
     detail: dict[str, Any]
     asset_id: str = ""
@@ -341,16 +339,12 @@ class SentinelExporter:
     async def export(self, events: list[SiemEvent]) -> int:
         if not events:
             return 0
-        body = json.dumps(
-            [_to_sentinel(e) for e in events], default=str
-        )
+        body = json.dumps([_to_sentinel(e) for e in events], default=str)
         url = (
             f"https://{self._workspace_id}.ods.opinsights.azure.com"
             "/api/logs?api-version=2016-04-01"
         )
-        date_str = datetime.now(UTC).strftime(
-            "%a, %d %b %Y %H:%M:%S GMT"
-        )
+        date_str = datetime.now(UTC).strftime("%a, %d %b %Y %H:%M:%S GMT")
         signature = _sentinel_signature(
             workspace_id=self._workspace_id,
             shared_key=self._shared_key,
@@ -404,8 +398,7 @@ def _sentinel_signature(
     content_type = "application/json"
     resource = "/api/logs"
     string_to_hash = (
-        f"{method}\n{content_length}\n{content_type}\n"
-        f"x-ms-date:{date_str}\n{resource}"
+        f"{method}\n{content_length}\n{content_type}\n" f"x-ms-date:{date_str}\n{resource}"
     )
     decoded_key = base64.b64decode(shared_key)
     h = hmac.new(decoded_key, string_to_hash.encode("utf-8"), hashlib.sha256)
@@ -426,7 +419,7 @@ class DatadogExporter:
         *,
         name: str,
         api_key: str,
-        site: str = "datadoghq.com",   # alt: "datadoghq.eu" / "us3.datadoghq.com"
+        site: str = "datadoghq.com",  # alt: "datadoghq.eu" / "us3.datadoghq.com"
         service: str = "ai-security-platform",
         timeout_s: float = 10.0,
     ) -> None:
@@ -512,9 +505,7 @@ class ChronicleExporter:
     async def export(self, events: list[SiemEvent]) -> int:
         if not events:
             return 0
-        body = json.dumps(
-            {"events": [_to_udm(e) for e in events]}, default=str
-        )
+        body = json.dumps({"events": [_to_udm(e) for e in events]}, default=str)
         try:
             async with httpx.AsyncClient(timeout=self._timeout_s) as c:
                 resp = await c.post(
@@ -596,9 +587,7 @@ class WebhookExporter:
     async def export(self, events: list[SiemEvent]) -> int:
         if not events:
             return 0
-        body = json.dumps(
-            {"events": [_to_generic(e) for e in events]}, default=str
-        )
+        body = json.dumps({"events": [_to_generic(e) for e in events]}, default=str)
         try:
             async with httpx.AsyncClient(timeout=self._timeout_s) as c:
                 resp = await c.post(
@@ -764,9 +753,7 @@ def _build_one(entry: dict[str, Any]) -> SiemExporter | None:
     return None
 
 
-async def export_to_all(
-    exporters: list[SiemExporter], events: list[SiemEvent]
-) -> dict[str, int]:
+async def export_to_all(exporters: list[SiemExporter], events: list[SiemEvent]) -> dict[str, int]:
     """Send the same events to every configured exporter. Returns a
     {exporter_name: count_accepted} dict — useful for telemetry."""
     if not exporters or not events:

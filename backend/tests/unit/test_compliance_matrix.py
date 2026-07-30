@@ -32,9 +32,7 @@ def test_matrix_passes_integrity_check():
 def test_no_implemented_control_without_existing_evidence():
     for c in _MATRIX["controls"]:
         if c["status"] in {"implemented", "partial"}:
-            assert c[
-                "evidence_files"
-            ], f"{c['id']} claims {c['status']} with no evidence"
+            assert c["evidence_files"], f"{c['id']} claims {c['status']} with no evidence"
             for ev in c["evidence_files"]:
                 assert (_REPO / ev).exists(), f"{c['id']} evidence missing: {ev}"
 
@@ -48,9 +46,7 @@ def test_oscal_render_is_wellformed_and_deterministic():
     assert len(reqs) == len(_MATRIX["controls"])
     assert cd["metadata"]["oscal-version"] == "1.1.2"
     # control ids are lowercased per OSCAL convention
-    assert {r["control-id"] for r in reqs} == {
-        c["id"].lower() for c in _MATRIX["controls"]
-    }
+    assert {r["control-id"] for r in reqs} == {c["id"].lower() for c in _MATRIX["controls"]}
 
 
 def test_validate_catches_a_broken_matrix(tmp_path):

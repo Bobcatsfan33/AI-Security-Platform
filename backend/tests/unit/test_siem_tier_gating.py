@@ -36,6 +36,7 @@ def _clear_settings_cache() -> Iterator[None]:
     yield
     get_settings.cache_clear()
 
+
 @pytest.fixture(autouse=True)
 def _passthrough_resolver():
     """Isolate these tests from secret resolution: _build_one now resolves
@@ -56,7 +57,6 @@ def _passthrough_resolver():
         yield
     finally:
         _secrets.set_resolver(original)
-
 
 
 @pytest.fixture

@@ -62,12 +62,8 @@ ASSET_STATUS_ENUM = ENUM(
 class AIAsset(Base, TenantScoped):
     __tablename__ = "ai_assets"
     __table_args__ = (
-        UniqueConstraint(
-            "connector_id", "external_id", name="uq_ai_assets_connector_external"
-        ),
-        CheckConstraint(
-            "risk_score BETWEEN 0 AND 100", name="ck_ai_assets_risk_score_range"
-        ),
+        UniqueConstraint("connector_id", "external_id", name="uq_ai_assets_connector_external"),
+        CheckConstraint("risk_score BETWEEN 0 AND 100", name="ck_ai_assets_risk_score_range"),
     )
 
     id: Mapped[UUIDPk]
@@ -76,9 +72,7 @@ class AIAsset(Base, TenantScoped):
     )
     name: Mapped[str] = mapped_column(Text, nullable=False)
     asset_type: Mapped[str] = mapped_column(ASSET_TYPE_ENUM, nullable=False, index=True)
-    asset_status: Mapped[str] = mapped_column(
-        ASSET_STATUS_ENUM, nullable=False, default="active"
-    )
+    asset_status: Mapped[str] = mapped_column(ASSET_STATUS_ENUM, nullable=False, default="active")
     provider: Mapped[str] = mapped_column(Text, nullable=False, index=True)
     version: Mapped[str | None] = mapped_column(Text, nullable=True)
     external_id: Mapped[str] = mapped_column(Text, nullable=False, index=True)
@@ -87,9 +81,7 @@ class AIAsset(Base, TenantScoped):
         nullable=False,
         index=True,
     )
-    risk_score: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=0, index=True
-    )
+    risk_score: Mapped[int] = mapped_column(Integer, nullable=False, default=0, index=True)
     owner_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("owners.id", ondelete="SET NULL"), nullable=True, index=True
     )
@@ -103,18 +95,16 @@ class AIAsset(Base, TenantScoped):
         DateTime(timezone=True), nullable=False, default=_utcnow
     )
     last_seen_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=_utcnow,
+        DateTime(timezone=True),
+        nullable=False,
+        default=_utcnow,
         index=True,
     )
     created_at: Mapped[TimestampUtc]
     updated_at: Mapped[TimestampUtcUpdated]
 
-    connector: Mapped[Connector] = relationship(  # noqa: F821
-        "Connector", lazy="joined"
-    )
-    owner: Mapped[Owner | None] = relationship(  # noqa: F821
-        "Owner", lazy="joined"
-    )
+    connector: Mapped[Connector] = relationship("Connector", lazy="joined")  # noqa: F821
+    owner: Mapped[Owner | None] = relationship("Owner", lazy="joined")  # noqa: F821
     deployments: Mapped[list[Deployment]] = relationship(  # noqa: F821
         "Deployment", cascade="all, delete-orphan"
     )

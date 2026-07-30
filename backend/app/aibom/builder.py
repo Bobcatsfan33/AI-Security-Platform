@@ -111,9 +111,7 @@ def build_bom(asset: dict[str, Any]) -> AIBom:
     if provider:
         provider_id = f"provider:{provider}"
         nodes.append(BomNode(id=provider_id, type="provider", name=provider))
-        edges.append(
-            BomEdge(src=f"asset:{asset_id}", dst=provider_id, relationship="uses")
-        )
+        edges.append(BomEdge(src=f"asset:{asset_id}", dst=provider_id, relationship="uses"))
         if model_name:
             model_id = f"model:{provider}:{model_name}"
             nodes.append(
@@ -127,9 +125,7 @@ def build_bom(asset: dict[str, Any]) -> AIBom:
                     },
                 )
             )
-            edges.append(
-                BomEdge(src=provider_id, dst=model_id, relationship="provides")
-            )
+            edges.append(BomEdge(src=provider_id, dst=model_id, relationship="provides"))
 
     # 3. Fine-tuning lineage
     ft = asset.get("fine_tuning") or {}
@@ -187,9 +183,7 @@ def build_bom(asset: dict[str, Any]) -> AIBom:
                 metadata=tool,
             )
         )
-        edges.append(
-            BomEdge(src=f"asset:{asset_id}", dst=tool_id, relationship="uses")
-        )
+        edges.append(BomEdge(src=f"asset:{asset_id}", dst=tool_id, relationship="uses"))
 
     # 7. MCP servers
     for i, mcp in enumerate(asset.get("mcp_servers") or []):
@@ -204,9 +198,7 @@ def build_bom(asset: dict[str, Any]) -> AIBom:
                 metadata=mcp,
             )
         )
-        edges.append(
-            BomEdge(src=f"asset:{asset_id}", dst=mcp_id, relationship="uses")
-        )
+        edges.append(BomEdge(src=f"asset:{asset_id}", dst=mcp_id, relationship="uses"))
 
     # 8. Plugins
     for i, plugin in enumerate(asset.get("plugins") or []):
@@ -221,9 +213,7 @@ def build_bom(asset: dict[str, Any]) -> AIBom:
                 metadata=plugin,
             )
         )
-        edges.append(
-            BomEdge(src=f"asset:{asset_id}", dst=plugin_id, relationship="uses")
-        )
+        edges.append(BomEdge(src=f"asset:{asset_id}", dst=plugin_id, relationship="uses"))
 
     # 9. Upstream services (external dependencies)
     for i, svc in enumerate(asset.get("upstream_services") or []):
@@ -238,9 +228,7 @@ def build_bom(asset: dict[str, Any]) -> AIBom:
                 metadata=svc,
             )
         )
-        edges.append(
-            BomEdge(src=svc_id, dst=f"asset:{asset_id}", relationship="depends_on")
-        )
+        edges.append(BomEdge(src=svc_id, dst=f"asset:{asset_id}", relationship="depends_on"))
 
     # 10. Downstream consumers
     for i, c in enumerate(asset.get("downstream_consumers") or []):
@@ -255,9 +243,7 @@ def build_bom(asset: dict[str, Any]) -> AIBom:
                 metadata=c,
             )
         )
-        edges.append(
-            BomEdge(src=f"asset:{asset_id}", dst=c_id, relationship="exports_to")
-        )
+        edges.append(BomEdge(src=f"asset:{asset_id}", dst=c_id, relationship="exports_to"))
 
     return AIBom(asset_id=asset_id, nodes=tuple(nodes), edges=tuple(edges))
 

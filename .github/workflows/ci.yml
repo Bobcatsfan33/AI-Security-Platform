@@ -216,6 +216,9 @@ jobs:
       - name: Ruff (repository-wide Python quality gate)
         working-directory: backend
         run: ruff check app tests
+      - name: Black (repository-wide Python format gate)
+        working-directory: backend
+        run: black --check app tests
       - name: Apply migrations
         working-directory: backend
         run: alembic upgrade head

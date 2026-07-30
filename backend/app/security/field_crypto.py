@@ -108,25 +108,17 @@ class FieldCrypto:
                 if not entry:
                     continue
                 if ":" not in entry:
-                    raise FieldCryptoError(
-                        f"keyring entry missing version prefix: {entry[:6]}…"
-                    )
+                    raise FieldCryptoError(f"keyring entry missing version prefix: {entry[:6]}…")
                 tag, key_b64 = entry.split(":", 1)
                 if not (tag.startswith("v") and tag[1:].isdigit()):
-                    raise FieldCryptoError(
-                        f"keyring version tag must be vN; got {tag}"
-                    )
+                    raise FieldCryptoError(f"keyring version tag must be vN; got {tag}")
                 version = int(tag[1:])
-                keys[version] = _KeyEntry(
-                    version=version, fernet=fernet_class(key_b64.encode())
-                )
+                keys[version] = _KeyEntry(version=version, fernet=fernet_class(key_b64.encode()))
         elif single_ref:
             try:
                 key_value = get_resolver().resolve(single_ref)
             except SecretResolutionError as exc:
-                raise FieldCryptoError(
-                    f"could not resolve FIELD_CRYPTO_KEY_REF: {exc}"
-                ) from exc
+                raise FieldCryptoError(f"could not resolve FIELD_CRYPTO_KEY_REF: {exc}") from exc
             keys[1] = _KeyEntry(version=1, fernet=fernet_class(key_value.encode()))
 
         if not keys:
@@ -136,13 +128,9 @@ class FieldCrypto:
             )
 
         active_env = os.getenv("FIELD_CRYPTO_ACTIVE_VERSION", "").strip()
-        active_version = (
-            int(active_env) if active_env.isdigit() else max(keys.keys())
-        )
+        active_version = int(active_env) if active_env.isdigit() else max(keys.keys())
         if active_version not in keys:
-            raise FieldCryptoError(
-                f"FIELD_CRYPTO_ACTIVE_VERSION={active_version} not in keyring"
-            )
+            raise FieldCryptoError(f"FIELD_CRYPTO_ACTIVE_VERSION={active_version} not in keyring")
         return cls(keys=keys, active_version=active_version)
 
     # ─────────────────────────────────────────────── operations
@@ -168,9 +156,7 @@ class FieldCrypto:
         token = match.group(2)
         entry = self.keys.get(version)
         if entry is None:
-            raise FieldCryptoError(
-                f"ciphertext key version v{version} not in current keyring"
-            )
+            raise FieldCryptoError(f"ciphertext key version v{version} not in current keyring")
         _, invalid_token_error = _import_fernet()
         try:
             return entry.fernet.decrypt(token.encode("utf-8")).decode("utf-8")  # type: ignore[union-attr]

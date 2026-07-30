@@ -183,9 +183,7 @@ class TestClaimExtraction:
         assert claims.email == "dave@example.com"
 
     def test_subject_from_custom_attribute(self) -> None:
-        adapter = SamlAdapter(
-            _cfg(attribute_mappings={"subject": "uid", "email": "mail"})
-        )
+        adapter = SamlAdapter(_cfg(attribute_mappings={"subject": "uid", "email": "mail"}))
         auth = _MockAuth(
             name_id="ignored-name-id",
             attributes={"uid": ["azure-12345"], "mail": ["x@example.com"]},
@@ -246,9 +244,7 @@ class TestSpMetadata:
             sp_entity_id="https://platform.example.com/sp",
             sp_acs_url="https://platform.example.com/v1/auth/saml/acme/acs",
         )
-        assert (
-            'Location="https://platform.example.com/v1/auth/saml/acme/acs"' in xml
-        )
+        assert 'Location="https://platform.example.com/v1/auth/saml/acme/acs"' in xml
 
     def test_metadata_declares_http_post_binding(self) -> None:
         xml = generate_sp_metadata(
@@ -258,9 +254,7 @@ class TestSpMetadata:
         assert "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST" in xml
 
     def test_metadata_requires_signed_assertions(self) -> None:
-        xml = generate_sp_metadata(
-            sp_entity_id="https://x", sp_acs_url="https://y/acs"
-        )
+        xml = generate_sp_metadata(sp_entity_id="https://x", sp_acs_url="https://y/acs")
         assert 'WantAssertionsSigned="true"' in xml
 
 

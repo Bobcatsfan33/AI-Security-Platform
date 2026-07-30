@@ -68,15 +68,9 @@ class BlastRadiusResponse(BaseModel):
     basis: dict[str, Any]
 
 
-async def _load_asset(
-    db: AsyncSession, asset_id: uuid.UUID, org_id: uuid.UUID
-) -> AIAsset:
+async def _load_asset(db: AsyncSession, asset_id: uuid.UUID, org_id: uuid.UUID) -> AIAsset:
     row = (
-        await db.execute(
-            select(AIAsset).where(
-                AIAsset.id == asset_id, AIAsset.org_id == org_id
-            )
-        )
+        await db.execute(select(AIAsset).where(AIAsset.id == asset_id, AIAsset.org_id == org_id))
     ).scalar_one_or_none()
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")

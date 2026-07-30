@@ -118,9 +118,7 @@ class SiemForwarder:
     async def _run(self) -> None:
         while not self._stopped.is_set():
             with contextlib.suppress(TimeoutError):
-                await asyncio.wait_for(
-                    self._wake.wait(), timeout=self._flush_interval_s
-                )
+                await asyncio.wait_for(self._wake.wait(), timeout=self._flush_interval_s)
             self._wake.clear()
             await self._flush_all()
 
@@ -150,9 +148,7 @@ class SiemForwarder:
                 return entry.exporters
         exporters = await self._load_exporters(org_id)
         async with self._cache_lock:
-            self._cache[org_id] = _OrgCacheEntry(
-                exporters=exporters, loaded_at=now
-            )
+            self._cache[org_id] = _OrgCacheEntry(exporters=exporters, loaded_at=now)
         return exporters
 
     async def _load_exporters(self, org_id: str) -> list[SiemExporter]:
@@ -173,9 +169,7 @@ async def _load_from_db(db: AsyncSession, org_id: str) -> list[SiemExporter]:
     except (TypeError, ValueError):
         return []
     row = (
-        await db.execute(
-            select(Organization).where(Organization.id == org_uuid)
-        )
+        await db.execute(select(Organization).where(Organization.id == org_uuid))
     ).scalar_one_or_none()
     if row is None:
         return []

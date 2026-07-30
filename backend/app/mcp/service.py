@@ -90,17 +90,21 @@ async def recent_access_modes(
     cutoff = now - timedelta(seconds=CHAIN_LOOKBACK_SECONDS)
 
     rows = (
-        await db.execute(
-            select(McpCall.access_mode)
-            .where(
-                McpCall.org_id == org_id,
-                McpCall.session_id == session_id,
-                McpCall.called_at >= cutoff,
+        (
+            await db.execute(
+                select(McpCall.access_mode)
+                .where(
+                    McpCall.org_id == org_id,
+                    McpCall.session_id == session_id,
+                    McpCall.called_at >= cutoff,
+                )
+                .order_by(McpCall.called_at.asc())
+                .limit(CHAIN_LOOKBACK_LIMIT)
             )
-            .order_by(McpCall.called_at.asc())
-            .limit(CHAIN_LOOKBACK_LIMIT)
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     return list(rows)  # type: ignore[return-value]
 
 
@@ -175,12 +179,12 @@ async def inspect_and_record(
         await db.flush()
 
         log_event(
-            AuditEventType.ACCESS_DENIED
-            if result.recommendation == "block"
-            else AuditEventType.POLICY_UPDATED,  # closest existing event_type
-            AuditOutcome.FAILURE
-            if result.recommendation == "block"
-            else AuditOutcome.UNKNOWN,
+            (
+                AuditEventType.ACCESS_DENIED
+                if result.recommendation == "block"
+                else AuditEventType.POLICY_UPDATED
+            ),  # closest existing event_type
+            AuditOutcome.FAILURE if result.recommendation == "block" else AuditOutcome.UNKNOWN,
             tenant_id=str(org_id),
             subject=agent_id or "agent",
             source_ip=source_ip,

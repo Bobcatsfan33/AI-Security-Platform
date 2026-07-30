@@ -71,9 +71,7 @@ class EnvVarResolver:
         try:
             return os.environ[var_name]
         except KeyError as exc:
-            raise SecretResolutionError(
-                f"Secret env var {var_name!r} is not set"
-            ) from exc
+            raise SecretResolutionError(f"Secret env var {var_name!r} is not set") from exc
 
 
 class AwsSecretsManagerResolver:
@@ -105,9 +103,7 @@ class AwsSecretsManagerResolver:
 
         kwargs: dict[str, str] = {"region_name": self.region}
         if self.use_fips:
-            kwargs["endpoint_url"] = (
-                f"https://secretsmanager-fips.{self.region}.amazonaws.com"
-            )
+            kwargs["endpoint_url"] = f"https://secretsmanager-fips.{self.region}.amazonaws.com"
 
         try:
             client = boto3.client("secretsmanager", **kwargs)
@@ -117,9 +113,7 @@ class AwsSecretsManagerResolver:
                 f"AWS Secrets Manager fetch failed for {name!r}: {exc}"
             ) from exc
 
-        secret = response.get("SecretString") or response.get(
-            "SecretBinary", b""
-        ).decode()
+        secret = response.get("SecretString") or response.get("SecretBinary", b"").decode()
         if not secret:
             raise SecretResolutionError(f"AWS SM returned empty secret for {name!r}")
         return secret
@@ -158,9 +152,7 @@ class EncryptedInlineResolver:
         try:
             return fc_decrypt(ciphertext)
         except FieldCryptoError as exc:
-            raise SecretResolutionError(
-                f"inline ciphertext decrypt failed: {exc}"
-            ) from exc
+            raise SecretResolutionError(f"inline ciphertext decrypt failed: {exc}") from exc
 
 
 class VaultResolver:
@@ -185,9 +177,7 @@ class VaultResolver:
 
     def resolve(self, reference: str) -> str:
         if not reference.startswith(self.prefix):
-            raise SecretResolutionError(
-                f"VaultResolver only handles {self.prefix!r} refs"
-            )
+            raise SecretResolutionError(f"VaultResolver only handles {self.prefix!r} refs")
         path = reference[len(self.prefix) :]
 
         try:
@@ -202,9 +192,7 @@ class VaultResolver:
                 resp.raise_for_status()
                 payload = resp.json()
         except Exception as exc:
-            raise SecretResolutionError(
-                f"Vault fetch failed for {path!r}: {exc}"
-            ) from exc
+            raise SecretResolutionError(f"Vault fetch failed for {path!r}: {exc}") from exc
 
         # KV v2: data.data.value
         try:

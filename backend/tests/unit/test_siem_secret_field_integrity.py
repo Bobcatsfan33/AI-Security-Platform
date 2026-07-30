@@ -64,6 +64,6 @@ def test_declared_secret_fields_are_redacted(etype: str) -> None:
     and the redaction pattern-set must agree, or a validated field still leaks
     on read."""
     for field in SECRET_CONFIG_FIELDS[etype]:
-        assert _looks_secret(field, SECRET_CONFIG_FIELDS[etype]), (
-            f"{etype}: secret field {field!r} is not redacted by _looks_secret"
-        )
+        assert _looks_secret(
+            field, SECRET_CONFIG_FIELDS[etype]
+        ), f"{etype}: secret field {field!r} is not redacted by _looks_secret"

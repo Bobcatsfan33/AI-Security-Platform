@@ -80,9 +80,7 @@ def _tokenize(expr: str) -> list[_Token]:
                 break
         m = _TOKEN_RE.match(expr, i)
         if not m:
-            raise FilterError(
-                f"unrecognized character at offset {i}: {expr[i:i+10]!r}"
-            )
+            raise FilterError(f"unrecognized character at offset {i}: {expr[i:i+10]!r}")
         i = m.end()
         if len(out) >= _MAX_TOKENS:
             raise FilterError(f"filter exceeds maximum token count ({_MAX_TOKENS})")
@@ -91,9 +89,7 @@ def _tokenize(expr: str) -> list[_Token]:
         elif m.group("rparen"):
             out.append(_Token("rparen", ")"))
         elif m.group("lbracket") or m.group("rbracket"):
-            raise UnsupportedFilter(
-                "multi-valued attribute filters with [...] are not supported"
-            )
+            raise UnsupportedFilter("multi-valued attribute filters with [...] are not supported")
         elif m.group("string"):
             raw = m.group("string")[1:-1]
             out.append(_Token("string", raw.encode("utf-8").decode("unicode_escape")))
@@ -194,9 +190,7 @@ class _Parser:
         elif val_tok.kind == "bool":
             value = val_tok.value == "true"
         elif val_tok.kind == "number":
-            value = (
-                float(val_tok.value) if "." in val_tok.value else int(val_tok.value)
-            )
+            value = float(val_tok.value) if "." in val_tok.value else int(val_tok.value)
         else:
             raise FilterError(f"expected literal after {attr} {op}, got {val_tok.kind}")
         return _make_compare(attr, op, value)
@@ -301,9 +295,7 @@ def parse(expr: str) -> Filter:
     if not expr or not expr.strip():
         raise FilterError("empty filter expression")
     if len(expr) > _MAX_FILTER_LEN:
-        raise FilterError(
-            f"filter expression exceeds maximum length ({_MAX_FILTER_LEN} chars)"
-        )
+        raise FilterError(f"filter expression exceeds maximum length ({_MAX_FILTER_LEN} chars)")
     tokens = _tokenize(expr)
     if not tokens:
         raise FilterError("empty filter expression")

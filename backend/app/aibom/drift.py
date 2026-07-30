@@ -86,9 +86,7 @@ _TRACKED_FIELDS: tuple[str, ...] = tuple(FIELD_SEVERITY.keys())
 _SEVERITY_RANK = {"info": 0, "low": 1, "medium": 2, "high": 3, "critical": 4}
 
 
-def compute_drift(
-    *, current: dict[str, Any], baseline: dict[str, Any] | None
-) -> DriftReport:
+def compute_drift(*, current: dict[str, Any], baseline: dict[str, Any] | None) -> DriftReport:
     """Compare two asset config dicts and return a structured drift report.
 
     ``baseline`` is the snapshot we're comparing against (typically the
@@ -179,17 +177,11 @@ def _describe_change(field_name: str, old: Any, new: Any) -> str:
             return f"{field_name}: {added} item(s) removed"
         return f"{field_name}: contents changed (count unchanged)"
     if isinstance(old, str) and isinstance(new, str):
-        return (
-            f"{field_name}: changed "
-            f"({len(old)}→{len(new)} chars)"
-        )
+        return f"{field_name}: changed " f"({len(old)}→{len(new)} chars)"
     return f"{field_name}: modified"
 
 
 def _summary(changes: list[FieldChange], max_severity: Severity) -> str:
     high_count = sum(1 for c in changes if c.severity in ("high", "critical"))
     total = len(changes)
-    return (
-        f"{total} field(s) drifted, {high_count} at high+ severity "
-        f"(max={max_severity})"
-    )
+    return f"{total} field(s) drifted, {high_count} at high+ severity " f"(max={max_severity})"

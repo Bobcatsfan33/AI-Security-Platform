@@ -73,6 +73,7 @@ async def stix_bundle(
 ) -> Response:
     bundle = clusters_to_bundle(engine_module.clusters_snapshot())
     import json
+
     return Response(
         content=json.dumps(bundle, indent=2),
         media_type="application/stix+json;version=2.1",

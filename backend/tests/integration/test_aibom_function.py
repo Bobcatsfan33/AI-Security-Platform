@@ -75,10 +75,10 @@ async def asset_factory() -> AsyncIterator:
         created.append(aid)
         async with SessionLocal() as db:
             return (
-                await db.execute(
-                    text("SELECT * FROM ai_assets WHERE id = :id"), {"id": aid}
-                )
-            ).mappings().one()
+                (await db.execute(text("SELECT * FROM ai_assets WHERE id = :id"), {"id": aid}))
+                .mappings()
+                .one()
+            )
 
     yield _make
 
@@ -93,9 +93,7 @@ async def _row(asset_id: uuid.UUID) -> AIAsset:
     from sqlalchemy import select
 
     async with SessionLocal() as db:
-        return (
-            await db.execute(select(AIAsset).where(AIAsset.id == asset_id))
-        ).scalar_one()
+        return (await db.execute(select(AIAsset).where(AIAsset.id == asset_id))).scalar_one()
 
 
 # ─────────────────────────────────────────── the honest-empty case, for real

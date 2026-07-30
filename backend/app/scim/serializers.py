@@ -23,12 +23,10 @@ from app.scim.types import SCHEMA_GROUP, SCHEMA_USER, make_meta
 def user_to_scim(user: User) -> dict[str, Any]:
     """Render a User row as a SCIM 2.0 User resource."""
     given, family = _split_name(user.name)
-    created = (user.created_at or datetime.now(UTC)).isoformat().replace(
-        "+00:00", "Z"
-    )
+    created = (user.created_at or datetime.now(UTC)).isoformat().replace("+00:00", "Z")
     last_modified = (
-        user.updated_at or user.created_at or datetime.now(UTC)
-    ).isoformat().replace("+00:00", "Z")
+        (user.updated_at or user.created_at or datetime.now(UTC)).isoformat().replace("+00:00", "Z")
+    )
 
     return {
         "schemas": [SCHEMA_USER],
@@ -124,10 +122,7 @@ def group_to_scim(*, group_name: str, member_users: list[User]) -> dict[str, Any
         # table — SCIM treats id as opaque so this is permitted.
         "id": group_name,
         "displayName": group_name,
-        "members": [
-            {"value": str(u.id), "display": u.name, "type": "User"}
-            for u in member_users
-        ],
+        "members": [{"value": str(u.id), "display": u.name, "type": "User"} for u in member_users],
         "meta": {
             "resourceType": "Group",
             "location": f"/scim/v2/Groups/{group_name}",

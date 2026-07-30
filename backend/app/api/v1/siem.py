@@ -44,9 +44,7 @@ from app.siem.forwarder import get_forwarder
 router = APIRouter(tags=["admin", "siem"])
 
 
-ExporterType = Literal[
-    "splunk_hec", "elastic", "sentinel", "datadog", "chronicle", "webhook"
-]
+ExporterType = Literal["splunk_hec", "elastic", "sentinel", "datadog", "chronicle", "webhook"]
 
 
 class ExporterCreate(BaseModel):
@@ -158,9 +156,7 @@ def _validate_exporter_tier_on_create(exporter: ExporterCreate) -> None:
     raise _gated_type_error(exporter.type)
 
 
-def _validate_exporter_tier_on_update(
-    exporter: ExporterCreate, stored: dict[str, Any]
-) -> None:
+def _validate_exporter_tier_on_update(exporter: ExporterCreate, stored: dict[str, Any]) -> None:
     """Updates are judged against the STORED record, not the payload alone.
 
     When the stored type is gated, the only accepted write is *turning it off*:
@@ -250,8 +246,7 @@ def _validate_secret_refs(exporter: ExporterCreate) -> None:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=(
-                    f"{field} must be a secret reference "
-                    "(env:NAME / vault:path / awssm:arn)"
+                    f"{field} must be a secret reference " "(env:NAME / vault:path / awssm:arn)"
                 ),
             )
         try:
@@ -281,9 +276,7 @@ async def _load_org(db: AsyncSession, org_id: uuid.UUID) -> Organization:
         await db.execute(select(Organization).where(Organization.id == org_id))
     ).scalar_one_or_none()
     if org is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="org_not_found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="org_not_found")
     return org
 
 
@@ -293,9 +286,7 @@ def _exporters_list(org: Organization) -> list[dict[str, Any]]:
     return list(raw) if isinstance(raw, list) else []
 
 
-def _persist_exporters(
-    org: Organization, exporters: list[dict[str, Any]]
-) -> None:
+def _persist_exporters(org: Organization, exporters: list[dict[str, Any]]) -> None:
     settings = dict(org.settings or {})
     settings["siem_exporters"] = exporters
     org.settings = settings
@@ -366,9 +357,7 @@ async def update_exporter(
 
     stored = next((e for e in exporters if e.get("name") == name), None)
     if stored is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="exporter_not_found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="exporter_not_found")
 
     # Judged against the stored record: a gated exporter may only be turned off,
     # not rewritten while disabled. See _validate_exporter_tier_on_update.
@@ -408,9 +397,7 @@ async def delete_exporter(
     exporters = _exporters_list(org)
     remaining = [e for e in exporters if e.get("name") != name]
     if len(remaining) == len(exporters):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="exporter_not_found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="exporter_not_found")
     _persist_exporters(org, remaining)
     await db.commit()
     await get_forwarder().invalidate_org(str(org.id))

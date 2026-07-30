@@ -50,9 +50,9 @@ class AttackStrategy:
     severity: Literal["low", "medium", "high", "critical"]
     generator_system_prompt: str
     seed_prompts: tuple[str, ...]
-    attack_type: Literal[
-        "single_turn", "multi_turn", "indirect", "tool_based", "encoded"
-    ] = "single_turn"
+    attack_type: Literal["single_turn", "multi_turn", "indirect", "tool_based", "encoded"] = (
+        "single_turn"
+    )
     success_indicators: tuple[str, ...] = field(default_factory=tuple)
 
 

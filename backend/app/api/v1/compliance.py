@@ -69,10 +69,7 @@ async def list_frameworks(
                 "id": fw_id,
                 "name": _framework_name(fw_id),
                 "control_count": len(controls),
-                "controls": [
-                    {"id": cid, "title": c["title"]}
-                    for cid, c in controls.items()
-                ],
+                "controls": [{"id": cid, "title": c["title"]} for cid, c in controls.items()],
             }
         )
     return out

@@ -152,13 +152,10 @@ class CostRate:
     output_per_million: float
 
 
-def calculate_cost(
-    *, input_tokens: int, output_tokens: int, rate: CostRate
-) -> float:
-    return (
-        (input_tokens / 1_000_000.0) * rate.input_per_million
-        + (output_tokens / 1_000_000.0) * rate.output_per_million
-    )
+def calculate_cost(*, input_tokens: int, output_tokens: int, rate: CostRate) -> float:
+    return (input_tokens / 1_000_000.0) * rate.input_per_million + (
+        output_tokens / 1_000_000.0
+    ) * rate.output_per_million
 
 
 # ─────────────────────────────────────────────── Latency helper

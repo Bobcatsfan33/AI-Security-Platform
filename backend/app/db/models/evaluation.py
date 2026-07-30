@@ -59,9 +59,7 @@ class Evaluation(Base, TenantScoped):
 
     # --- Configuration ---
     test_case_ids: Mapped[JsonbList]
-    connector_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), nullable=True
-    )
+    connector_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     max_test_cases: Mapped[int | None] = mapped_column(Integer, nullable=True)
     timeout_seconds: Mapped[int] = mapped_column(Integer, default=600, nullable=False)
     parallel_workers: Mapped[int] = mapped_column(Integer, default=4, nullable=False)

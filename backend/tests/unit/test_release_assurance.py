@@ -24,15 +24,13 @@ def test_every_container_build_base_is_digest_pinned() -> None:
             if line.startswith("ARG ") and "_IMAGE=" in line
         ]
         assert args, f"{dockerfile.relative_to(_ROOT)} has no pinned image argument"
-        assert all(_DIGEST.fullmatch(value) for value in args), (
-            f"{dockerfile.relative_to(_ROOT)} has a mutable build base: {args}"
-        )
+        assert all(
+            _DIGEST.fullmatch(value) for value in args
+        ), f"{dockerfile.relative_to(_ROOT)} has a mutable build base: {args}"
 
 
 def test_workflows_use_only_commit_pinned_actions() -> None:
-    workflows = "\n".join(
-        path.read_text() for path in sorted(_WORKFLOW_DIR.glob("*.yml"))
-    )
+    workflows = "\n".join(path.read_text() for path in sorted(_WORKFLOW_DIR.glob("*.yml")))
     actions = _ACTION.findall(workflows)
     assert actions
     mutable = [action for action in actions if not re.search(r"@[0-9a-f]{40}$", action)]
@@ -54,10 +52,12 @@ def test_release_requires_approval_and_verifies_exact_identity() -> None:
         assert required in workflow
 
 
-def test_backend_ci_enforces_the_repository_wide_ruff_baseline() -> None:
+def test_backend_ci_enforces_repository_wide_python_quality_baselines() -> None:
     workflow = (_WORKFLOW_DIR / "ci.yml").read_text()
     assert "Ruff (repository-wide Python quality gate)" in workflow
     assert "ruff check app tests" in workflow
+    assert "Black (repository-wide Python format gate)" in workflow
+    assert "black --check app tests" in workflow
 
 
 def test_production_charts_require_digest_identity() -> None:

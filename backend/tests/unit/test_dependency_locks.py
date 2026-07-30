@@ -127,9 +127,9 @@ def test_the_dockerfile_installs_only_from_the_runtime_lock_with_hashes() -> Non
     """
     dockerfile = _DOCKERFILE.read_text()
 
-    assert "--require-hashes -r requirements-runtime.lock" in dockerfile, (
-        "the production image must install from the hashed runtime lock"
-    )
+    assert (
+        "--require-hashes -r requirements-runtime.lock" in dockerfile
+    ), "the production image must install from the hashed runtime lock"
     assert "pip install --prefix=/install --no-compile --no-deps ." not in dockerfile, (
         "the image copies application source directly, so building the project "
         "would only introduce floating PEP 517 build-isolation dependencies"
@@ -137,10 +137,8 @@ def test_the_dockerfile_installs_only_from_the_runtime_lock_with_hashes() -> Non
     project_installs = [
         line
         for line in dockerfile.splitlines()
-        if "pip install" in line
-        and "--prefix=/install" in line
-        and line.rstrip().endswith(" .")
+        if "pip install" in line and "--prefix=/install" in line and line.rstrip().endswith(" .")
     ]
-    assert not project_installs, (
-        f"unnecessary project build in the artifact we attest: {project_installs}"
-    )
+    assert (
+        not project_installs
+    ), f"unnecessary project build in the artifact we attest: {project_installs}"

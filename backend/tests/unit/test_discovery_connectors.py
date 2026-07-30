@@ -45,9 +45,7 @@ def test_mock_connector_discover_returns_ten_assets() -> None:
 def test_mock_connector_sync_returns_subset_of_discover() -> None:
     connector = MockConnector(config={"stable": True})
     all_assets = asyncio.run(connector.discover())
-    incremental = asyncio.run(
-        connector.sync(since=datetime.now(UTC))
-    )
+    incremental = asyncio.run(connector.sync(since=datetime.now(UTC)))
     assert 0 < len(incremental) < len(all_assets)
     # Every incremental asset must come from the discover set
     incremental_ids = {a.external_id for a in incremental}

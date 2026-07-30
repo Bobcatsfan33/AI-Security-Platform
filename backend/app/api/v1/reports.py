@@ -127,15 +127,13 @@ async def get_report(
         )
 
     findings_rows = (
-        await db.execute(
-            select(Finding).where(Finding.evaluation_id == evaluation_id)
-        )
-    ).scalars().all()
+        (await db.execute(select(Finding).where(Finding.evaluation_id == evaluation_id)))
+        .scalars()
+        .all()
+    )
 
     org = (
-        await db.execute(
-            select(Organization).where(Organization.id == identity.org_id)
-        )
+        await db.execute(select(Organization).where(Organization.id == identity.org_id))
     ).scalar_one_or_none()
     org_name = org.name if org else ""
 
@@ -151,11 +149,7 @@ async def get_report(
         return Response(
             content=markdown,
             media_type="text/markdown; charset=utf-8",
-            headers={
-                "Content-Disposition": (
-                    f'inline; filename="{template}-{evaluation_id}.md"'
-                )
-            },
+            headers={"Content-Disposition": (f'inline; filename="{template}-{evaluation_id}.md"')},
         )
 
     # PDF
@@ -169,9 +163,5 @@ async def get_report(
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
-        headers={
-            "Content-Disposition": (
-                f'attachment; filename="{template}-{evaluation_id}.pdf"'
-            )
-        },
+        headers={"Content-Disposition": (f'attachment; filename="{template}-{evaluation_id}.pdf"')},
     )

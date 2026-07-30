@@ -137,9 +137,7 @@ class MockConnector(BaseConnector):
                 },
                 "additionalProperties": False,
             },
-            supported_asset_types=[
-                "model", "endpoint", "dataset", "pipeline", "agent", "tool"
-            ],
+            supported_asset_types=["model", "endpoint", "dataset", "pipeline", "agent", "tool"],
         )
 
     async def discover(self) -> list[DiscoveredAsset]:

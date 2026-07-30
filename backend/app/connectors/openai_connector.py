@@ -173,9 +173,7 @@ class OpenAIConnector:
             return True
         if resp.status_code == 401:
             raise ConnectorAuthError("openai_health_check_unauthorized")
-        raise ConnectorError(
-            f"openai_health_check_failed: status={resp.status_code}"
-        )
+        raise ConnectorError(f"openai_health_check_failed: status={resp.status_code}")
 
     # ─────────────────────────────────────────── internals
 
@@ -222,9 +220,7 @@ class OpenAIConnector:
                     continue
                 except httpx.RequestError as exc:
                     if attempt > self._max_retries:
-                        raise ConnectorTransientError(
-                            f"openai_request_error: {exc}"
-                        ) from exc
+                        raise ConnectorTransientError(f"openai_request_error: {exc}") from exc
                     await self._backoff(attempt)
                     continue
 
@@ -237,9 +233,7 @@ class OpenAIConnector:
             if resp.status_code == 429:
                 if attempt > self._max_retries:
                     retry_after = self._parse_retry_after(resp)
-                    raise ConnectorRateLimitError(
-                        "openai_rate_limited", retry_after_s=retry_after
-                    )
+                    raise ConnectorRateLimitError("openai_rate_limited", retry_after_s=retry_after)
                 await self._backoff(attempt, retry_after=self._parse_retry_after(resp))
                 continue
             if 500 <= resp.status_code < 600:
@@ -265,9 +259,7 @@ class OpenAIConnector:
         except ValueError:
             return None
 
-    async def _backoff(
-        self, attempt: int, *, retry_after: float | None = None
-    ) -> None:
+    async def _backoff(self, attempt: int, *, retry_after: float | None = None) -> None:
         if retry_after is not None:
             delay = retry_after
         else:
@@ -279,9 +271,7 @@ class OpenAIConnector:
         )
         await asyncio.sleep(delay)
 
-    def _parse_response(
-        self, data: dict[str, Any], *, latency_ms: int
-    ) -> ConnectorResponse:
+    def _parse_response(self, data: dict[str, Any], *, latency_ms: int) -> ConnectorResponse:
         choices = data.get("choices") or []
         if not choices:
             raise ConnectorError("openai_response_missing_choices")
@@ -293,9 +283,7 @@ class OpenAIConnector:
             ToolCall(
                 id=tc.get("id", ""),
                 name=(tc.get("function") or {}).get("name", ""),
-                arguments=_safe_json_loads(
-                    (tc.get("function") or {}).get("arguments", "{}")
-                ),
+                arguments=_safe_json_loads((tc.get("function") or {}).get("arguments", "{}")),
             )
             for tc in tool_calls_raw
         )

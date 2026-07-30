@@ -178,7 +178,9 @@ def test_update_of_a_stored_allowed_type_follows_normal_rules() -> None:
         "enabled": True,
     }
 
-    _validate_exporter_tier_on_update(_payload(stored, config={"url": "v", "token": "env:T"}), stored)
+    _validate_exporter_tier_on_update(
+        _payload(stored, config={"url": "v", "token": "env:T"}), stored
+    )
 
     with pytest.raises(HTTPException):
         # …and it cannot become a gated type by the back door.
@@ -306,7 +308,12 @@ def test_an_auth_named_key_is_redacted() -> None:
     entry = {
         "type": "elastic",
         "name": "es",
-        "config": {"url": "u", "index": "i", "basic_auth_password": "hunter2", "authorization": "raw"},
+        "config": {
+            "url": "u",
+            "index": "i",
+            "basic_auth_password": "hunter2",
+            "authorization": "raw",
+        },
     }
     out = _redact(entry)
     assert out["config_redacted"]["basic_auth_password"] == "***"
