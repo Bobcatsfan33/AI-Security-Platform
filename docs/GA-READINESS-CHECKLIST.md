@@ -45,7 +45,10 @@
 - ☐ Support runbooks, SLA definition, on-call, status page
 
 ## Coverage-ratchet exit (carried from Phase 0)
-- ☐ Raise the backend coverage floor (currently 70%, with 73.82% measured by
-  the full Postgres + Redis suite on 2026-07-29) to the 80% standard. The
+- ☐ Raise the backend coverage floor (currently 70%, with 75.29% measured by
+  the full Postgres + Redis suite on 2026-07-30) to the 80% standard. The
   remaining concentration is in connector generation paths, API routes,
   policy cache, reports, and SCIM services; CI prevents regression below 70%.
+- ☑ Enforce the repository-wide Ruff baseline in CI. The full `app` and
+  `tests` trees are clean; narrowly documented exceptions preserve FastAPI,
+  SCIM, and public plugin naming contracts rather than disabling rule families.

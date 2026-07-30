@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -20,17 +20,17 @@ pytestmark = pytest.mark.unit
 
 
 def _incident(**over):
-    base = dict(
-        org_id="org-1",
-        title="Critical: propagation chain",
-        severity="critical",
-        description="multi-agent injection",
-        source="epa_fleet",
-        asset_id="asset-1",
-        correlation_id="flow-1",
-        detected_at=datetime(2026, 6, 1, tzinfo=timezone.utc),
-        detail={"agents": ["A", "B"]},
-    )
+    base = {
+        "org_id": "org-1",
+        "title": "Critical: propagation chain",
+        "severity": "critical",
+        "description": "multi-agent injection",
+        "source": "epa_fleet",
+        "asset_id": "asset-1",
+        "correlation_id": "flow-1",
+        "detected_at": datetime(2026, 6, 1, tzinfo=UTC),
+        "detail": {"agents": ["A", "B"]},
+    }
     base.update(over)
     return Incident(**base)
 

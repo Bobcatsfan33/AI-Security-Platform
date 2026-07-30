@@ -83,7 +83,7 @@ PII_PATTERNS: dict[str, re.Pattern[str]] = {
     "ssn": re.compile(r"\b(?!000|666|9\d{2})\d{3}[- ]?(?!00)\d{2}[- ]?(?!0000)\d{4}\b"),
     # Email — RFC 5321 simplified
     "email": re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b"),
-    # Credit card — 13–19 digits, allowing spaces / dashes (Luhn checked
+    # Credit card — 13-19 digits, allowing spaces / dashes (Luhn checked
     # in Python rather than regex)
     "credit_card": re.compile(r"\b(?:\d[- ]?){12,18}\d\b"),
     # US phone — covers 10-digit and +1-prefixed forms

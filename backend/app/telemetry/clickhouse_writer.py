@@ -32,9 +32,8 @@ Public surface
 from __future__ import annotations
 
 import asyncio
-import logging
 import os
-from typing import Any, Optional
+from typing import Any
 
 import structlog
 
@@ -58,8 +57,8 @@ _STOP = object()
 
 # ─────────────────────────────────────────────── State
 
-_queue: Optional["asyncio.Queue[Any]"] = None
-_flush_task: Optional[asyncio.Task] = None
+_queue: asyncio.Queue[Any] | None = None
+_flush_task: asyncio.Task | None = None
 _client: Any = None  # clickhouse_connect.Client; held lazily
 
 
@@ -91,7 +90,7 @@ def _get_client() -> Any:
             connect_timeout=5,
             send_receive_timeout=10,
         )
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         logger.warning("clickhouse_client_init_failed", error=str(exc))
         _client = None
     return _client
@@ -144,7 +143,7 @@ async def stop_writer() -> None:
         await _queue.put(_STOP)
     try:
         await asyncio.wait_for(_flush_task, timeout=10.0)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         logger.warning("clickhouse_writer_stop_timeout")
         _flush_task.cancel()
     finally:
@@ -187,7 +186,7 @@ async def _flush_loop() -> None:
         timeout = max(0.0, deadline - asyncio.get_event_loop().time())
         try:
             item = await asyncio.wait_for(_queue.get(), timeout=timeout)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             item = None  # interval elapsed → flush whatever we have
 
         if item is _STOP:
@@ -231,7 +230,7 @@ async def _insert_batch(batch: list[RuntimeEvent]) -> None:
             column_names=list(RUNTIME_EVENTS_COLUMNS),
         )
         logger.debug("clickhouse_batch_inserted", count=len(batch))
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         logger.error(
             "clickhouse_batch_insert_failed",
             batch_size=len(batch),

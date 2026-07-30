@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import re
 
-from app.detectors.base import DetectorContext, DetectorResult, Direction
 from app.detectors import util
+from app.detectors.base import DetectorContext, DetectorResult, Direction
 
 _LEGAL = (
     (re.compile(r"\b(?:is|would)\s+(?:it|this|that)\s+(?:be\s+)?(?:il)?legal\b", re.I), 0.7),

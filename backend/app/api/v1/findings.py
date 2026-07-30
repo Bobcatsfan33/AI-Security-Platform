@@ -14,8 +14,8 @@ who closed what when.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
-from typing import Any, Literal
+from datetime import UTC, datetime
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
@@ -160,7 +160,7 @@ async def update_remediation(
     if payload.remediation_owner is not None:
         row.remediation_owner = payload.remediation_owner
     if payload.remediation_status in ("remediated", "verified", "accepted_risk", "false_positive"):
-        row.verified_at = datetime.now(timezone.utc)
+        row.verified_at = datetime.now(UTC)
     row.updated_by = identity.user_id
     await db.commit()
     await db.refresh(row)

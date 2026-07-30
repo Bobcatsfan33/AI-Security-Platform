@@ -20,7 +20,6 @@ policy added in migration ``20260704_0008``.
 from __future__ import annotations
 
 import uuid
-from typing import Optional
 
 from sqlalchemy import Boolean, ForeignKey, String, Text
 from sqlalchemy.dialects.postgresql import UUID
@@ -67,9 +66,9 @@ class ConnectorConfig(Base, TenantScoped):
     verification_status: Mapped[JsonbDict]
 
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
-    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,

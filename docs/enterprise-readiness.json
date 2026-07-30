@@ -3,7 +3,7 @@
   "product": "AI Security Platform",
   "repository": "Bobcatsfan33/AI-Security-Platform",
   "assessment": {
-    "asOf": "2026-07-29",
+    "asOf": "2026-07-30",
     "reviewBy": "2026-10-29",
     "softwareReleaseCandidate": false,
     "deploymentDecision": "not-approved",
@@ -72,8 +72,7 @@
       "evidence": [".github/workflows/security.yml", "docs/SECURITY-AUDIT-CHECKLIST.md", "docs/GA-READINESS-CHECKLIST.md"],
       "gaps": [
         "No commissioned independent penetration test exists.",
-        "The backend suite measures 75.29 percent coverage and retains a 70 percent ratchet, below the 80 percent target; the security audit checklist is not externally attested.",
-        "The repository-wide Ruff baseline is not clean or enforced; high-severity Bandit SAST is the current blocking Python static-analysis gate."
+        "The backend suite measures 75.29 percent coverage and retains a 70 percent ratchet, below the 80 percent target; the security audit checklist is not externally attested."
       ]
     },
     {

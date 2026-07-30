@@ -3,7 +3,7 @@
 Consumes the runtime-event stream, drives the EPA fleet (per-agent EPAs +
 cross-agent correlation), and feeds emitted signals through the
 NarrativePipeline so Tier-3 narratives land in the store the analyst workbench
-reads. This is the long-running process that ties Sprints 2–14 together:
+reads. This is the long-running process that ties Sprints 2-14 together:
 
     Redpanda → EpaFleet + CrossAgentEPA → signals → NarrativePipeline → store
 
@@ -61,7 +61,7 @@ class EpaConsumerService:
             async for event in self._consumer.consume():
                 try:
                     await self.process_one(event)
-                except Exception as exc:  # noqa: BLE001 - one bad event must not kill the loop
+                except Exception as exc:
                     logger.warning("epa_service_event_failed", extra={"error": str(exc)})
         finally:
             await self._consumer.stop()
@@ -79,7 +79,7 @@ def _timeline_fetcher() -> Any:
                 asset_id=uuid.UUID(asset_id),
                 root_event_id=root_event_id,
             )
-        except Exception:  # noqa: BLE001
+        except Exception:
             return []
 
     return fetch

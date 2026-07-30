@@ -26,8 +26,8 @@ import logging
 import math
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Iterable, Literal
+from datetime import UTC, datetime
+from typing import Any, Literal
 
 from app.anomaly.attack_graph import AttackGraph, build_attack_graph
 
@@ -71,7 +71,7 @@ def detect_anomalies(
     """Compare two graphs (current short window vs longer baseline) and
     emit anomalies. Pure function — exposed so tests can drive directly."""
     anomalies: list[Anomaly] = []
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     # Reconstruct baseline per-node rates (counts / number of windows).
     # We treat baseline as a single window and compare counts directly,

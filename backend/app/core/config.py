@@ -112,7 +112,7 @@ class Settings(BaseSettings):
         return self.environment == "production"
 
     @model_validator(mode="after")
-    def production_cors_must_be_explicit(self) -> "Settings":
+    def production_cors_must_be_explicit(self) -> Settings:
         if self.environment != "production":
             return self
         origins = self.cors_origins_list

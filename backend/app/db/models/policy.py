@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Optional
 
 from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import UUID
@@ -42,7 +41,7 @@ class Policy(Base, TenantScoped):
         ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
-    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="draft")
     enforcement_level: Mapped[str] = mapped_column(String(16), nullable=False, default="fast")
@@ -51,7 +50,7 @@ class Policy(Base, TenantScoped):
         Float, nullable=False, default=0.7
     )
     ml_confidence_threshold_low: Mapped[float] = mapped_column(Float, nullable=False, default=0.3)
-    judge_model_endpoint: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    judge_model_endpoint: Mapped[str | None] = mapped_column(String(512), nullable=True)
     rules: Mapped[JsonbList]
     tool_allowlist: Mapped[JsonbList]
     tool_denylist: Mapped[JsonbList]
@@ -61,14 +60,14 @@ class Policy(Base, TenantScoped):
     classifiers: Mapped[JsonbList]
     classifier_sync_version: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     judge_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    judge_system_prompt: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    judge_system_prompt: Mapped[str | None] = mapped_column(Text, nullable=True)
     judge_categories: Mapped[JsonbList]
     judge_timeout_ms: Mapped[int] = mapped_column(Integer, nullable=False, default=3000)
     judge_fallback_action: Mapped[str] = mapped_column(String(16), nullable=False, default="flag")
     assigned_assets: Mapped[JsonbList]
     sync_status: Mapped[JsonbDict]
-    last_distributed_at: Mapped[Optional[datetime]] = mapped_column(_DateTimeTz, nullable=True)
-    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+    last_distributed_at: Mapped[datetime | None] = mapped_column(_DateTimeTz, nullable=True)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,

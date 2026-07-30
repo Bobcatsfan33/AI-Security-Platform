@@ -100,6 +100,20 @@ select = ["E", "F", "W", "I", "N", "UP", "B", "C4", "SIM", "RUF"]
 ignore = ["E501"]  # line length handled by black
 
 [tool.ruff.lint.per-file-ignores]
+# FastAPI intentionally declares dependency injection and request metadata as
+# function-call defaults. B008 is correct for ordinary Python but would reject
+# the framework's documented route/dependency declaration model.
+"app/api/**/*.py" = ["B008"]
+"app/auth/dependencies.py" = ["B008"]
+"app/scim/auth.py" = ["B008"]
+"app/security/rate_limit.py" = ["B008"]
+# These names are external protocol/plugin contracts and changing them would
+# be a compatibility break merely to satisfy Python naming conventions.
+"app/api/v1/scim.py" = ["N803"]
+"app/integrations/litellm_callback.py" = ["N818"]
+"app/scim/filter.py" = ["N818"]
+"app/scim/patch.py" = ["N818"]
+"app/scim/types.py" = ["N815"]
 # These intentionally contain ambiguous/confusable Unicode (zero-width, bidi,
 # full-width homoglyphs) — detecting and normalizing them is the whole point.
 "app/detectors/normalize.py" = ["RUF001", "RUF002", "RUF003"]

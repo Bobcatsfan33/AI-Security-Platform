@@ -54,7 +54,7 @@ class TestTiming:
         assert epa.env.mean_interval == pytest.approx(10.0, abs=0.5)
 
     def test_timing_survives_serialization(self):
-        epa, t = _mature_epa(interval=5.0)
+        epa, _t = _mature_epa(interval=5.0)
         restored = BehavioralEnvelope.from_dict(epa.env.to_dict())
         assert restored.mean_interval == pytest.approx(epa.env.mean_interval)
         assert restored.last_event_ts == epa.env.last_event_ts
@@ -95,7 +95,7 @@ class TestAcceleration:
 class TestAbsence:
     def test_silent_mature_agent_flagged(self):
         epa, t = _mature_epa(interval=10.0)
-        # 4× the normal interval of silence → absence.
+        # 4x the normal interval of silence → absence.
         sig = absence_signal(epa.env, now=t + 50.0, factor=4.0)
         assert sig is not None and sig.kind == "agent_silent"
         assert sig.detail["silent_seconds"] >= 40

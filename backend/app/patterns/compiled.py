@@ -22,8 +22,9 @@ pre-compiles regex so the hot path stays cheap.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import Any
 
 Severity = str
 # A compiled predicate: (event_field_value, context) -> bool.
@@ -84,10 +85,7 @@ class CompiledCondition:
     def matches_event(self, event: dict[str, Any], ctx: dict[str, Any]) -> bool:
         if (event.get("event_type") or "") != self.event_type:
             return False
-        for fname, pred in self.where:
-            if not pred(event.get(fname), ctx):
-                return False
-        return True
+        return all(pred(event.get(fname), ctx) for fname, pred in self.where)
 
 
 @dataclass(frozen=True)

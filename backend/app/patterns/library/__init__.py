@@ -35,4 +35,4 @@ def library_by_name() -> dict[str, CompiledPattern]:
     return {p.name: p for p in load_library()}
 
 
-__all__ = ["library_specs", "load_library", "library_by_name"]
+__all__ = ["library_by_name", "library_specs", "load_library"]

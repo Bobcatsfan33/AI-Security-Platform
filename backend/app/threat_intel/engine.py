@@ -13,8 +13,7 @@ from __future__ import annotations
 import logging
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Iterable
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -83,7 +82,7 @@ async def rebuild_clusters(db: AsyncSession) -> EngineState:
         new_state.clusterer.add(sample)
         new_state.samples_processed += 1
 
-    new_state.last_built_at = datetime.now(timezone.utc)
+    new_state.last_built_at = datetime.now(UTC)
     _replace_state(new_state)
     return new_state
 

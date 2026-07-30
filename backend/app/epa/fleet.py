@@ -13,12 +13,13 @@ KafkaEventConsumer + RedisEnvelopeStore.
 from __future__ import annotations
 
 import logging
-from typing import Any, AsyncIterator, Awaitable, Callable, Optional
+from collections.abc import AsyncIterator, Awaitable, Callable
+from typing import Any
 
+from app.anomaly.attack_graph import _norm
 from app.epa.agent_epa import AgentEPA, EpaSignal, absence_signal
 from app.epa.envelope import BehavioralEnvelope
 from app.epa.store import EnvelopeStore
-from app.anomaly.attack_graph import _norm
 
 logger = logging.getLogger("platform.epa.fleet")
 
@@ -30,9 +31,9 @@ class EpaFleet:
         self,
         *,
         store: EnvelopeStore,
-        sink: Optional[SignalSink] = None,
+        sink: SignalSink | None = None,
         cache_size: int = 1024,
-        cross_agent: "Optional[Any]" = None,
+        cross_agent: Any | None = None,
     ) -> None:
         self._store = store
         self._sink = sink
@@ -78,7 +79,7 @@ class EpaFleet:
 
     async def sweep_absences(self, *, now: float, factor: float = 4.0) -> list[EpaSignal]:
         """Supervisory sweep: emit agent_silent signals for cached mature
-        agents that have gone quiet past ``factor`` × their normal interval.
+        agents that have gone quiet past ``factor`` x their normal interval.
         Absence is the LACK of an event, so it can't be event-driven — the
         fleet runs this on a timer.
 
@@ -103,12 +104,12 @@ class EpaFleet:
             "agents_mature": sum(1 for e in cached if e.env.mature),
         }
 
-    async def run(self, consumer: "AsyncIterator[dict] | Any") -> None:
+    async def run(self, consumer: AsyncIterator[dict] | Any) -> None:
         """Drain a consumer until it stops. Accepts either an EventConsumer
         (has .consume()) or a raw async iterator of wire dicts."""
         stream = consumer.consume() if hasattr(consumer, "consume") else consumer
         async for event in stream:
             try:
                 await self.handle_event(event)
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 logger.warning("epa_event_failed", extra={"error": str(exc)})

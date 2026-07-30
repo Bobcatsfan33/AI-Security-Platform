@@ -18,7 +18,7 @@ from __future__ import annotations
 import dataclasses
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 
 from app.narratives.narrative import ThreatNarrative
@@ -39,7 +39,7 @@ class SuppressionRule:
     created_by: str = ""
     approved_by: str = ""
     source_narrative_id: str = ""
-    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     activated_at: datetime | None = None
     expires_at: datetime | None = None
 
@@ -61,7 +61,7 @@ class SuppressionRule:
         }
 
     @classmethod
-    def from_dict(cls, d: dict[str, Any]) -> "SuppressionRule":
+    def from_dict(cls, d: dict[str, Any]) -> SuppressionRule:
         return cls(
             id=uuid.UUID(d["id"]),
             org_id=d.get("org_id", ""),
@@ -73,7 +73,7 @@ class SuppressionRule:
             created_by=d.get("created_by", ""),
             approved_by=d.get("approved_by", ""),
             source_narrative_id=d.get("source_narrative_id", ""),
-            created_at=_dt(d.get("created_at")) or datetime.now(timezone.utc),
+            created_at=_dt(d.get("created_at")) or datetime.now(UTC),
             activated_at=_dt(d.get("activated_at")),
             expires_at=_dt(d.get("expires_at")),
         )
@@ -110,7 +110,7 @@ def activate(
     rule: SuppressionRule, *, approved_by: str, ttl_seconds: int = DEFAULT_TTL_SECONDS
 ) -> SuppressionRule:
     """Approve + activate a suggested rule with an expiry (recertification)."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     return dataclasses.replace(
         rule,
         status="active",
@@ -125,7 +125,7 @@ def expire(rule: SuppressionRule) -> SuppressionRule:
 
 
 def is_expired(rule: SuppressionRule, *, now: datetime | None = None) -> bool:
-    now = now or datetime.now(timezone.utc)
+    now = now or datetime.now(UTC)
     return rule.expires_at is not None and now >= rule.expires_at
 
 
@@ -145,7 +145,7 @@ def is_suppressed(
     now: datetime | None = None,
 ) -> bool:
     """True when an ACTIVE, UNEXPIRED rule matches the narrative."""
-    now = now or datetime.now(timezone.utc)
+    now = now or datetime.now(UTC)
     for rule in rules:
         if rule.status != "active":
             continue

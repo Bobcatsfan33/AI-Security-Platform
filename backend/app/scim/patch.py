@@ -123,7 +123,7 @@ def _add(node: dict[str, Any], path: str, value: Any) -> None:
     elif isinstance(existing, list) and isinstance(value, list):
         parent[leaf] = existing + value
     elif isinstance(existing, list):
-        parent[leaf] = existing + [value]
+        parent[leaf] = [*existing, value]
     else:
         # add on a scalar acts like replace per RFC 7644 §3.5.2.1
         parent[leaf] = value

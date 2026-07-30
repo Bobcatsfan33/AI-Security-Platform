@@ -26,8 +26,8 @@ regardless of which side originates the hop.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Mapping, Optional
 
 # ── Header names (lower-case; HTTP headers are case-insensitive) ──────────
 HEADER_TRACEPARENT = "traceparent"
@@ -71,7 +71,7 @@ class CausalContext:
         }
 
 
-def _lower_get(headers: Mapping[str, str], name: str) -> Optional[str]:
+def _lower_get(headers: Mapping[str, str], name: str) -> str | None:
     """Case-insensitive header lookup that tolerates either casing."""
     if name in headers:
         return headers[name]
@@ -81,7 +81,7 @@ def _lower_get(headers: Mapping[str, str], name: str) -> Optional[str]:
     return None
 
 
-def parse_traceparent(value: str) -> Optional[uuid.UUID]:
+def parse_traceparent(value: str) -> uuid.UUID | None:
     """Extract the root_event_id (trace-id) from a ``traceparent`` value.
 
     Returns None if the header is malformed. We validate structurally but
@@ -100,7 +100,7 @@ def parse_traceparent(value: str) -> Optional[uuid.UUID]:
         return None
 
 
-def from_headers(headers: Mapping[str, str]) -> Optional[CausalContext]:
+def from_headers(headers: Mapping[str, str]) -> CausalContext | None:
     """Reconstruct a :class:`CausalContext` from inbound request headers.
 
     Prefers the high-fidelity native headers; falls back to ``traceparent``
@@ -114,7 +114,7 @@ def from_headers(headers: Mapping[str, str]) -> Optional[CausalContext]:
     raw_depth = _lower_get(headers, HEADER_DEPTH)
     raw_tp = _lower_get(headers, HEADER_TRACEPARENT)
 
-    root: Optional[uuid.UUID] = None
+    root: uuid.UUID | None = None
     if raw_root:
         try:
             root = uuid.UUID(raw_root)
@@ -125,7 +125,7 @@ def from_headers(headers: Mapping[str, str]) -> Optional[CausalContext]:
     if root is None:
         return None
 
-    parent: Optional[uuid.UUID] = None
+    parent: uuid.UUID | None = None
     if raw_parent:
         try:
             parent = uuid.UUID(raw_parent)

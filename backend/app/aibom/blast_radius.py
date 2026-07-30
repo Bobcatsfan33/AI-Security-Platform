@@ -65,7 +65,7 @@ class BlastFactor:
     whether to trust ``score``."""
 
     name: str
-    score: float  # 0–100, this dimension in isolation
+    score: float  # 0-100, this dimension in isolation
     weight: float
     detail: str
 
@@ -73,7 +73,7 @@ class BlastFactor:
 @dataclass(frozen=True)
 class BlastRadius:
     asset_id: str
-    score: float  # 0–100, weighted
+    score: float  # 0-100, weighted
     severity: str  # low | medium | high | critical
     reach: dict[str, Any]
     factors: tuple[BlastFactor, ...]

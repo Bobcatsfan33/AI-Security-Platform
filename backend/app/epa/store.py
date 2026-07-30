@@ -9,7 +9,7 @@ platform dependency).
 from __future__ import annotations
 
 import json
-from typing import Optional, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 from app.epa.envelope import BehavioralEnvelope
 
@@ -18,7 +18,7 @@ _REDIS_PREFIX = "epa:envelope:"
 
 @runtime_checkable
 class EnvelopeStore(Protocol):
-    async def load(self, agent_instance_id: str) -> Optional[BehavioralEnvelope]: ...
+    async def load(self, agent_instance_id: str) -> BehavioralEnvelope | None: ...
 
     async def save(self, envelope: BehavioralEnvelope) -> None: ...
 
@@ -29,7 +29,7 @@ class InMemoryEnvelopeStore:
     def __init__(self) -> None:
         self._data: dict[str, dict] = {}
 
-    async def load(self, agent_instance_id: str) -> Optional[BehavioralEnvelope]:
+    async def load(self, agent_instance_id: str) -> BehavioralEnvelope | None:
         raw = self._data.get(agent_instance_id)
         return BehavioralEnvelope.from_dict(raw) if raw else None
 
@@ -44,7 +44,7 @@ class RedisEnvelopeStore:
         self._redis = redis
         self._ttl = ttl_seconds
 
-    async def load(self, agent_instance_id: str) -> Optional[BehavioralEnvelope]:
+    async def load(self, agent_instance_id: str) -> BehavioralEnvelope | None:
         raw = await self._redis.get(_REDIS_PREFIX + agent_instance_id)
         if not raw:
             return None

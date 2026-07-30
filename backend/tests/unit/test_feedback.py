@@ -5,7 +5,7 @@ FP-rate reduction once suppression is applied."""
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -89,7 +89,7 @@ class TestSuppressionLifecycle:
             approved_by="admin",
             ttl_seconds=3600,
         )
-        future = datetime.now(timezone.utc) + timedelta(hours=2)
+        future = datetime.now(UTC) + timedelta(hours=2)
         assert is_expired(rule, now=future)
         assert not is_suppressed(_narrative(), [rule], now=future)
 

@@ -22,10 +22,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.aibom.blast_radius import compute_blast_radius
 from app.aibom.builder import build_bom
-from app.core.coerce import as_dict_list
 from app.aibom.drift import compute_drift
 from app.aibom.risk import score_supply_chain
 from app.auth.dependencies import require_role
+from app.core.coerce import as_dict_list
 from app.db.models.ai_asset import AIAsset
 from app.db.session import get_db
 from app.identity.types import IdentityContext

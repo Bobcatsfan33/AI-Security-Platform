@@ -13,8 +13,10 @@ manual reset. We do NOT truncate the whole DB.
 from __future__ import annotations
 
 import os
+import socket as _socket
 import uuid
 from collections.abc import AsyncIterator
+from urllib.parse import urlparse as _urlparse
 
 import pytest
 import pytest_asyncio
@@ -108,10 +110,6 @@ def app_client():
 # Integration tests need a real Postgres. When one isn't reachable (e.g. a
 # laptop or CI job without `docker compose up -d postgres`), skip them with a
 # clear message instead of erroring out inside fixtures.
-import socket as _socket
-from urllib.parse import urlparse as _urlparse
-
-
 def _db_reachable() -> bool:
     parsed = _urlparse(os.environ["DATABASE_URL"].replace("+asyncpg", ""))
     host, port = parsed.hostname or "localhost", parsed.port or 5432

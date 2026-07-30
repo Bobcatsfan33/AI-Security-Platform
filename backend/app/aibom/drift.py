@@ -27,7 +27,7 @@ snapshot. Same intent, simpler shape.
 from __future__ import annotations
 
 import hashlib
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Literal
 
 Severity = Literal["info", "low", "medium", "high", "critical"]

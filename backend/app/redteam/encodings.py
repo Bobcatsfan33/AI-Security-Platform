@@ -11,11 +11,10 @@ prepends so the target is nudged to decode it.
 from __future__ import annotations
 
 import base64
-import binascii
 import codecs
 import urllib.parse
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable
 
 _MORSE = {
     "a": ".-",

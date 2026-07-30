@@ -40,9 +40,9 @@ import threading
 import time
 import uuid
 from dataclasses import asdict, dataclass, field
-from enum import Enum
+from enum import Enum, StrEnum
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import structlog
 
@@ -65,7 +65,7 @@ AUDIT_REDIS_TTL_DAYS: int = int(os.getenv("AUDIT_REDIS_TTL_DAYS", "90"))
 # ────────────────────────────────────────────────────────── Event taxonomy
 
 
-class AuditEventType(str, Enum):
+class AuditEventType(StrEnum):
     """AU-2 event taxonomy. Sprint 1B core set; add new entries as
     additional security-bearing operations are introduced."""
 
@@ -114,7 +114,7 @@ class AuditEventType(str, Enum):
     INTEGRITY_VIOLATION = "system.integrity_violation"
 
 
-class AuditOutcome(str, Enum):
+class AuditOutcome(StrEnum):
     SUCCESS = "success"
     FAILURE = "failure"
     UNKNOWN = "unknown"
@@ -157,10 +157,10 @@ def _canonical(record: AuditRecord) -> bytes:
 
 # Cached after first successful resolution so we don't hit the secret
 # backend on every audit write. Cleared by :func:`reset_chain_for_tests`.
-_hmac_key_cache: Optional[bytes] = None
+_hmac_key_cache: bytes | None = None
 
 
-def _resolve_hmac_key() -> Optional[bytes]:
+def _resolve_hmac_key() -> bytes | None:
     """Return the HMAC key bytes if a reference is configured, else None.
 
     A None return falls back to plain SHA-256, which is acceptable in dev
@@ -209,8 +209,8 @@ def log_event(
     subject: str = "system",
     source_ip: str = "0.0.0.0",
     resource: str = "",
-    detail: Optional[dict[str, Any]] = None,
-    correlation_id: Optional[str] = None,
+    detail: dict[str, Any] | None = None,
+    correlation_id: str | None = None,
 ) -> AuditRecord:
     """Write a tamper-evident audit entry. Thread-safe.
 
@@ -254,7 +254,7 @@ def _dispatch(record: AuditRecord) -> None:
                 _write_siem(record)
             else:
                 logger.warning("audit_unknown_backend", backend=backend)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             logger.error(
                 "audit_dispatch_failed",
                 backend=backend,
@@ -314,14 +314,14 @@ def _write_siem(record: AuditRecord) -> None:
                     "X-Platform-Event": record.event_type,
                 },
             )
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         logger.warning("audit_siem_post_failed", error=str(exc))
 
 
 # ────────────────────────────────────────────────────────── Integrity verification
 
 
-def verify_log_integrity(log_path: Optional[str] = None) -> dict[str, Any]:
+def verify_log_integrity(log_path: str | None = None) -> dict[str, Any]:
     """Walk the JSONL log and verify the hash chain.
 
     Returns:
@@ -346,7 +346,7 @@ def verify_log_integrity(log_path: Optional[str] = None) -> dict[str, Any]:
         try:
             data = json.loads(line)
             record = AuditRecord(**data)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             return {
                 "ok": False,
                 "entries": count,

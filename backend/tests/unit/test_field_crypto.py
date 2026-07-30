@@ -7,7 +7,8 @@ from __future__ import annotations
 import pytest
 from cryptography.fernet import Fernet
 
-from app.security import field_crypto, secrets as secrets_mod
+from app.security import field_crypto
+from app.security import secrets as secrets_mod
 from app.security.field_crypto import (
     FieldCrypto,
     FieldCryptoError,

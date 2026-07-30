@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
@@ -43,8 +43,8 @@ async def evidence_pack(
     inputs = EvidencePackInputs(
         org_id=identity.org_id,
         framework=framework,
-        period_start=period_start.astimezone(timezone.utc),
-        period_end=period_end.astimezone(timezone.utc),
+        period_start=period_start.astimezone(UTC),
+        period_end=period_end.astimezone(UTC),
     )
     blob = await build_pack(db, inputs)
     filename = (

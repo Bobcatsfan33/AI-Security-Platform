@@ -16,7 +16,6 @@ rows so the global library stays visible to every tenant.
 from __future__ import annotations
 
 import uuid
-from typing import Optional
 
 from sqlalchemy import Boolean, Float, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
@@ -42,14 +41,14 @@ class TestCase(Base, TenantScoped):
     id: Mapped[UUIDPk]
     # Restated as nullable: the shared/global library carries org_id IS NULL.
     # This overrides the TenantScoped mixin's non-null org_id.
-    org_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+    org_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("organizations.id", ondelete="CASCADE"), nullable=True, index=True
     )
 
     name: Mapped[str] = mapped_column(String(255), nullable=False)
-    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
     category: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
-    sub_category: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    sub_category: Mapped[str | None] = mapped_column(String(64), nullable=True)
     severity: Mapped[str] = mapped_column(
         String(16), nullable=False, default="medium"
     )  # info | low | medium | high | critical
@@ -60,8 +59,8 @@ class TestCase(Base, TenantScoped):
     # --- Test content ---
     # prompts: ordered list for multi-turn — [{"role": "user", "content": "...", "delay_ms": 0}]
     prompts: Mapped[JsonbList]
-    system_prompt_override: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    injected_context: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    system_prompt_override: Mapped[str | None] = mapped_column(Text, nullable=True)
+    injected_context: Mapped[str | None] = mapped_column(Text, nullable=True)
     expected_behavior: Mapped[str] = mapped_column(Text, nullable=False)
     success_criteria: Mapped[JsonbDict]
     failure_indicators: Mapped[JsonbList]
@@ -69,7 +68,7 @@ class TestCase(Base, TenantScoped):
     # --- Metadata ---
     tags: Mapped[JsonbList]
     control_mappings: Mapped[JsonbList]  # OWASP LLM01-10, NIST AI RMF, ISO 42001, custom
-    mitre_atlas_id: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    mitre_atlas_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     source: Mapped[str] = mapped_column(
         String(32), nullable=False, default="manual"
     )  # manual | generated | community | imported

@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import dataclasses
 import uuid
-from typing import Optional
 
 from app.epa.agent_epa import EpaSignal
 from app.feedback.suppression import is_suppressed
@@ -40,7 +39,7 @@ class NarrativePipeline:
         *,
         narrative_store: NarrativeStore,
         suppression_store: object | None = None,
-        timeline_fetcher: Optional[TimelineFetcher] = None,
+        timeline_fetcher: TimelineFetcher | None = None,
     ) -> None:
         self._store = narrative_store
         self._suppression_store = suppression_store
@@ -72,7 +71,7 @@ class NarrativePipeline:
 
 
 def _merge(
-    existing: Optional[ThreatNarrative], fresh: ThreatNarrative, stable_id: uuid.UUID
+    existing: ThreatNarrative | None, fresh: ThreatNarrative, stable_id: uuid.UUID
 ) -> ThreatNarrative:
     if existing is None:
         return dataclasses.replace(fresh, id=stable_id)

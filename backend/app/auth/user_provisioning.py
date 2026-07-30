@@ -15,7 +15,7 @@ makes group changes (in Okta / Azure AD) actually take effect on the platform.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -73,7 +73,7 @@ async def upsert_user_from_claims(
         user.role = role
         user.is_active = True
 
-    user.last_login_at = datetime.now(timezone.utc)
+    user.last_login_at = datetime.now(UTC)
     await db.flush()
     await db.refresh(user)
     return user

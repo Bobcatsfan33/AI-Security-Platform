@@ -94,7 +94,7 @@ class TestChildThreading:
         from app.telemetry.runtime_event import RUNTIME_EVENTS_COLUMNS
 
         child = _root_event().child(event_type="tool_call")
-        row = dict(zip(RUNTIME_EVENTS_COLUMNS, child.to_row()))
+        row = dict(zip(RUNTIME_EVENTS_COLUMNS, child.to_row(), strict=False))
         assert row["parent_event_id"] == child.parent_event_id
         assert row["root_event_id"] == child.root_event_id
         assert row["causal_depth"] == 1

@@ -2,7 +2,7 @@
 
 Renders the validation-suite results (Sprint 13) into a Markdown report that
 slots alongside the OWASP/NIST/SOC2 templates. Where the strategic brief
-*claims* an 85–95% alert reduction and <5% false positives, this reports the
+*claims* an 85-95% alert reduction and <5% false positives, this reports the
 platform's own MEASURED detection rate and false-positive rate, with an
 optional before/after comparison against a recorded baseline.
 
@@ -11,7 +11,7 @@ PDF rendering reuses app.reports.builder.render_pdf.
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 
 
 def _pct(x: float) -> str:
@@ -31,7 +31,7 @@ def _delta_row(label: str, before: float, after: float, *, lower_is_better: bool
 def build_efficacy_report(
     suite_summary: dict[str, Any],
     *,
-    baseline: Optional[dict[str, Any]] = None,
+    baseline: dict[str, Any] | None = None,
     org_name: str = "",
     generated_at: str = "",
 ) -> str:
@@ -114,7 +114,7 @@ def build_efficacy_report(
     lines.append(
         "These figures are measured against **synthetic** attack scenarios, not "
         "production traffic. They validate that the configured detections fire "
-        "for the modeled threats (the brief's §4.1–4.4) and that a benign control "
+        "for the modeled threats (the brief's §4.1-4.4) and that a benign control "
         "produces no alerts. Production efficacy must be confirmed with replayed "
         "real telemetry and analyst-labelled outcomes before any external claim."
     )

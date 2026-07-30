@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -37,8 +37,8 @@ class DiscoveredAsset(BaseModel):
     name: str = Field(min_length=1, max_length=512)
     asset_type: str = Field(description="model | endpoint | dataset | pipeline | agent | tool")
     provider: str = Field(min_length=1, max_length=128)
-    description: Optional[str] = None
-    version: Optional[str] = None
+    description: str | None = None
+    version: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -47,7 +47,7 @@ class ConnectionStatus(BaseModel):
 
     connected: bool
     message: str
-    latency_ms: Optional[float] = None
+    latency_ms: float | None = None
 
 
 class ConnectorMetadata(BaseModel):

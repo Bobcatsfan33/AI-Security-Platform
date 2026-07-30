@@ -22,12 +22,10 @@ the operator re-runs.
 
 from __future__ import annotations
 
-import json
 import logging
-import re
 import uuid
-from datetime import datetime, timezone
-from typing import Any
+from datetime import UTC, datetime
+from typing import ClassVar
 
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -46,7 +44,6 @@ from app.db.models.test_case import TestCase
 from app.db.session import SessionLocal
 from app.policy.compiled import CompiledPolicy
 from app.policy.pipeline import PolicyPipeline
-from app.policy.types import Direction, PolicyInput
 from app.redteam.judge import AttackJudge, JudgeVerdict
 from app.security.audit_log import AuditEventType, AuditOutcome, log_event
 from app.siem.exporters import SiemEvent
@@ -147,7 +144,7 @@ class EvaluationRunner:
                         finding = await self._run_one(
                             db, eval_row, asset, connector, tc, policy
                         )
-                    except Exception as exc:  # noqa: BLE001
+                    except Exception as exc:
                         logger.warning(
                             "evaluation_test_case_error",
                             extra={"test_case_id": str(tc.id), "error": str(exc)},
@@ -162,7 +159,7 @@ class EvaluationRunner:
                         db.add(finding)
                         get_forwarder().submit(
                             SiemEvent(
-                                timestamp=datetime.now(timezone.utc),
+                                timestamp=datetime.now(UTC),
                                 org_id=str(eval_row.org_id),
                                 event_type="finding",
                                 severity=finding.severity,
@@ -206,7 +203,7 @@ class EvaluationRunner:
                     total_cost=total_cost,
                 )
 
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 logger.exception("evaluation_runner_failed")
                 await self._mark_failed(db, eval_row, str(exc))
 
@@ -214,7 +211,7 @@ class EvaluationRunner:
 
     async def _mark_running(self, db: AsyncSession, eval_row: Evaluation) -> None:
         eval_row.status = "running"
-        eval_row.started_at = datetime.now(timezone.utc)
+        eval_row.started_at = datetime.now(UTC)
         await db.commit()
         log_event(
             AuditEventType.CONFIG_CHANGED,
@@ -505,7 +502,7 @@ class EvaluationRunner:
             source="no_judge",
         )
 
-    _REMEDIATION_TABLE = {
+    _REMEDIATION_TABLE: ClassVar[dict[str, str]] = {
         "prompt_injection": (
             "Strengthen the system prompt with explicit instructions to never reveal it. "
             "Add Stage 1 regex rules covering the matched patterns. Consider escalating "
@@ -553,7 +550,7 @@ class EvaluationRunner:
         score: float,
         total_cost: float,
     ) -> None:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         eval_row.status = "completed"
         eval_row.completed_at = now
         if eval_row.started_at:
@@ -605,7 +602,7 @@ class EvaluationRunner:
         self, db: AsyncSession, eval_row: Evaluation, error: str
     ) -> None:
         eval_row.status = "failed"
-        eval_row.completed_at = datetime.now(timezone.utc)
+        eval_row.completed_at = datetime.now(UTC)
         eval_row.summary = {"error": error}
         await db.commit()
         log_event(

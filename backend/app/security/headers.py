@@ -27,13 +27,13 @@ response, including error responses).
 from __future__ import annotations
 
 import os
-from typing import Awaitable, Callable
+from collections.abc import Awaitable, Callable
+from typing import ClassVar
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
 from starlette.types import ASGIApp
-
 
 # ─────────────────────────────────────────────── Security headers
 
@@ -140,7 +140,7 @@ class RequestValidationMiddleware(BaseHTTPMiddleware):
     """SI-10 input validation surface — runs before any route handler."""
 
     _MAX_HEADER_VALUE_LEN = 8192
-    _MUTATION_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
+    _MUTATION_METHODS: ClassVar[set[str]] = {"POST", "PUT", "PATCH", "DELETE"}
     # Paths where we enforce JSON content-type on mutations. SCIM uses
     # ``application/scim+json`` and is allowed via the substring check below.
     _PROTECTED_PREFIXES = ("/v1/",)

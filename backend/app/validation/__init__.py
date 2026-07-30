@@ -17,8 +17,8 @@ from app.validation.scenarios import ValidationScenario, all_scenarios
 __all__ = [
     "SuiteResult",
     "ValidationResult",
-    "run_scenario",
-    "run_suite",
     "ValidationScenario",
     "all_scenarios",
+    "run_scenario",
+    "run_suite",
 ]

@@ -9,12 +9,8 @@ connector. Semantic search runs over ``embedding`` via pgvector.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
-from typing import Any, Optional
-
-
-def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+from datetime import UTC, datetime
+from typing import Any
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
@@ -36,6 +32,11 @@ from app.db.base import (
     UUIDPk,
 )
 from app.db.tenancy import TenantScoped
+
+
+def _utcnow() -> datetime:
+    return datetime.now(UTC)
+
 
 ASSET_TYPE_ENUM = ENUM(
     "model",
@@ -79,7 +80,7 @@ class AIAsset(Base, TenantScoped):
         ASSET_STATUS_ENUM, nullable=False, default="active"
     )
     provider: Mapped[str] = mapped_column(Text, nullable=False, index=True)
-    version: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    version: Mapped[str | None] = mapped_column(Text, nullable=True)
     external_id: Mapped[str] = mapped_column(Text, nullable=False, index=True)
     connector_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("connectors.id", ondelete="CASCADE"),
@@ -89,14 +90,14 @@ class AIAsset(Base, TenantScoped):
     risk_score: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, index=True
     )
-    owner_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+    owner_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("owners.id", ondelete="SET NULL"), nullable=True, index=True
     )
-    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
     metadata_json: Mapped[JsonbDict]
 
     # pgvector. Nullable — we backfill embeddings lazily.
-    embedding: Mapped[Optional[Any]] = mapped_column(Vector(1536), nullable=True)
+    embedding: Mapped[Any | None] = mapped_column(Vector(1536), nullable=True)
 
     discovered_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_utcnow
@@ -108,15 +109,15 @@ class AIAsset(Base, TenantScoped):
     created_at: Mapped[TimestampUtc]
     updated_at: Mapped[TimestampUtcUpdated]
 
-    connector: Mapped["Connector"] = relationship(  # noqa: F821
+    connector: Mapped[Connector] = relationship(  # noqa: F821
         "Connector", lazy="joined"
     )
-    owner: Mapped[Optional["Owner"]] = relationship(  # noqa: F821
+    owner: Mapped[Owner | None] = relationship(  # noqa: F821
         "Owner", lazy="joined"
     )
-    deployments: Mapped[list["Deployment"]] = relationship(  # noqa: F821
+    deployments: Mapped[list[Deployment]] = relationship(  # noqa: F821
         "Deployment", cascade="all, delete-orphan"
     )
-    tags: Mapped[list["AssetTag"]] = relationship(  # noqa: F821
+    tags: Mapped[list[AssetTag]] = relationship(  # noqa: F821
         "AssetTag", cascade="all, delete-orphan"
     )

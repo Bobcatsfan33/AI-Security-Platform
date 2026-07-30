@@ -3,12 +3,8 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
-from typing import Any, Optional
-
-
-def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+from datetime import UTC, datetime
+from typing import Any
 
 from sqlalchemy import DateTime, ForeignKey
 from sqlalchemy.dialects.postgresql import ENUM, JSONB
@@ -16,6 +12,11 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, UUIDPk
 from app.db.tenancy import TenantScoped
+
+
+def _utcnow() -> datetime:
+    return datetime.now(UTC)
+
 
 CHANGE_TYPE_ENUM = ENUM(
     "created",
@@ -38,10 +39,10 @@ class AssetChangelog(Base, TenantScoped):
         ForeignKey("ai_assets.id", ondelete="CASCADE"), nullable=False, index=True
     )
     change_type: Mapped[str] = mapped_column(CHANGE_TYPE_ENUM, nullable=False)
-    previous_value: Mapped[Optional[dict[str, Any]]] = mapped_column(
+    previous_value: Mapped[dict[str, Any] | None] = mapped_column(
         JSONB, nullable=True
     )
-    new_value: Mapped[Optional[dict[str, Any]]] = mapped_column(JSONB, nullable=True)
+    new_value: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     changed_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

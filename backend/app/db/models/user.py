@@ -8,7 +8,7 @@ user provisioned by Org B's Okta.
 from __future__ import annotations
 
 import uuid
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from sqlalchemy import ForeignKey, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -50,20 +50,20 @@ class User(Base, TenantScoped):
     )  # owner | admin | analyst | viewer | api_only
 
     # Identity provider linkage (NULL for legacy/local users — not supported in Sprint 1)
-    idp_config_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+    idp_config_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("idp_configs.id", ondelete="SET NULL"), nullable=True, index=True
     )
-    idp_subject_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    idp_subject_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     idp_groups: Mapped[JsonbList]
 
     is_active: Mapped[bool] = mapped_column(default=True, nullable=False)
-    last_login_at: Mapped[Optional[TimestampUtc]] = mapped_column(nullable=True)
+    last_login_at: Mapped[TimestampUtc | None] = mapped_column(nullable=True)
     created_at: Mapped[TimestampUtc]
     updated_at: Mapped[TimestampUtcUpdated]
 
-    organization: Mapped["Organization"] = relationship(back_populates="users")
+    organization: Mapped[Organization] = relationship(back_populates="users")
     # Two FKs link users ↔ idp_configs (this side: idp_config_id; other side:
     # idp_configs.created_by). Disambiguate explicitly.
-    idp_config: Mapped[Optional["IdpConfig"]] = relationship(
+    idp_config: Mapped[IdpConfig | None] = relationship(
         "IdpConfig", foreign_keys="User.idp_config_id"
     )

@@ -213,6 +213,9 @@ jobs:
         run: |
           pip install pip-audit
           pip-audit
+      - name: Ruff (repository-wide Python quality gate)
+        working-directory: backend
+        run: ruff check app tests
       - name: Apply migrations
         working-directory: backend
         run: alembic upgrade head

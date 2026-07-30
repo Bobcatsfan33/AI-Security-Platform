@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Optional
 
 from sqlalchemy import DateTime, Float, ForeignKey, Integer, Text
 from sqlalchemy.dialects.postgresql import UUID
@@ -42,7 +41,7 @@ class RedTeamCampaign(Base, TenantScoped):
     )
     # The asset under test, if the campaign targets a catalogued asset. No FK —
     # a campaign can target an ad-hoc system prompt with no asset row.
-    asset_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+    asset_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), nullable=True, index=True
     )
     status: Mapped[str] = mapped_column(Text, nullable=False, default="created", index=True)
@@ -52,12 +51,12 @@ class RedTeamCampaign(Base, TenantScoped):
     target_errors: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     success_rate: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
-    risk_label: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    risk_label: Mapped[str | None] = mapped_column(Text, nullable=True)
     total_cost_usd: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     summary: Mapped[JsonbDict]
-    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    started_at: Mapped[Optional[datetime]] = mapped_column(_DateTimeTz, nullable=True)
-    completed_at: Mapped[Optional[datetime]] = mapped_column(_DateTimeTz, nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(_DateTimeTz, nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(_DateTimeTz, nullable=True)
 
     created_at: Mapped[TimestampUtc]
     updated_at: Mapped[TimestampUtcUpdated]
@@ -73,7 +72,7 @@ class RedTeamFinding(Base, TenantScoped):
     campaign_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("red_team_campaigns.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    asset_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+    asset_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), nullable=True, index=True
     )
     strategy_id: Mapped[str] = mapped_column(Text, nullable=False)

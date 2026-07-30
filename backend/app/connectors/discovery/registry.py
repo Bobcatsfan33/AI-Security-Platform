@@ -13,21 +13,20 @@ for the bundled registrations. Third parties extend by calling
 from __future__ import annotations
 
 import logging
-from typing import Type
 
 from app.connectors.discovery.base import BaseConnector, ConnectorMetadata
 
 logger = logging.getLogger("platform.connectors.registry")
 
 
-_REGISTRY: dict[str, Type[BaseConnector]] = {}
+_REGISTRY: dict[str, type[BaseConnector]] = {}
 
 
 class UnknownConnectorTypeError(KeyError):
     """Raised when a connector_type isn't registered."""
 
 
-def register(connector_type: str, connector_class: Type[BaseConnector]) -> None:
+def register(connector_type: str, connector_class: type[BaseConnector]) -> None:
     """Register a connector class for a given type key.
 
     Re-registering the same key replaces the previous class — useful
@@ -47,7 +46,7 @@ def register(connector_type: str, connector_class: Type[BaseConnector]) -> None:
     _REGISTRY[connector_type] = connector_class
 
 
-def get(connector_type: str) -> Type[BaseConnector]:
+def get(connector_type: str) -> type[BaseConnector]:
     try:
         return _REGISTRY[connector_type]
     except KeyError as exc:
@@ -60,7 +59,7 @@ def list_available() -> list[ConnectorMetadata]:
     for cls in _REGISTRY.values():
         try:
             out.append(cls.get_metadata())
-        except Exception as exc:  # noqa: BLE001 — metadata is best-effort
+        except Exception as exc:
             logger.warning(
                 "connector_metadata_failed",
                 extra={"class": cls.__name__, "error": str(exc)},

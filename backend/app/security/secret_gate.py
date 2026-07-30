@@ -13,8 +13,8 @@ Call :func:`assert_production_secrets` once during application startup
 from __future__ import annotations
 
 import os
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Mapping
 
 import structlog
 

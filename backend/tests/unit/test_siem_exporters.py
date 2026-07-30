@@ -7,17 +7,15 @@ export() success/failure paths via a fake httpx client.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
 from app.core.config import get_settings
 from app.siem import exporters as ex
 from app.siem.exporters import (
-    ChronicleExporter,
     DatadogExporter,
     ElasticExporter,
-    SentinelExporter,
     SiemEvent,
     SplunkHECExporter,
     WebhookExporter,
@@ -56,17 +54,17 @@ def _passthrough_resolver():
         _secrets.set_resolver(original)
 
 def _event(**over):
-    base = dict(
-        timestamp=datetime(2026, 6, 1, tzinfo=timezone.utc),
-        org_id="org-1",
-        event_type="finding",
-        severity="high",
-        source="evaluation",
-        title="Prompt injection detected",
-        detail={"rule": "pi-1", "score": 0.9},
-        asset_id="asset-1",
-        correlation_id="corr-1",
-    )
+    base = {
+        "timestamp": datetime(2026, 6, 1, tzinfo=UTC),
+        "org_id": "org-1",
+        "event_type": "finding",
+        "severity": "high",
+        "source": "evaluation",
+        "title": "Prompt injection detected",
+        "detail": {"rule": "pi-1", "score": 0.9},
+        "asset_id": "asset-1",
+        "correlation_id": "corr-1",
+    }
     base.update(over)
     return SiemEvent(**base)
 

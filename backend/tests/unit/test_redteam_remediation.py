@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import base64
 
-import pytest
-
 from app.aiguard.service import AIGuardService
 from app.detectors.base import Direction
 from app.redteam import encodings, personas, scanners

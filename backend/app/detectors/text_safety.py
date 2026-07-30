@@ -5,8 +5,8 @@ from __future__ import annotations
 
 import re
 
-from app.detectors.base import Detector, DetectorContext, DetectorResult, Direction
 from app.detectors import util
+from app.detectors.base import DetectorContext, DetectorResult, Direction
 
 # ─────────────────────────────────────────────── Toxicity
 

@@ -12,8 +12,8 @@ from __future__ import annotations
 import ipaddress
 import re
 
-from app.detectors.base import DetectorContext, DetectorResult, Direction
 from app.detectors import util
+from app.detectors.base import DetectorContext, DetectorResult, Direction
 
 _URL_RE = re.compile(r"\b(?:https?://|www\.)[^\s<>\"')]+", re.I)
 _HOST_RE = re.compile(r"https?://([^/:\s]+)", re.I)

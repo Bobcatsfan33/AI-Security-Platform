@@ -23,13 +23,13 @@ single fan-out.
 from __future__ import annotations
 
 import logging
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass
 from typing import Any
 
 from app.connectors.base import ConnectorError, ConnectorResponse, ModelConnector
-from app.redteam.generator import AttackGenerator, GenerationRequest, GeneratedAttack
+from app.redteam.generator import AttackGenerator, GeneratedAttack, GenerationRequest
 from app.redteam.judge import AttackJudge, JudgeVerdict
-from app.redteam.strategies import STRATEGIES, AttackStrategy
+from app.redteam.strategies import AttackStrategy
 
 logger = logging.getLogger("platform.redteam.campaign")
 

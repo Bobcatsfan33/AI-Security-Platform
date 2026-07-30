@@ -8,7 +8,8 @@ dependency degrades gracefully rather than crashing import.
 from __future__ import annotations
 
 import logging
-from typing import Any, AsyncIterator, Optional
+from collections.abc import AsyncIterator
+from typing import Any
 
 from app.streaming.serde import decode, encode, partition_key
 from app.telemetry.runtime_event import RuntimeEvent
@@ -35,7 +36,7 @@ class KafkaEventProducer:
             self._producer = AIOKafkaProducer(bootstrap_servers=self._brokers)
             await self._producer.start()
             logger.info("kafka_producer_started", extra={"brokers": self._brokers})
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             logger.warning("kafka_producer_start_failed", extra={"error": str(exc)})
             self._producer = None
 
@@ -54,7 +55,7 @@ class KafkaEventProducer:
                 self._topic, value=encode(event), key=partition_key(event)
             )
             return True
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             logger.warning("kafka_publish_failed", extra={"error": str(exc)})
             return False
 

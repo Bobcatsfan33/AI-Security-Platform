@@ -21,7 +21,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-from typing import Any, Optional
+from typing import Any
 
 from app.connectors.anthropic_connector import AnthropicConnector
 from app.core.config import get_settings
@@ -63,7 +63,7 @@ def build_judge_fn() -> JudgeFn | None:
 
 # ─────────────────────────────────────────────── process-wide judge
 
-_judge_fn: Optional[JudgeFn] = None
+_judge_fn: JudgeFn | None = None
 _resolved = False
 
 
@@ -99,7 +99,7 @@ async def judge_content(text: str) -> dict[str, Any]:
         cached = await redis.get(key)
         if cached:
             return {**json.loads(cached), "mode": "stage3_llm_judge", "cached": True}
-    except Exception as exc:  # noqa: BLE001 - cache is best-effort
+    except Exception as exc:
         logger.debug("judge_cache_read_failed", extra={"error": str(exc)})
         redis = None
 
@@ -113,6 +113,6 @@ async def judge_content(text: str) -> dict[str, Any]:
     try:
         if redis is not None:
             await redis.set(key, json.dumps(out), ex=_CACHE_TTL_SECONDS)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         logger.debug("judge_cache_write_failed", extra={"error": str(exc)})
     return {**out, "mode": "stage3_llm_judge"}

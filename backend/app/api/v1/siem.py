@@ -256,7 +256,7 @@ def _validate_secret_refs(exporter: ExporterCreate) -> None:
             )
         try:
             resolver.resolve(value)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"{field} secret could not be resolved: {exc}",

@@ -7,7 +7,8 @@ depend on the Protocols, never the concrete class.
 
 from __future__ import annotations
 
-from typing import AsyncIterator, Optional, Protocol, runtime_checkable
+from collections.abc import AsyncIterator
+from typing import Protocol, runtime_checkable
 
 from app.telemetry.runtime_event import RuntimeEvent
 
@@ -43,17 +44,17 @@ class EventConsumer(Protocol):
 
 # ─────────────────────────────────────────────── process-wide producer
 
-_producer: Optional[EventProducer] = None
+_producer: EventProducer | None = None
 
 
-def set_producer(producer: Optional[EventProducer]) -> None:
+def set_producer(producer: EventProducer | None) -> None:
     """Install the process producer (called from app lifespan, or by tests
     to inject the in-memory bus)."""
     global _producer
     _producer = producer
 
 
-def get_producer() -> Optional[EventProducer]:
+def get_producer() -> EventProducer | None:
     """Return the installed producer, or None when streaming is disabled."""
     return _producer
 

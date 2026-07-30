@@ -1,6 +1,6 @@
 """Supply-chain risk scoring.
 
-Produces a 0–100 score for an asset's supply chain. The score combines
+Produces a 0-100 score for an asset's supply chain. The score combines
 several signals — none of which is decisive on its own — into a
 composable risk indicator that a CISO can show on a dashboard and
 sort/filter against.
@@ -65,7 +65,7 @@ class RiskComponent:
 @dataclass(frozen=True)
 class SupplyChainRisk:
     asset_id: str
-    score: float                    # 0–100
+    score: float                    # 0-100
     components: tuple[RiskComponent, ...]
     factors: dict[str, Any] = field(default_factory=dict)
 
@@ -160,10 +160,7 @@ def score_supply_chain(asset: dict[str, Any]) -> SupplyChainRisk:
     # use carry materially more risk than narrow assistant configs
     is_agentic = as_bool(asset.get("is_agentic")) is True  # strict: "false" is not True
     blast = as_number(asset.get("blast_radius_score")) or 0.0  # non-numeric -> 0, never 500
-    if is_agentic:
-        agentic_risk = min(100.0, 40.0 + blast)
-    else:
-        agentic_risk = 0.0
+    agentic_risk = min(100.0, 40.0 + blast) if is_agentic else 0.0
     components.append(
         RiskComponent(
             name="agentic_blast_radius",

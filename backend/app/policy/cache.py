@@ -22,6 +22,7 @@ dict assignment, so readers never observe a half-built policy.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import uuid
@@ -108,10 +109,8 @@ class CompiledPolicyCache:
         task = self._tasks.pop(org_id, None)
         if task and not task.done():
             task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError, Exception):
                 await task
-            except (asyncio.CancelledError, Exception):  # noqa: BLE001
-                pass
 
     async def stop_all(self) -> None:
         """Cancel every active subscriber. Called from app shutdown."""
@@ -154,7 +153,7 @@ class CompiledPolicyCache:
             try:
                 await pubsub.unsubscribe(chan)
                 await pubsub.aclose()
-            except Exception:  # noqa: BLE001
+            except Exception:
                 pass
 
     async def _apply_invalidation(self, payload: dict[str, Any]) -> None:

@@ -25,18 +25,18 @@ from app.feedback.suppression import (
 
 __all__ = [
     "FpStat",
-    "fp_rate_by_kind",
-    "overall_fp_rate",
-    "narrative_to_testcase",
-    "on_false_positive",
-    "SuppressionStore",
     "InMemorySuppressionStore",
     "RedisSuppressionStore",
     "SuppressionRule",
+    "SuppressionStore",
     "activate",
     "expire",
+    "fp_rate_by_kind",
     "is_expired",
     "is_suppressed",
     "matches",
+    "narrative_to_testcase",
+    "on_false_positive",
+    "overall_fp_rate",
     "suggest_from_narrative",
 ]

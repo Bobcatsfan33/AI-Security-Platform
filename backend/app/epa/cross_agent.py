@@ -24,9 +24,10 @@ signal kind fires once per flow (deduped) so a long flow doesn't spam.
 
 from __future__ import annotations
 
+import contextlib
 import json
 from dataclasses import dataclass, field
-from typing import Any, Optional, Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 from app.anomaly.attack_graph import _norm
 from app.epa.agent_epa import EpaSignal
@@ -73,7 +74,7 @@ class CorrelationState:
         }
 
     @classmethod
-    def from_dict(cls, d: dict[str, Any]) -> "CorrelationState":
+    def from_dict(cls, d: dict[str, Any]) -> CorrelationState:
         s = cls(correlation_key=d["correlation_key"])
         s.org_id = d.get("org_id", "")
         s.agents = set(d.get("agents", []))
@@ -95,7 +96,7 @@ class CorrelationState:
 
 @runtime_checkable
 class CorrelationStore(Protocol):
-    async def load(self, correlation_key: str) -> Optional[CorrelationState]: ...
+    async def load(self, correlation_key: str) -> CorrelationState | None: ...
 
     async def save(self, state: CorrelationState) -> None: ...
 
@@ -104,7 +105,7 @@ class InMemoryCorrelationStore:
     def __init__(self) -> None:
         self._data: dict[str, dict] = {}
 
-    async def load(self, correlation_key: str) -> Optional[CorrelationState]:
+    async def load(self, correlation_key: str) -> CorrelationState | None:
         raw = self._data.get(correlation_key)
         return CorrelationState.from_dict(raw) if raw else None
 
@@ -117,7 +118,7 @@ class RedisCorrelationStore:
         self._redis = redis
         self._ttl = ttl_seconds
 
-    async def load(self, correlation_key: str) -> Optional[CorrelationState]:
+    async def load(self, correlation_key: str) -> CorrelationState | None:
         raw = await self._redis.get(_REDIS_PREFIX + correlation_key)
         return CorrelationState.from_dict(json.loads(raw)) if raw else None
 
@@ -160,10 +161,8 @@ class CrossAgentEPA:
             state.data_access_count += 1
         if et in _EXFIL:
             state.exfil_count += 1
-        try:
+        with contextlib.suppress(TypeError, ValueError):
             state.max_depth = max(state.max_depth, int(event.get("causal_depth") or 0))
-        except (TypeError, ValueError):
-            pass
 
         signals = self._evaluate(state)
         await self._store.save(state)

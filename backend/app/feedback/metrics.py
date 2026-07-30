@@ -3,13 +3,13 @@
 Computes FP rate per narrative kind from dispositioned narratives. The exit
 criterion for the feedback loop is a measurable FP-rate decline across tuning
 cycles; this is what produces that number (instead of the brief's unverified
-85–95% claim — we measure actuals).
+85-95% claim — we measure actuals).
 """
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Iterable
 
 from app.narratives.narrative import ThreatNarrative
 

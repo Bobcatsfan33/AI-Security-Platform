@@ -8,7 +8,6 @@ optional deps are installed.
 
 from __future__ import annotations
 
-import os
 from typing import Any
 
 import pytest
@@ -24,7 +23,6 @@ from app.security.secrets import (
     invalidate_cache,
     set_resolver,
 )
-
 
 # --------------------------------------------------------- EnvVarResolver
 

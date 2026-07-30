@@ -40,7 +40,6 @@ URL; ``complete_login`` accepts the POST body from the ACS callback.
 
 from __future__ import annotations
 
-import base64
 import logging
 from typing import Any
 from urllib.parse import urlparse
@@ -153,7 +152,7 @@ class SamlAdapter:
         auth = self._build_auth(request_data=request_data, sp_acs_url=sp_acs_url)
         try:
             auth.process_response()
-        except Exception as exc:  # noqa: BLE001 — onelogin wraps various errors
+        except Exception as exc:
             raise IdentityAuthError(f"saml_process_response_failed: {exc}") from exc
 
         if not auth.is_authenticated():
@@ -229,10 +228,7 @@ class SamlAdapter:
 
         # Subject: usually the NameID, but a customer may map a custom attribute
         subject_key = m.get("subject", "NameID")
-        if subject_key == "NameID":
-            subject_id = name_id
-        else:
-            subject_id = _first(attributes.get(subject_key, []))
+        subject_id = name_id if subject_key == "NameID" else _first(attributes.get(subject_key, []))
 
         email = _first(attributes.get(m.get("email", "email"), [])) or _first(
             attributes.get(

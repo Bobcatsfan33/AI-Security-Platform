@@ -47,7 +47,6 @@ import logging
 import os
 import re
 from dataclasses import dataclass, field
-from typing import Optional
 
 from app.security.secrets import SecretResolutionError, get_resolver
 
@@ -90,8 +89,8 @@ class FieldCrypto:
     # ─────────────────────────────────────────────── construction
 
     @classmethod
-    def from_env(cls) -> "FieldCrypto":
-        Fernet, _ = _import_fernet()
+    def from_env(cls) -> FieldCrypto:
+        fernet_class, _ = _import_fernet()
         keys: dict[int, _KeyEntry] = {}
 
         keyring_ref = os.getenv("FIELD_CRYPTO_KEYRING_REF", "").strip()
@@ -119,7 +118,7 @@ class FieldCrypto:
                     )
                 version = int(tag[1:])
                 keys[version] = _KeyEntry(
-                    version=version, fernet=Fernet(key_b64.encode())
+                    version=version, fernet=fernet_class(key_b64.encode())
                 )
         elif single_ref:
             try:
@@ -128,7 +127,7 @@ class FieldCrypto:
                 raise FieldCryptoError(
                     f"could not resolve FIELD_CRYPTO_KEY_REF: {exc}"
                 ) from exc
-            keys[1] = _KeyEntry(version=1, fernet=Fernet(key_value.encode()))
+            keys[1] = _KeyEntry(version=1, fernet=fernet_class(key_value.encode()))
 
         if not keys:
             raise FieldCryptoError(
@@ -154,10 +153,7 @@ class FieldCrypto:
         real to a naive reader."""
         if plaintext in (None, "", b""):
             return ""
-        if isinstance(plaintext, str):
-            plaintext_bytes = plaintext.encode("utf-8")
-        else:
-            plaintext_bytes = plaintext
+        plaintext_bytes = plaintext.encode("utf-8") if isinstance(plaintext, str) else plaintext
         entry = self.keys[self.active_version]
         token = entry.fernet.encrypt(plaintext_bytes).decode("utf-8")  # type: ignore[union-attr]
         return f"v{self.active_version}:{token}"
@@ -175,13 +171,13 @@ class FieldCrypto:
             raise FieldCryptoError(
                 f"ciphertext key version v{version} not in current keyring"
             )
-        _, InvalidToken = _import_fernet()
+        _, invalid_token_error = _import_fernet()
         try:
             return entry.fernet.decrypt(token.encode("utf-8")).decode("utf-8")  # type: ignore[union-attr]
-        except InvalidToken as exc:
+        except invalid_token_error as exc:
             raise FieldCryptoError("invalid_or_tampered_ciphertext") from exc
 
-    def is_encrypted(self, value: Optional[str]) -> bool:
+    def is_encrypted(self, value: str | None) -> bool:
         return bool(value) and bool(_PREFIX_RE.match(value))
 
     def reencrypt(self, ciphertext: str) -> str:
@@ -194,7 +190,7 @@ class FieldCrypto:
 
 # ─────────────────────────────────────────────── module-level singleton
 
-_INSTANCE: Optional[FieldCrypto] = None
+_INSTANCE: FieldCrypto | None = None
 
 
 def get_engine() -> FieldCrypto:
@@ -220,5 +216,5 @@ def decrypt(ciphertext: str | None) -> str:
 
 def generate_key() -> str:
     """Print-friendly: generate a fresh urlsafe-base64 32-byte Fernet key."""
-    Fernet, _ = _import_fernet()
-    return Fernet.generate_key().decode("utf-8")
+    fernet_class, _ = _import_fernet()
+    return fernet_class.generate_key().decode("utf-8")

@@ -9,7 +9,7 @@ causal flow as correlation_id.
 
 from __future__ import annotations
 
-from typing import Any, Literal, Optional
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -40,7 +40,7 @@ class NarrativeOut(BaseModel):
     assignee: str = ""
     rationale: str = ""
     created_at: str
-    disposition_at: Optional[str] = None
+    disposition_at: str | None = None
     contributing: list[dict[str, Any]] = Field(default_factory=list)
     causal_timeline: list[dict[str, Any]] = Field(default_factory=list)
 
@@ -62,8 +62,8 @@ def _serialise(n: Any) -> NarrativeOut:
 
 @router.get("", response_model=list[NarrativeOut])
 async def list_narratives(
-    status: Optional[str] = Query(None),
-    severity: Optional[str] = Query(None),
+    status: str | None = Query(None),
+    severity: str | None = Query(None),
     identity: IdentityContext = Depends(require_role("analyst")),
 ) -> list[NarrativeOut]:
     store = await _store()
@@ -118,7 +118,7 @@ async def disposition_narrative(
 
             rule = on_false_positive(updated, reason=body.rationale, created_by=identity.email)
             await RedisSuppressionStore(await get_redis()).save(rule)
-        except Exception:  # noqa: BLE001 - feedback is best-effort
+        except Exception:
             pass
     elif body.status == "confirmed":
         try:
@@ -136,7 +136,7 @@ async def disposition_narrative(
             incident = narrative_to_incident(updated)
             for sink in build_adapters([]):  # org SOAR config wired in prod
                 await sink.open(incident)
-        except Exception:  # noqa: BLE001 - SOAR/promotion is fail-open
+        except Exception:
             pass
 
     return _serialise(updated)

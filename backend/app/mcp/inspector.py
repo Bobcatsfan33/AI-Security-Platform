@@ -533,7 +533,7 @@ _CHAIN_RISK = {"critical": 0.6, "high": 0.35, "medium": 0.15, "low": 0.05, "info
 def compute_risk_score(
     violations: Sequence[Violation], chain_matches: Sequence[ChainMatch]
 ) -> float:
-    """Combine violation severity + chain matches into a 0–1 risk score.
+    """Combine violation severity + chain matches into a 0-1 risk score.
 
     Base score is the highest single-violation severity. Chain matches
     add on top, capped at 1.0.

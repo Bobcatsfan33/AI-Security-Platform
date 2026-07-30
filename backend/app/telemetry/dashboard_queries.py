@@ -88,14 +88,14 @@ def _safe_query(query: str, parameters: dict[str, Any]) -> list[dict[str, Any]]:
         return []
     try:
         result = client.query(query, parameters=parameters)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         logger.warning(
             "clickhouse_query_failed",
             extra={"error": str(exc), "query_prefix": query[:80]},
         )
         return []
     columns = list(result.column_names)
-    return [dict(zip(columns, row)) for row in result.result_rows]
+    return [dict(zip(columns, row, strict=False)) for row in result.result_rows]
 
 
 # ──────────────────────────────────────────────── runtime overview

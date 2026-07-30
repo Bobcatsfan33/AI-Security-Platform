@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from typing import Optional, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 from app.feedback.suppression import SuppressionRule
 
@@ -15,9 +15,9 @@ _REDIS_INDEX = "suppression:index:"
 class SuppressionStore(Protocol):
     async def save(self, rule: SuppressionRule) -> None: ...
 
-    async def get(self, org_id: str, rule_id: str) -> Optional[SuppressionRule]: ...
+    async def get(self, org_id: str, rule_id: str) -> SuppressionRule | None: ...
 
-    async def list(self, org_id: str, *, status: Optional[str] = None) -> list[SuppressionRule]: ...
+    async def list(self, org_id: str, *, status: str | None = None) -> list[SuppressionRule]: ...
 
 
 class InMemorySuppressionStore:
@@ -27,11 +27,11 @@ class InMemorySuppressionStore:
     async def save(self, rule: SuppressionRule) -> None:
         self._data.setdefault(rule.org_id, {})[str(rule.id)] = rule.to_dict()
 
-    async def get(self, org_id: str, rule_id: str) -> Optional[SuppressionRule]:
+    async def get(self, org_id: str, rule_id: str) -> SuppressionRule | None:
         raw = self._data.get(org_id, {}).get(rule_id)
         return SuppressionRule.from_dict(raw) if raw else None
 
-    async def list(self, org_id: str, *, status: Optional[str] = None) -> list[SuppressionRule]:
+    async def list(self, org_id: str, *, status: str | None = None) -> list[SuppressionRule]:
         items = [SuppressionRule.from_dict(d) for d in self._data.get(org_id, {}).values()]
         if status:
             items = [r for r in items if r.status == status]
@@ -50,11 +50,11 @@ class RedisSuppressionStore:
         await self._redis.set(self._key(rule.org_id, rid), json.dumps(rule.to_dict()))
         await self._redis.sadd(f"{_REDIS_INDEX}{rule.org_id}", rid)
 
-    async def get(self, org_id: str, rule_id: str) -> Optional[SuppressionRule]:
+    async def get(self, org_id: str, rule_id: str) -> SuppressionRule | None:
         raw = await self._redis.get(self._key(org_id, rule_id))
         return SuppressionRule.from_dict(json.loads(raw)) if raw else None
 
-    async def list(self, org_id: str, *, status: Optional[str] = None) -> list[SuppressionRule]:
+    async def list(self, org_id: str, *, status: str | None = None) -> list[SuppressionRule]:
         ids = await self._redis.smembers(f"{_REDIS_INDEX}{org_id}")
         out: list[SuppressionRule] = []
         for rid in ids:

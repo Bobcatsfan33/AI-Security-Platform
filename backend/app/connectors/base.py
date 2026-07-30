@@ -25,7 +25,6 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Protocol, runtime_checkable
 
-
 # ─────────────────────────────────────────────── Errors
 
 
@@ -182,7 +181,7 @@ class LatencyTimer:
     def elapsed_ms(self) -> int:
         return self._elapsed_ms
 
-    def __enter__(self) -> "LatencyTimer":
+    def __enter__(self) -> LatencyTimer:
         self._start = time.perf_counter()
         return self
 

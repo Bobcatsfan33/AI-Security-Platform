@@ -1,7 +1,7 @@
 """AI Guard ↔ RAPIDE bridge — the best-of-both-worlds merge glue.
 
 The Zscaler-style AI Guard suite (Phase 0) inspects ONE message for content
-violations. The RAPIDE stack (Sprints 5–8) correlates agent BEHAVIOUR over
+violations. The RAPIDE stack (Sprints 5-8) correlates agent BEHAVIOUR over
 time into Tier-3 narratives. Neither base joins them — this bridge does:
 an AI Guard ``block``/``detect`` verdict becomes an ``EpaSignal`` that flows
 through the same NarrativePipeline as behavioural signals, so a content
