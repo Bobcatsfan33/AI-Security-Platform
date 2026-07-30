@@ -19,7 +19,7 @@ from __future__ import annotations
 import secrets
 from collections.abc import AsyncIterator
 
-from fastapi import Depends, Header, HTTPException, status
+from fastapi import Depends, Header, status
 from passlib.hash import bcrypt
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -28,6 +28,7 @@ from app.db.models.idp_config import IdpConfig
 from app.db.models.organization import Organization
 from app.db.session import get_db
 from app.db.tenancy import current_org_id
+from app.scim.types import SCIMError
 from app.security.audit_log import AuditEventType, log_event
 
 
@@ -44,8 +45,8 @@ async def scim_authenticated_idp(
     ``app.current_org`` GUC) itself once the org is known, and reset on exit.
     """
     if not authorization or not authorization.lower().startswith("bearer "):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
+        raise SCIMError(
+            status=status.HTTP_401_UNAUTHORIZED,
             detail="missing_bearer_token",
             headers={"WWW-Authenticate": "Bearer"},
         )
@@ -57,7 +58,7 @@ async def scim_authenticated_idp(
         await db.execute(select(Organization).where(Organization.slug == org_slug))
     ).scalar_one_or_none()
     if org is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="org_not_found")
+        raise SCIMError(status=status.HTTP_404_NOT_FOUND, detail="org_not_found")
 
     # Sanctioned tenant-guard bypass #2: IdpConfig is tenant-scoped, but this
     # lookup resolves which IdP the inbound token belongs to and runs before org
@@ -80,16 +81,17 @@ async def scim_authenticated_idp(
         )
     ).scalar_one_or_none()
     if idp is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
+        raise SCIMError(
+            status=status.HTTP_404_NOT_FOUND,
             detail="no_active_scim_config_for_org",
         )
 
     stored_hash = (idp.scim_config or {}).get("bearer_token_hash") or ""
     if not stored_hash or not _verify_token(token, stored_hash):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
+        raise SCIMError(
+            status=status.HTTP_401_UNAUTHORIZED,
             detail="invalid_bearer_token",
+            headers={"WWW-Authenticate": "Bearer"},
         )
 
     # Token verified — arm both isolation walls for the provisioning queries that

@@ -9,6 +9,8 @@ from app.identity.adapter import IdpAdapter
 from app.identity.oidc_adapter import OidcAdapter
 from app.identity.saml_adapter import SamlAdapter
 
+_PROVISIONABLE_ROLES = frozenset({"admin", "analyst", "viewer"})
+
 
 def build_adapter(idp: IdpConfig) -> IdpAdapter:
     if idp.provider_type == "oidc":
@@ -29,9 +31,11 @@ def map_groups_to_role(
     "viewer" (least-privilege fallback).
     """
     mapping: dict[str, str] = directory_sync.get("group_to_role_mapping") or {}
-    default_role: str = directory_sync.get("default_role") or "viewer"
+    configured_default: str = directory_sync.get("default_role") or "viewer"
+    default_role = configured_default if configured_default in _PROVISIONABLE_ROLES else "viewer"
 
     for group in idp_groups:
         if group in mapping:
-            return mapping[group]
+            mapped = mapping[group]
+            return mapped if mapped in _PROVISIONABLE_ROLES else "viewer"
     return default_role

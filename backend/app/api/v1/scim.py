@@ -14,6 +14,7 @@ scoped.
 from __future__ import annotations
 
 import uuid
+from json import JSONDecodeError
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query, Request, Response
@@ -27,15 +28,27 @@ from app.scim import groups as scim_groups
 from app.scim import users as scim_users
 from app.scim.auth import scim_authenticated_idp
 from app.scim.types import (
+    SCHEMA_GROUP as GROUP_SCHEMA,
+)
+from app.scim.types import (
     SCHEMA_LIST_RESPONSE,
     SCHEMA_RESOURCE_TYPE,
     SCHEMA_SP_CONFIG,
-    SCHEMA_USER as USER_SCHEMA,
-    SCHEMA_GROUP as GROUP_SCHEMA,
     SCIMError,
 )
+from app.scim.types import (
+    SCHEMA_USER as USER_SCHEMA,
+)
+from app.security.rate_limit import SCIM, rate_limit_ip
 
-router = APIRouter(tags=["scim"])
+# The tier registry keys routers by their first path segment. Keep ``/scim`` as
+# that registered segment while this router owns the protocol-version suffix.
+_scim_ip_rl = rate_limit_ip(bucket="scim", **SCIM)
+router = APIRouter(
+    prefix="/v2",
+    tags=["scim"],
+    dependencies=[Depends(_scim_ip_rl)],
+)
 
 SCIM_MEDIA_TYPE = "application/scim+json"
 
@@ -49,7 +62,18 @@ def _scim_error_response(exc: SCIMError) -> JSONResponse:
         content=exc.to_response(),
         status_code=exc.status,
         media_type=SCIM_MEDIA_TYPE,
+        headers=exc.headers,
     )
+
+
+async def _payload(request: Request) -> dict[str, Any]:
+    try:
+        payload = await request.json()
+    except (JSONDecodeError, UnicodeDecodeError) as exc:
+        raise SCIMError(400, "Malformed JSON payload", scimType="invalidSyntax") from exc
+    if not isinstance(payload, dict):
+        raise SCIMError(400, "Payload must be a JSON object", scimType="invalidSyntax")
+    return payload
 
 
 # ─────────────────────────────────────────────── Users
@@ -63,8 +87,8 @@ async def create_user(
     db: AsyncSession = Depends(get_db),
 ) -> Response:
     org, idp = org_idp
-    payload = await request.json()
     try:
+        payload = await _payload(request)
         result = await scim_users.create_user(db, payload, org_id=org.id, idp=idp)
     except SCIMError as exc:
         return _scim_error_response(exc)
@@ -78,9 +102,9 @@ async def get_user(
     org_idp: tuple[Organization, IdpConfig] = Depends(scim_authenticated_idp),
     db: AsyncSession = Depends(get_db),
 ) -> Response:
-    org, _ = org_idp
+    org, idp = org_idp
     try:
-        result = await scim_users.get_user(db, user_id, org_id=org.id)
+        result = await scim_users.get_user(db, user_id, org_id=org.id, idp=idp)
     except SCIMError as exc:
         return _scim_error_response(exc)
     return _scim_response(result)
@@ -95,11 +119,9 @@ async def replace_user(
     db: AsyncSession = Depends(get_db),
 ) -> Response:
     org, idp = org_idp
-    payload = await request.json()
     try:
-        result = await scim_users.replace_user(
-            db, user_id, payload, org_id=org.id, idp=idp
-        )
+        payload = await _payload(request)
+        result = await scim_users.replace_user(db, user_id, payload, org_id=org.id, idp=idp)
     except SCIMError as exc:
         return _scim_error_response(exc)
     return _scim_response(result)
@@ -114,11 +136,9 @@ async def patch_user(
     db: AsyncSession = Depends(get_db),
 ) -> Response:
     org, idp = org_idp
-    payload = await request.json()
     try:
-        result = await scim_users.patch_user(
-            db, user_id, payload, org_id=org.id, idp=idp
-        )
+        payload = await _payload(request)
+        result = await scim_users.patch_user(db, user_id, payload, org_id=org.id, idp=idp)
     except SCIMError as exc:
         return _scim_error_response(exc)
     return _scim_response(result)
@@ -131,9 +151,9 @@ async def delete_user(
     org_idp: tuple[Organization, IdpConfig] = Depends(scim_authenticated_idp),
     db: AsyncSession = Depends(get_db),
 ) -> Response:
-    org, _ = org_idp
+    org, idp = org_idp
     try:
-        await scim_users.delete_user(db, user_id, org_id=org.id)
+        await scim_users.delete_user(db, user_id, org_id=org.id, idp=idp)
     except SCIMError as exc:
         return _scim_error_response(exc)
     return Response(status_code=204)
@@ -148,7 +168,7 @@ async def list_users(
     org_idp: tuple[Organization, IdpConfig] = Depends(scim_authenticated_idp),
     db: AsyncSession = Depends(get_db),
 ) -> Response:
-    org, _ = org_idp
+    org, idp = org_idp
     try:
         result = await scim_users.list_users(
             db,
@@ -156,6 +176,7 @@ async def list_users(
             start_index=startIndex,
             count=count,
             filter_expr=filter,
+            idp=idp,
         )
     except SCIMError as exc:
         return _scim_error_response(exc)
@@ -173,8 +194,8 @@ async def create_group(
     db: AsyncSession = Depends(get_db),
 ) -> Response:
     org, idp = org_idp
-    payload = await request.json()
     try:
+        payload = await _payload(request)
         result = await scim_groups.create_group(db, payload, org_id=org.id, idp=idp)
     except SCIMError as exc:
         return _scim_error_response(exc)
@@ -188,9 +209,9 @@ async def get_group(
     org_idp: tuple[Organization, IdpConfig] = Depends(scim_authenticated_idp),
     db: AsyncSession = Depends(get_db),
 ) -> Response:
-    org, _ = org_idp
+    org, idp = org_idp
     try:
-        result = await scim_groups.get_group(db, group_name, org_id=org.id)
+        result = await scim_groups.get_group(db, group_name, org_id=org.id, idp=idp)
     except SCIMError as exc:
         return _scim_error_response(exc)
     return _scim_response(result)
@@ -203,9 +224,14 @@ async def list_groups(
     org_idp: tuple[Organization, IdpConfig] = Depends(scim_authenticated_idp),
     db: AsyncSession = Depends(get_db),
 ) -> Response:
-    org, _ = org_idp
+    org, idp = org_idp
     try:
-        result = await scim_groups.list_groups(db, org_id=org.id, filter_expr=filter)
+        result = await scim_groups.list_groups(
+            db,
+            org_id=org.id,
+            idp=idp,
+            filter_expr=filter,
+        )
     except SCIMError as exc:
         return _scim_error_response(exc)
     return _scim_response(result)
@@ -220,11 +246,9 @@ async def patch_group(
     db: AsyncSession = Depends(get_db),
 ) -> Response:
     org, idp = org_idp
-    payload = await request.json()
     try:
-        result = await scim_groups.patch_group(
-            db, group_name, payload, org_id=org.id, idp=idp
-        )
+        payload = await _payload(request)
+        result = await scim_groups.patch_group(db, group_name, payload, org_id=org.id, idp=idp)
     except SCIMError as exc:
         return _scim_error_response(exc)
     return _scim_response(result)

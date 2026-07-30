@@ -428,12 +428,16 @@ still allows under the same raised threshold.
 
 ## P2 — deferred, with triggers
 
-### GAP-009 — SCIM + IdP admin are frozen
-**What:** SCIM 2.0 (13 endpoints) and IdP admin (5) are built and unmounted.
-**Trigger: promote before the first enterprise contract.** SCIM appears on
-essentially every enterprise procurement questionnaire, but is irrelevant to a
-90-day design-partner POC, where OIDC login (substrate, already working) is
-sufficient. Spending Phase 1 hours here would buy nothing a partner will probe.
+### GAP-009 — SCIM + IdP admin are frozen ✅ CLOSED
+**Was:** SCIM 2.0 (13 endpoints) and IdP admin (5) were built but unmounted
+until the enterprise-contract promotion trigger.
+
+**Closed by:** both routers are now substrate and mounted at `/v1/scim/v2` and
+`/v1/idp`. Promotion includes admin-only IdP management, per-source and
+per-principal rate limits, one-time SCIM token rotation, SCIM-formatted
+authentication and validation failures, database-enforced single-active-SCIM
+integrity, least-privilege group mapping, and mounted HTTP plus cross-tenant
+tests. See `docs/IDENTITY-PROVISIONING.md`.
 
 ### GAP-008 — Two conflicting compliance framework lists
 **What:** `/v1/compliance` offers `soc2 | iso27001 | fedramp_moderate`;

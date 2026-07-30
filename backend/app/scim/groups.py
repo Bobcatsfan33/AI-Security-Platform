@@ -34,24 +34,46 @@ from app.scim import filter as scim_filter
 from app.scim.patch import PatchError, UnsupportedPatch, apply_patch
 from app.scim.serializers import group_to_scim
 from app.scim.types import SCHEMA_GROUP, SCHEMA_LIST_RESPONSE, SCIMError
-
+from app.security.audit_log import AuditEventType, log_event
 
 # ─────────────────────────────────────────────── helpers
 
 
 async def _users_in_group(
-    db: AsyncSession, *, org_id: uuid.UUID, group_name: str
+    db: AsyncSession,
+    *,
+    org_id: uuid.UUID,
+    idp_id: uuid.UUID,
+    group_name: str,
 ) -> list[User]:
     rows = (
-        await db.execute(select(User).where(User.org_id == org_id))
-    ).scalars().all()
+        (
+            await db.execute(
+                select(User).where(
+                    User.org_id == org_id,
+                    User.idp_config_id == idp_id,
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
     return [u for u in rows if group_name in (u.idp_groups or [])]
 
 
-async def _all_users(db: AsyncSession, *, org_id: uuid.UUID) -> list[User]:
+async def _all_users(db: AsyncSession, *, org_id: uuid.UUID, idp_id: uuid.UUID) -> list[User]:
     rows = (
-        await db.execute(select(User).where(User.org_id == org_id))
-    ).scalars().all()
+        (
+            await db.execute(
+                select(User).where(
+                    User.org_id == org_id,
+                    User.idp_config_id == idp_id,
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
     return list(rows)
 
 
@@ -80,8 +102,12 @@ async def create_group(
     if SCHEMA_GROUP not in (payload.get("schemas") or []):
         raise SCIMError(400, "Group schema missing", scimType="invalidValue")
     display_name = payload.get("displayName")
-    if not display_name:
-        raise SCIMError(400, "displayName is required", scimType="invalidValue")
+    if not isinstance(display_name, str) or not display_name or len(display_name) > 255:
+        raise SCIMError(
+            400,
+            "displayName must be 1 to 255 characters",
+            scimType="invalidValue",
+        )
 
     members = payload.get("members") or []
     if not isinstance(members, list):
@@ -94,24 +120,53 @@ async def create_group(
         user_id_str = entry.get("value")
         if not user_id_str:
             continue
+        try:
+            user_id = uuid.UUID(str(user_id_str))
+        except ValueError:
+            continue
         user = (
             await db.execute(
-                select(User).where(User.id == uuid.UUID(user_id_str), User.org_id == org_id)
+                select(User).where(
+                    User.id == user_id,
+                    User.org_id == org_id,
+                    User.idp_config_id == idp.id,
+                )
             )
         ).scalar_one_or_none()
         if user is not None:
-            user.idp_groups = sorted(set([*(user.idp_groups or []), display_name]))
+            user.idp_groups = sorted({*(user.idp_groups or []), display_name})
             _refresh_role(user, idp)
     await db.commit()
 
-    member_users = await _users_in_group(db, org_id=org_id, group_name=display_name)
+    member_users = await _users_in_group(
+        db,
+        org_id=org_id,
+        idp_id=idp.id,
+        group_name=display_name,
+    )
+    _audit_group(
+        org_id=org_id,
+        idp=idp,
+        group_name=display_name,
+        operation="create",
+        member_count=len(member_users),
+    )
     return group_to_scim(group_name=display_name, member_users=member_users)
 
 
 async def get_group(
-    db: AsyncSession, group_name: str, *, org_id: uuid.UUID
+    db: AsyncSession,
+    group_name: str,
+    *,
+    org_id: uuid.UUID,
+    idp: IdpConfig,
 ) -> dict[str, Any]:
-    member_users = await _users_in_group(db, org_id=org_id, group_name=group_name)
+    member_users = await _users_in_group(
+        db,
+        org_id=org_id,
+        idp_id=idp.id,
+        group_name=group_name,
+    )
     if not member_users:
         raise SCIMError(404, "Group not found")
     return group_to_scim(group_name=group_name, member_users=member_users)
@@ -121,9 +176,10 @@ async def list_groups(
     db: AsyncSession,
     *,
     org_id: uuid.UUID,
+    idp: IdpConfig,
     filter_expr: str | None = None,
 ) -> dict[str, Any]:
-    users = await _all_users(db, org_id=org_id)
+    users = await _all_users(db, org_id=org_id, idp_id=idp.id)
     groups: list[dict[str, Any]] = []
     for name in _distinct_group_names(users):
         members = [u for u in users if name in (u.idp_groups or [])]
@@ -155,7 +211,12 @@ async def patch_group(
     org_id: uuid.UUID,
     idp: IdpConfig,
 ) -> dict[str, Any]:
-    members = await _users_in_group(db, org_id=org_id, group_name=group_name)
+    members = await _users_in_group(
+        db,
+        org_id=org_id,
+        idp_id=idp.id,
+        group_name=group_name,
+    )
     if not members and not patch_doc.get("Operations"):
         raise SCIMError(404, "Group not found")
 
@@ -169,9 +230,7 @@ async def patch_group(
 
     new_members = patched.get("members") or []
     new_member_ids = {
-        str(m.get("value"))
-        for m in new_members
-        if isinstance(m, dict) and m.get("value")
+        str(m.get("value")) for m in new_members if isinstance(m, dict) and m.get("value")
     }
     current_member_ids = {str(u.id) for u in members}
 
@@ -185,11 +244,13 @@ async def patch_group(
             continue
         user = (
             await db.execute(
-                select(User).where(User.id == uid, User.org_id == org_id)
+                select(User)
+                .where(User.id == uid, User.org_id == org_id)
+                .where(User.idp_config_id == idp.id)
             )
         ).scalar_one_or_none()
         if user is not None:
-            user.idp_groups = sorted(set([*(user.idp_groups or []), group_name]))
+            user.idp_groups = sorted({*(user.idp_groups or []), group_name})
             _refresh_role(user, idp)
 
     for user_id_str in to_remove:
@@ -199,7 +260,9 @@ async def patch_group(
             continue
         user = (
             await db.execute(
-                select(User).where(User.id == uid, User.org_id == org_id)
+                select(User)
+                .where(User.id == uid, User.org_id == org_id)
+                .where(User.idp_config_id == idp.id)
             )
         ).scalar_one_or_none()
         if user is not None:
@@ -207,7 +270,19 @@ async def patch_group(
             _refresh_role(user, idp)
 
     await db.commit()
-    refreshed = await _users_in_group(db, org_id=org_id, group_name=group_name)
+    refreshed = await _users_in_group(
+        db,
+        org_id=org_id,
+        idp_id=idp.id,
+        group_name=group_name,
+    )
+    _audit_group(
+        org_id=org_id,
+        idp=idp,
+        group_name=group_name,
+        operation="patch",
+        member_count=len(refreshed),
+    )
     return group_to_scim(group_name=group_name, member_users=refreshed)
 
 
@@ -218,8 +293,8 @@ async def delete_group(
     org_id: uuid.UUID,
     idp: IdpConfig,
 ) -> None:
-    """Remove the group name from every user's idp_groups in the org."""
-    users = await _all_users(db, org_id=org_id)
+    """Remove the group name from this IdP's users in the organization."""
+    users = await _all_users(db, org_id=org_id, idp_id=idp.id)
     affected = False
     for u in users:
         if group_name in (u.idp_groups or []):
@@ -229,3 +304,30 @@ async def delete_group(
     if not affected:
         raise SCIMError(404, "Group not found")
     await db.commit()
+    _audit_group(
+        org_id=org_id,
+        idp=idp,
+        group_name=group_name,
+        operation="delete",
+        member_count=0,
+    )
+
+
+def _audit_group(
+    *,
+    org_id: uuid.UUID,
+    idp: IdpConfig,
+    group_name: str,
+    operation: str,
+    member_count: int,
+) -> None:
+    log_event(
+        AuditEventType.GROUP_MEMBERSHIP_UPDATED,
+        tenant_id=str(org_id),
+        subject=f"scim_idp:{idp.id}",
+        resource=f"group:{group_name}",
+        detail={
+            "operation": operation,
+            "member_count": member_count,
+        },
+    )

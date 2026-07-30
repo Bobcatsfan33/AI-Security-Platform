@@ -54,9 +54,7 @@ logger = structlog.get_logger("platform.audit")
 # ────────────────────────────────────────────────────────── Configuration
 
 AUDIT_BACKENDS: tuple[str, ...] = tuple(
-    b.strip().lower()
-    for b in os.getenv("AUDIT_BACKEND", "file").split(",")
-    if b.strip()
+    b.strip().lower() for b in os.getenv("AUDIT_BACKEND", "file").split(",") if b.strip()
 )
 AUDIT_FILE: str = os.getenv("AUDIT_LOG_PATH", "./var/audit/audit.jsonl")
 AUDIT_HMAC_KEY_REF: str = os.getenv("AUDIT_HMAC_KEY_REF", "")
@@ -96,6 +94,9 @@ class AuditEventType(str, Enum):
     # Tenant / user lifecycle
     TENANT_CREATED = "tenant.created"
     USER_PROVISIONED = "user.provisioned"
+    USER_UPDATED = "user.updated"
+    USER_DEPROVISIONED = "user.deprovisioned"
+    GROUP_MEMBERSHIP_UPDATED = "group.membership.updated"
 
     # API keys
     API_KEY_CREATED = "apikey.created"
@@ -128,7 +129,7 @@ class AuditRecord:
     event_type: str
     outcome: str
     tenant_id: str = "_global_"
-    subject: str = "system"        # user_id, api_key_id, or "system"
+    subject: str = "system"  # user_id, api_key_id, or "system"
     source_ip: str = "0.0.0.0"
     resource: str = ""
     detail: dict[str, Any] = field(default_factory=dict)

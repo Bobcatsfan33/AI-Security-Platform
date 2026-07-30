@@ -37,3 +37,16 @@ class TestGroupMapping:
         # (least privilege).
         assert map_groups_to_role([], {}) == "viewer"
         assert map_groups_to_role(["Unknown"], {"group_to_role_mapping": {}}) == "viewer"
+
+    def test_provisioning_cannot_grant_owner(self) -> None:
+        """An admin manages IdP mappings but may not mint the higher owner role."""
+        assert (
+            map_groups_to_role(
+                ["Privileged"],
+                {
+                    "group_to_role_mapping": {"Privileged": "owner"},
+                    "default_role": "owner",
+                },
+            )
+            == "viewer"
+        )

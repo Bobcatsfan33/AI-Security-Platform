@@ -12,12 +12,14 @@ from typing import Any, Literal
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, Field, HttpUrl
+from pydantic import BaseModel, Field, HttpUrl, field_validator
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import require_role
 from app.db.models.idp_config import IdpConfig
+from app.db.models.organization import Organization
 from app.db.session import get_db
 from app.identity.types import IdentityContext
 from app.scim.auth import generate_scim_token
@@ -29,8 +31,11 @@ from app.security.outbound_url import (
     pinned_async_transport,
     validate_public_https_url,
 )
+from app.security.rate_limit import IDP_ADMIN, rate_limit_principal
 
-router = APIRouter(tags=["admin", "idp"])
+_idp_admin_rl = rate_limit_principal(bucket="idp-admin", **IDP_ADMIN)
+router = APIRouter(tags=["admin", "idp"], dependencies=[Depends(_idp_admin_rl)])
+_ACTIVE_SCIM_INDEX = "uq_idp_configs_active_scim_per_org"
 
 
 class OidcConfig(BaseModel):
@@ -46,31 +51,42 @@ class OidcConfig(BaseModel):
 
 
 class SamlConfig(BaseModel):
-    entity_id: str
+    entity_id: str = Field(min_length=1, max_length=2048)
     sso_url: HttpUrl
     slo_url: HttpUrl | None = None
-    certificate: str
+    certificate: str = Field(min_length=1, max_length=131_072)
     name_id_format: Literal["email", "persistent", "transient"] = "email"
     attribute_mappings: dict[str, str] = Field(default_factory=dict)
 
 
 class DirectorySyncConfig(BaseModel):
     enabled: bool = False
-    frequency_minutes: int = 60
+    frequency_minutes: int = Field(default=60, ge=5, le=10_080)
     group_to_role_mapping: dict[str, str] = Field(default_factory=dict)
-    default_role: str = "viewer"
+    default_role: Literal["admin", "analyst", "viewer"] = "viewer"
+
+    @field_validator("group_to_role_mapping")
+    @classmethod
+    def mapping_cannot_grant_owner(cls, value: dict[str, str]) -> dict[str, str]:
+        allowed = {"admin", "analyst", "viewer"}
+        invalid = sorted({role for role in value.values() if role not in allowed})
+        if invalid:
+            raise ValueError(
+                f"group mappings may grant only admin, analyst, or viewer; invalid roles: {invalid}"
+            )
+        return value
 
 
 class IdpConfigCreate(BaseModel):
     provider_type: Literal["saml", "oidc", "scim"]
-    display_name: str
+    display_name: str = Field(min_length=1, max_length=255)
     oidc_config: OidcConfig | None = None
     saml_config: SamlConfig | None = None
     directory_sync: DirectorySyncConfig = Field(default_factory=DirectorySyncConfig)
 
 
 class IdpConfigUpdate(BaseModel):
-    display_name: str | None = None
+    display_name: str | None = Field(default=None, min_length=1, max_length=255)
     status: Literal["active", "disabled", "pending_verification"] | None = None
     oidc_config: OidcConfig | None = None
     saml_config: SamlConfig | None = None
@@ -203,6 +219,27 @@ async def update_idp_config(
     db: AsyncSession = Depends(get_db),
 ) -> IdpConfigResponse:
     row = await _load_owned(db, idp_id, identity.org_id)
+    if payload.status == "active" and row.provider_type == "scim":
+        if not (row.scim_config or {}).get("bearer_token_hash"):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="scim_token_required_before_activation",
+            )
+        active_id = (
+            await db.execute(
+                select(IdpConfig.id).where(
+                    IdpConfig.org_id == identity.org_id,
+                    IdpConfig.provider_type == "scim",
+                    IdpConfig.status == "active",
+                    IdpConfig.id != row.id,
+                )
+            )
+        ).scalar_one_or_none()
+        if active_id is not None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="active_scim_idp_already_exists",
+            )
     if payload.display_name is not None:
         row.display_name = payload.display_name
     if payload.status is not None:
@@ -214,7 +251,16 @@ async def update_idp_config(
         row.saml_config = payload.saml_config.model_dump(mode="json")
     if payload.directory_sync is not None:
         row.directory_sync = payload.directory_sync.model_dump(mode="json")
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError as exc:
+        await db.rollback()
+        if _constraint_name(exc) != _ACTIVE_SCIM_INDEX:
+            raise
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="active_scim_idp_already_exists",
+        ) from exc
     await db.refresh(row)
     log_event(
         AuditEventType.IDP_CONFIG_UPDATED,
@@ -252,10 +298,10 @@ async def mint_scim_token(
     plaintext, hashed = generate_scim_token()
     scim_cfg = dict(row.scim_config or {})
     scim_cfg["bearer_token_hash"] = hashed
-    scim_cfg.setdefault(
-        "endpoint_url",
-        f"/v1/scim/v2/{identity.org_id}",  # informational; actual route uses slug
-    )
+    org_slug = (
+        await db.execute(select(Organization.slug).where(Organization.id == identity.org_id))
+    ).scalar_one()
+    scim_cfg["endpoint_url"] = f"/v1/scim/v2/{org_slug}"
     row.scim_config = scim_cfg
     await db.commit()
     await db.refresh(row)
@@ -305,6 +351,27 @@ async def _load_owned(db: AsyncSession, idp_id: uuid.UUID, org_id: uuid.UUID) ->
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
     return row
+
+
+def _constraint_name(exc: IntegrityError) -> str | None:
+    """Extract the PostgreSQL constraint through SQLAlchemy/asyncpg wrappers."""
+    current: object | None = exc.orig
+    seen: set[int] = set()
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        direct = getattr(current, "constraint_name", None)
+        if isinstance(direct, str):
+            return direct
+        diagnostic = getattr(current, "diag", None)
+        diagnosed = getattr(diagnostic, "constraint_name", None)
+        if isinstance(diagnosed, str):
+            return diagnosed
+        current = getattr(current, "__cause__", None) or getattr(
+            current,
+            "__context__",
+            None,
+        )
+    return None
 
 
 async def _validate_oidc_discovery(issuer_url: str) -> None:

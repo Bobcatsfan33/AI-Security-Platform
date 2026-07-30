@@ -21,12 +21,12 @@ So a router mounted directly at, say, ``/internal`` would be untiered AND
 invisible to the ratchet. Acceptable today (every surface is ``/v1``); if a
 second prefix ever appears, that test needs to widen before the surface lands.
 
-Still on disk but NOT mounted, by design (Tier C frozen — see docs/GAPS.md
-for the promotion triggers): ``scim`` and ``idp_admin`` (enterprise
-provisioning; OIDC login covers a design-partner POC). ``siem`` (Tier B) and
-``aibom`` (Tier A, GAP-001) both mount here with full HTTP + tenant-isolation
-tests; aibom's router was adapted to the v2 ``metadata_json`` model and its
-function proven against a real asset row before this mount.
+Enterprise provisioning is promoted to substrate: ``idp_admin`` mounts at
+``/v1/idp`` and ``scim`` at ``/v1/scim/v2`` with HTTP + cross-tenant tests.
+``siem`` (Tier B) and ``aibom`` (Tier A, GAP-001) both mount here with full
+HTTP + tenant-isolation tests; aibom's router was adapted to the v2
+``metadata_json`` model and its function proven against a real asset row before
+this mount.
 """
 
 from __future__ import annotations
@@ -34,7 +34,9 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import APIRouter, FastAPI, Response
+from fastapi import APIRouter, FastAPI, Request, Response
+from fastapi.exception_handlers import request_validation_exception_handler
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 
 from app import __version__
@@ -53,6 +55,7 @@ from app.api.v1 import discovery as discovery_routes
 from app.api.v1 import evaluations as evaluations_routes
 from app.api.v1 import findings as findings_routes
 from app.api.v1 import health as health_routes
+from app.api.v1 import idp_admin as idp_admin_routes
 from app.api.v1 import mcp as mcp_routes
 from app.api.v1 import narratives as narratives_routes
 from app.api.v1 import policies as policies_routes
@@ -61,6 +64,7 @@ from app.api.v1 import remediation as remediation_routes
 from app.api.v1 import reports as reports_routes
 from app.api.v1 import risk_index as risk_index_routes
 from app.api.v1 import runtime as runtime_routes
+from app.api.v1 import scim as scim_routes
 from app.api.v1 import siem as siem_routes
 from app.api.v1 import suppressions as suppressions_routes
 from app.api.v1 import test_cases as test_cases_routes
@@ -72,6 +76,7 @@ from app.core.tiers import PREVIEW_TAG, Tier, spec_for
 from app.observability.metrics import render
 from app.observability.middleware import MetricsMiddleware
 from app.observability.tracing import setup_tracing
+from app.scim.types import SCIMError
 from app.security.audit_log import AuditEventType, log_event
 from app.security.headers import RequestValidationMiddleware, SecurityHeadersMiddleware
 from app.security.secret_gate import assert_production_secrets
@@ -156,7 +161,7 @@ def create_app() -> FastAPI:
         title="AI Asset Intelligence Platform",
         version="2.0.0",
         description=(
-            "Discover every AI system. Monitor every model. " "Know your risk before auditors ask."
+            "Discover every AI system. Monitor every model. Know your risk before auditors ask."
         ),
         lifespan=lifespan,
         openapi_tags=[
@@ -176,6 +181,24 @@ def create_app() -> FastAPI:
         docs_url=f"{settings.api_v1_prefix}/docs",
         redoc_url=f"{settings.api_v1_prefix}/redoc",
     )
+
+    @app.exception_handler(SCIMError)
+    async def scim_error_handler(_request: Request, exc: SCIMError) -> Response:
+        from app.api.v1.scim import _scim_error_response
+
+        return _scim_error_response(exc)
+
+    @app.exception_handler(RequestValidationError)
+    async def scim_validation_error_handler(
+        request: Request, exc: RequestValidationError
+    ) -> Response:
+        if request.url.path.startswith(f"{settings.api_v1_prefix}/scim/"):
+            from app.api.v1.scim import _scim_error_response
+
+            return _scim_error_response(
+                SCIMError(400, "Invalid path or query parameter", scimType="invalidValue")
+            )
+        return await request_validation_exception_handler(request, exc)
 
     # Middleware execution order is the REVERSE of registration order in
     # Starlette. Register from outermost (first to see request) to innermost.
@@ -214,6 +237,8 @@ def create_app() -> FastAPI:
 
     mount(health_routes.router, "")
     mount(auth_routes.router, "/auth")
+    mount(idp_admin_routes.router, "/idp")
+    mount(scim_routes.router, "/scim")
     mount(connectors_routes.router, "/connectors")
     mount(assets_routes.router, "/assets")
     mount(discovery_routes.router, "/discovery")

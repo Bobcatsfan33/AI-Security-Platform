@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 SCHEMA_USER = "urn:ietf:params:scim:schemas:core:2.0:User"
@@ -30,6 +30,7 @@ class SCIMError(Exception):
     status: int
     detail: str
     scimType: str | None = None
+    headers: dict[str, str] | None = None
 
     def to_response(self) -> dict[str, Any]:
         body: dict[str, Any] = {
@@ -43,7 +44,7 @@ class SCIMError(Exception):
 
 
 def now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
 def make_meta(
