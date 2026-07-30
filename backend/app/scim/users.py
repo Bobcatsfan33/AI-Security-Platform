@@ -26,7 +26,7 @@ from app.scim.types import (
     SCHEMA_USER,
     SCIMError,
 )
-
+from app.security.audit_log import AuditEventType, log_event
 
 # ─────────────────────────────────────────────── helpers
 
@@ -52,12 +52,11 @@ async def create_user(
     fields = scim_to_user_fields(payload)
     if "email" not in fields:
         raise SCIMError(400, "userName is required", scimType="invalidValue")
+    _validate_fields(fields)
 
     # Enforce org-scoped uniqueness on email
     existing = (
-        await db.execute(
-            select(User).where(User.org_id == org_id, User.email == fields["email"])
-        )
+        await db.execute(select(User).where(User.org_id == org_id, User.email == fields["email"]))
     ).scalar_one_or_none()
     if existing is not None:
         raise SCIMError(409, "User already exists", scimType="uniqueness")
@@ -76,13 +75,23 @@ async def create_user(
     db.add(user)
     await db.commit()
     await db.refresh(user)
+    _audit_user(
+        AuditEventType.USER_PROVISIONED,
+        user=user,
+        idp=idp,
+        detail={"active": user.is_active},
+    )
     return user_to_scim(user)
 
 
 async def get_user(
-    db: AsyncSession, user_id: uuid.UUID, *, org_id: uuid.UUID
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    *,
+    org_id: uuid.UUID,
+    idp: IdpConfig,
 ) -> dict[str, Any]:
-    user = await _load_owned(db, user_id, org_id)
+    user = await _load_owned(db, user_id, org_id, idp.id)
     return user_to_scim(user)
 
 
@@ -94,13 +103,20 @@ async def replace_user(
     org_id: uuid.UUID,
     idp: IdpConfig,
 ) -> dict[str, Any]:
-    user = await _load_owned(db, user_id, org_id)
+    user = await _load_owned(db, user_id, org_id, idp.id)
     fields = scim_to_user_fields(payload)
+    _validate_fields(fields)
     for attr, value in fields.items():
         setattr(user, attr, value)
     _apply_role_from_groups(user, idp)
     await db.commit()
     await db.refresh(user)
+    _audit_user(
+        AuditEventType.USER_UPDATED,
+        user=user,
+        idp=idp,
+        detail={"operation": "replace", "active": user.is_active},
+    )
     return user_to_scim(user)
 
 
@@ -112,7 +128,7 @@ async def patch_user(
     org_id: uuid.UUID,
     idp: IdpConfig,
 ) -> dict[str, Any]:
-    user = await _load_owned(db, user_id, org_id)
+    user = await _load_owned(db, user_id, org_id, idp.id)
     current = user_to_scim(user)
     try:
         patched = apply_patch(current, patch_doc)
@@ -122,29 +138,55 @@ async def patch_user(
         raise SCIMError(400, str(exc), scimType="invalidValue") from exc
 
     fields = scim_to_user_fields(patched)
+    _validate_fields(fields)
     for attr, value in fields.items():
         setattr(user, attr, value)
     _apply_role_from_groups(user, idp)
     await db.commit()
     await db.refresh(user)
+    _audit_user(
+        AuditEventType.USER_UPDATED,
+        user=user,
+        idp=idp,
+        detail={
+            "operation": "patch",
+            "paths": sorted(
+                str(operation.get("path") or "<resource>")
+                for operation in (patch_doc.get("Operations") or [])
+                if isinstance(operation, dict)
+            ),
+            "active": user.is_active,
+        },
+    )
     return user_to_scim(user)
 
 
 async def delete_user(
-    db: AsyncSession, user_id: uuid.UUID, *, org_id: uuid.UUID
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    *,
+    org_id: uuid.UUID,
+    idp: IdpConfig,
 ) -> None:
-    user = await _load_owned(db, user_id, org_id)
+    user = await _load_owned(db, user_id, org_id, idp.id)
     # SCIM DELETE on a User typically means deactivate, not hard-delete.
     # We deactivate rather than DELETE so audit trail and historical
     # findings remain intact.
     user.is_active = False
     await db.commit()
+    _audit_user(
+        AuditEventType.USER_DEPROVISIONED,
+        user=user,
+        idp=idp,
+        detail={"active": False},
+    )
 
 
 async def list_users(
     db: AsyncSession,
     *,
     org_id: uuid.UUID,
+    idp: IdpConfig,
     start_index: int = 1,
     count: int = 100,
     filter_expr: str | None = None,
@@ -153,8 +195,17 @@ async def list_users(
         raise SCIMError(400, "Invalid startIndex/count", scimType="invalidValue")
 
     rows = (
-        await db.execute(select(User).where(User.org_id == org_id))
-    ).scalars().all()
+        (
+            await db.execute(
+                select(User).where(
+                    User.org_id == org_id,
+                    User.idp_config_id == idp.id,
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
     resources = [user_to_scim(u) for u in rows]
 
     if filter_expr:
@@ -181,13 +232,45 @@ async def list_users(
 
 
 async def _load_owned(
-    db: AsyncSession, user_id: uuid.UUID, org_id: uuid.UUID
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    org_id: uuid.UUID,
+    idp_id: uuid.UUID,
 ) -> User:
     user = (
         await db.execute(
-            select(User).where(User.id == user_id, User.org_id == org_id)
+            select(User).where(
+                User.id == user_id,
+                User.org_id == org_id,
+                User.idp_config_id == idp_id,
+            )
         )
     ).scalar_one_or_none()
     if user is None:
         raise SCIMError(404, "User not found")
     return user
+
+
+def _validate_fields(fields: dict[str, Any]) -> None:
+    email = fields.get("email")
+    if email is not None and (not isinstance(email, str) or not email.strip() or len(email) > 320):
+        raise SCIMError(400, "userName must be 1 to 320 characters", scimType="invalidValue")
+    name = fields.get("name")
+    if name is not None and len(str(name)) > 255:
+        raise SCIMError(400, "name must be at most 255 characters", scimType="invalidValue")
+
+
+def _audit_user(
+    event_type: AuditEventType,
+    *,
+    user: User,
+    idp: IdpConfig,
+    detail: dict[str, Any],
+) -> None:
+    log_event(
+        event_type,
+        tenant_id=str(user.org_id),
+        subject=f"scim_idp:{idp.id}",
+        resource=f"user:{user.id}",
+        detail=detail,
+    )

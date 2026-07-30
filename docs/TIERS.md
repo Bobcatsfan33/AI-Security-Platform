@@ -61,20 +61,27 @@ Not deleted. The code stays, the tests stay, the capability is off.
 | Cross-tenant threat-intel clustering — `/v1/threat-intel` | `PLATFORM_ENABLE_THREAT_INTEL` | Clustering across tenants requires tenants. With one design partner it is a claim with nothing behind it. Router gated; nav link removed; page and API left on disk. |
 | SIEM: Sentinel, Datadog, Chronicle, webhook | `PLATFORM_ENABLE_SIEM_EXTENDED` | Four more forwarders is surface area, not evidence. Gated at [`_build_one`](../backend/app/siem/exporters.py) — the config→exporter chokepoint — so a config written *before* the flag landed cannot keep forwarding. |
 | SOAR incident sinks (PagerDuty, Opsgenie, webhook) | *(none needed)* | Has no router and never did — already dark by construction. 8 tests keep it honest. A flag here would be a claim that something was turned off, when nothing was ever on. |
-| SCIM 2.0 — 13 endpoints | *(unmounted)* | On every procurement questionnaire; irrelevant to a 90-day POC, where OIDC login (substrate) suffices. **Promotion trigger: before first enterprise contract** (GAP-009). |
-| IdP admin — 5 endpoints | *(unmounted)* | Same as SCIM. |
 
 ## Substrate
 
-`/v1/auth`, `/v1/connectors`, `/v1/assets`, `/v1/discovery`, `/v1/dashboard`,
-`/v1/dashboards`, `/v1/narratives`, `/v1/suppressions`, `/v1/validation`,
-`/v1/remediation`, `/v1/risk-index`, `/v1/benchmark`, plus health probes.
+`/v1/auth`, `/v1/idp`, `/v1/scim/v2`, `/v1/connectors`, `/v1/assets`,
+`/v1/discovery`, `/v1/dashboard`, `/v1/dashboards`, `/v1/narratives`,
+`/v1/suppressions`, `/v1/validation`, `/v1/remediation`, `/v1/risk-index`,
+`/v1/benchmark`, plus health probes.
 
 Assessment: HTTP and cross-org coverage are tracked independently and may only
 improve. AI Guard now joins the HTTP-covered surfaces while its cross-org
 isolation row remains open. The ratchets live in
 [`test_router_coverage_ratchet.py`](../backend/tests/unit/test_router_coverage_ratchet.py),
 whose exemption list may only shrink.
+
+Enterprise identity promotion (GAP-009) is complete. IdP configuration requires
+an admin JWT, all object loads are organization-bound, SCIM uses a per-provider
+one-time bearer token, and both surfaces have mounted HTTP and sibling-tenant
+tests. A partial unique index prevents more than one active SCIM provider per
+organization, and provisioned group mappings cannot grant the higher `owner`
+role. Operations and rotation procedures are in
+[`IDENTITY-PROVISIONING.md`](IDENTITY-PROVISIONING.md).
 
 ---
 

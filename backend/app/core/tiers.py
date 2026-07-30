@@ -76,6 +76,18 @@ class RouterSpec:
 ROUTER_TIERS: dict[str, RouterSpec] = {
     "": RouterSpec("", Tier.SUBSTRATE, "Liveness and readiness probes."),
     "/auth": RouterSpec("/auth", Tier.SUBSTRATE, "OIDC/SAML SSO, refresh, JWKS."),
+    "/idp": RouterSpec(
+        "/idp",
+        Tier.SUBSTRATE,
+        "Tenant-scoped enterprise IdP administration and SCIM token rotation.",
+        user_facing=False,
+    ),
+    "/scim": RouterSpec(
+        "/scim",
+        Tier.SUBSTRATE,
+        "SCIM 2.0 enterprise identity provisioning.",
+        user_facing=False,
+    ),
     "/connectors": RouterSpec(
         "/connectors", Tier.SUBSTRATE, "Cloud/model connector config and sync."
     ),

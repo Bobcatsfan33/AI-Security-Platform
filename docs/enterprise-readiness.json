@@ -72,7 +72,7 @@
       "evidence": [".github/workflows/security.yml", "docs/SECURITY-AUDIT-CHECKLIST.md", "docs/GA-READINESS-CHECKLIST.md"],
       "gaps": [
         "No commissioned independent penetration test exists.",
-        "The backend coverage ratchet is 70 percent, below the 80 percent target, and the security audit checklist is not externally attested.",
+        "The backend suite measures 75.06 percent coverage and retains a 70 percent ratchet, below the 80 percent target; the security audit checklist is not externally attested.",
         "The repository-wide Ruff baseline is not clean or enforced; high-severity Bandit SAST is the current blocking Python static-analysis gate."
       ]
     },
@@ -89,9 +89,8 @@
       "title": "Identity, authorization, and tenant isolation",
       "status": "partial",
       "frameworks": ["owasp-asvs-5.0.0", "csa-ccm-caiq-4.1", "csa-ai-caiq-1.0.2"],
-      "evidence": ["backend/app/auth/rbac.py", "backend/app/db/tenancy.py", "backend/app/identity/oidc_adapter.py", "docs/TIERS.md"],
+      "evidence": ["backend/alembic/versions/20260729_0011_active_scim_integrity.py", "backend/app/auth/rbac.py", "backend/app/db/tenancy.py", "backend/app/identity/oidc_adapter.py", "backend/tests/integration/test_tenant_isolation.py", "docs/IDENTITY-PROVISIONING.md", "docs/TIERS.md"],
       "gaps": [
-        "SCIM and IdP administration are implemented but deliberately unmounted until enterprise promotion.",
         "Independent cross-tenant authorization testing remains open."
       ]
     },
@@ -218,8 +217,8 @@
       "status": "open",
       "blocking": true,
       "ownerRole": "Engineering",
-      "acceptanceCriteria": "SCIM and IdP administration are safely mounted, the 80 percent coverage goal passes, data residency and fairness controls are implemented, and release-candidate deployment evidence is retained.",
-      "evidence": []
+      "acceptanceCriteria": "The 80 percent coverage goal passes, data residency and fairness controls are implemented, and release-candidate deployment evidence is retained.",
+      "evidence": ["backend/tests/integration/test_tenant_isolation.py", "docs/IDENTITY-PROVISIONING.md"]
     }
   ]
 }

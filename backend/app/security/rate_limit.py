@@ -107,3 +107,5 @@ LOGIN = {"limit": 10, "window_seconds": 60}  # SSO initiation / callback per IP
 TOKEN = {"limit": 30, "window_seconds": 60}  # /auth/refresh per IP
 INGEST_IP = {"limit": 2000, "window_seconds": 60}  # telemetry flood guard per IP
 INGEST_PRINCIPAL = {"limit": 10000, "window_seconds": 60}  # per authenticated principal
+IDP_ADMIN = {"limit": 120, "window_seconds": 60}  # privileged identity configuration
+SCIM = {"limit": 600, "window_seconds": 60}  # bcrypt-backed provisioning auth per source IP

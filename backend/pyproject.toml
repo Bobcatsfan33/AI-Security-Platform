@@ -130,7 +130,7 @@ omit = ["app/**/migrations/*", "app/main.py"]
 [tool.coverage.report]
 # Coverage RATCHET, not the target. The standard target is 80% (see
 # ~/.claude/rules and docs/ROADMAP-RAPIDE.md testing workstream). The suite
-# today covers more than 73% of app/ under the full Postgres + Redis suite.
+# today covers 75.06% of app/ under the full Postgres + Redis suite.
 # Enforcing 80% against that reality would keep CI permanently red, which
 # hides real regressions.
 #
