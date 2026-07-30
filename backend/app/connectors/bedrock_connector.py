@@ -179,7 +179,7 @@ class BedrockConnector:
         client = await self._get_client(service="bedrock")
         try:
             await asyncio.to_thread(client.list_foundation_models)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             if "credentials" in str(exc).lower() or "AccessDenied" in str(exc):
                 raise ConnectorAuthError(f"bedrock_unauthorized: {exc}") from exc
             raise ConnectorError(f"bedrock_health_check_failed: {exc}") from exc
@@ -270,7 +270,7 @@ class BedrockConnector:
                     contentType="application/json",
                     accept="application/json",
                 )
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 msg = str(exc)
                 if "Throttling" in msg or "TooManyRequests" in msg:
                     raise ConnectorRateLimitError(f"bedrock_rate_limited: {exc}") from exc

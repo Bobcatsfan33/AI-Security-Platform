@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass, field
-from typing import Optional
 
 
 @dataclass(frozen=True)
@@ -32,11 +31,11 @@ class IdentityContext:
     """
 
     org_id: uuid.UUID
-    user_id: Optional[uuid.UUID]  # None when authenticated via API key
+    user_id: uuid.UUID | None  # None when authenticated via API key
     role: str  # owner | admin | analyst | viewer | api_only
     auth_method: str  # oidc | saml | api_key | refresh
     scopes: tuple[str, ...] = field(default_factory=tuple)
-    idp_subject_id: Optional[str] = None
-    api_key_id: Optional[uuid.UUID] = None
-    jwt_id: Optional[str] = None  # JTI claim, for revocation
-    data_region: Optional[str] = None  # verified regional cell binding
+    idp_subject_id: str | None = None
+    api_key_id: uuid.UUID | None = None
+    jwt_id: str | None = None  # JTI claim, for revocation
+    data_region: str | None = None  # verified regional cell binding

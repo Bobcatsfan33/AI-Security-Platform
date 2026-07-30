@@ -16,8 +16,9 @@ from __future__ import annotations
 import logging
 import re
 from collections import Counter
+from collections.abc import Iterable
 from dataclasses import dataclass, field
-from typing import Iterable, Protocol
+from typing import Protocol
 
 from app.threat_intel.anonymize import hash_id, redact_text
 

@@ -1,6 +1,6 @@
 """Model benchmarking harness (Phase 4, verifiable core).
 
-Runs the red-team attack seeds across N connector-backed models × system-prompt
+Runs the red-team attack seeds across N connector-backed models x system-prompt
 configurations and stores comparable resilience scores — the "100+ models
 benchmarked across configs" feature, scoped to what runs in-repo.
 
@@ -14,8 +14,9 @@ this harness covers text.
 
 from __future__ import annotations
 
+from collections.abc import Awaitable
 from dataclasses import dataclass, field
-from typing import Any, Awaitable, Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 from app.detectors.base import DetectorContext, Direction
 from app.detectors.text_safety import LLMRefusalDetector
@@ -133,7 +134,7 @@ async def benchmark_models(
             for seed in seeds:
                 try:
                     out = await runner.generate(seed, system_prompt=sys_prompt)
-                except Exception:  # noqa: BLE001 - a failing model scores 0 for that seed
+                except Exception:
                     out = ""
                 if _resisted(out):
                     resisted += 1

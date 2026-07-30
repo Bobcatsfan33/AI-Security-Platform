@@ -78,7 +78,7 @@ class BehavioralEnvelope:
 
     # Per-session previous node + bounded recent event→node map (causal lookup).
     _prev_node_by_session: dict[str, str] = field(default_factory=dict)
-    _recent_event_node: "deque[tuple[str, str]]" = field(
+    _recent_event_node: deque[tuple[str, str]] = field(
         default_factory=lambda: deque(maxlen=RECENT_NODE_CACHE)
     )
 
@@ -230,7 +230,7 @@ class BehavioralEnvelope:
         }
 
     @classmethod
-    def from_dict(cls, d: dict[str, Any]) -> "BehavioralEnvelope":
+    def from_dict(cls, d: dict[str, Any]) -> BehavioralEnvelope:
         env = cls(agent_instance_id=d["agent_instance_id"])
         env.org_id = d.get("org_id", "")
         env.asset_id = d.get("asset_id", "")

@@ -26,7 +26,7 @@ async def readyz(db: AsyncSession = Depends(get_db)) -> dict[str, str | bool]:
     try:
         result = await db.execute(text("SELECT 1"))
         checks["postgres"] = result.scalar() == 1
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         checks["postgres"] = False
         checks["postgres_error"] = str(e)
 
@@ -34,7 +34,7 @@ async def readyz(db: AsyncSession = Depends(get_db)) -> dict[str, str | bool]:
         redis = await get_redis()
         await redis.ping()
         checks["redis"] = True
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         checks["redis"] = False
         checks["redis_error"] = str(e)
 

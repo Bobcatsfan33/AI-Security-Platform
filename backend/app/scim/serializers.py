@@ -11,12 +11,11 @@ rather than persisted separately — see ``app/scim/groups.py``.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from app.db.models.user import User
 from app.scim.types import SCHEMA_GROUP, SCHEMA_USER, make_meta
-
 
 # ─────────────────────────────────────────────── User ↔ SCIM
 
@@ -24,11 +23,11 @@ from app.scim.types import SCHEMA_GROUP, SCHEMA_USER, make_meta
 def user_to_scim(user: User) -> dict[str, Any]:
     """Render a User row as a SCIM 2.0 User resource."""
     given, family = _split_name(user.name)
-    created = (user.created_at or datetime.now(timezone.utc)).isoformat().replace(
+    created = (user.created_at or datetime.now(UTC)).isoformat().replace(
         "+00:00", "Z"
     )
     last_modified = (
-        user.updated_at or user.created_at or datetime.now(timezone.utc)
+        user.updated_at or user.created_at or datetime.now(UTC)
     ).isoformat().replace("+00:00", "Z")
 
     return {

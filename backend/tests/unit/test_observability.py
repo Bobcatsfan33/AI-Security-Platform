@@ -6,7 +6,6 @@ import pytest
 from fastapi import FastAPI
 from starlette.testclient import TestClient
 
-from app.observability import metrics as m
 from app.observability.metrics import (
     EPA_EVENTS,
     record_narrative,

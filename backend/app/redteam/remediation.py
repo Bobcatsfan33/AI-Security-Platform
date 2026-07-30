@@ -177,7 +177,7 @@ def generate_plan(
     asset_id: str | None = None,
 ) -> RemediationPlan:
     """``successful_categories`` maps an attack category to its success rate
-    (0–1). Categories with no successes need no new rails."""
+    (0-1). Categories with no successes need no new rails."""
     cats = tuple(c for c, rate in successful_categories.items() if rate > 0)
 
     # 1. Hardened system prompt

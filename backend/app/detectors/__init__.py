@@ -4,11 +4,11 @@ from app.detectors.base import Detector, DetectorContext, DetectorResult, Direct
 from app.detectors.registry import ALL_DETECTORS, default_thresholds, get, names
 
 __all__ = [
+    "ALL_DETECTORS",
     "Detector",
     "DetectorContext",
     "DetectorResult",
     "Direction",
-    "ALL_DETECTORS",
     "default_thresholds",
     "get",
     "names",

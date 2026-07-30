@@ -18,11 +18,11 @@ from app.narratives.store import (
 )
 
 __all__ = [
-    "NarrativeBuilder",
-    "ThreatNarrative",
-    "narrative_to_incident",
-    "NarrativeStore",
     "InMemoryNarrativeStore",
+    "NarrativeBuilder",
+    "NarrativeStore",
     "RedisNarrativeStore",
+    "ThreatNarrative",
     "apply_disposition",
+    "narrative_to_incident",
 ]

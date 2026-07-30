@@ -11,8 +11,8 @@ from __future__ import annotations
 
 import dataclasses
 import json
-from datetime import datetime, timezone
-from typing import Optional, Protocol, runtime_checkable
+from datetime import UTC, datetime
+from typing import Protocol, runtime_checkable
 
 from app.narratives.narrative import DispositionStatus, ThreatNarrative
 
@@ -24,10 +24,10 @@ _REDIS_INDEX = "narrative:index:"  # per-org sorted set of ids
 class NarrativeStore(Protocol):
     async def save(self, narrative: ThreatNarrative) -> None: ...
 
-    async def get(self, org_id: str, narrative_id: str) -> Optional[ThreatNarrative]: ...
+    async def get(self, org_id: str, narrative_id: str) -> ThreatNarrative | None: ...
 
     async def list(
-        self, org_id: str, *, status: Optional[str] = None, severity: Optional[str] = None
+        self, org_id: str, *, status: str | None = None, severity: str | None = None
     ) -> list[ThreatNarrative]: ...
 
 
@@ -44,7 +44,7 @@ def apply_disposition(
         status=status,
         rationale=rationale,
         assignee=assignee,
-        disposition_at=datetime.now(timezone.utc),
+        disposition_at=datetime.now(UTC),
     )
 
 
@@ -55,12 +55,12 @@ class InMemoryNarrativeStore:
     async def save(self, narrative: ThreatNarrative) -> None:
         self._data.setdefault(narrative.org_id, {})[str(narrative.id)] = narrative.to_dict()
 
-    async def get(self, org_id: str, narrative_id: str) -> Optional[ThreatNarrative]:
+    async def get(self, org_id: str, narrative_id: str) -> ThreatNarrative | None:
         raw = self._data.get(org_id, {}).get(narrative_id)
         return ThreatNarrative.from_dict(raw) if raw else None
 
     async def list(
-        self, org_id: str, *, status: Optional[str] = None, severity: Optional[str] = None
+        self, org_id: str, *, status: str | None = None, severity: str | None = None
     ) -> list[ThreatNarrative]:
         items = [ThreatNarrative.from_dict(d) for d in self._data.get(org_id, {}).values()]
         items = _filter(items, status=status, severity=severity)
@@ -83,12 +83,12 @@ class RedisNarrativeStore:
         )
         await self._redis.sadd(f"{_REDIS_INDEX}{narrative.org_id}", nid)
 
-    async def get(self, org_id: str, narrative_id: str) -> Optional[ThreatNarrative]:
+    async def get(self, org_id: str, narrative_id: str) -> ThreatNarrative | None:
         raw = await self._redis.get(self._key(org_id, narrative_id))
         return ThreatNarrative.from_dict(json.loads(raw)) if raw else None
 
     async def list(
-        self, org_id: str, *, status: Optional[str] = None, severity: Optional[str] = None
+        self, org_id: str, *, status: str | None = None, severity: str | None = None
     ) -> list[ThreatNarrative]:
         ids = await self._redis.smembers(f"{_REDIS_INDEX}{org_id}")
         out: list[ThreatNarrative] = []
@@ -102,7 +102,7 @@ class RedisNarrativeStore:
 
 
 def _filter(
-    items: list[ThreatNarrative], *, status: Optional[str], severity: Optional[str]
+    items: list[ThreatNarrative], *, status: str | None, severity: str | None
 ) -> list[ThreatNarrative]:
     if status:
         items = [n for n in items if n.status == status]

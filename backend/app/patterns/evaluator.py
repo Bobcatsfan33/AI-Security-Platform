@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 
 from app.patterns.compiled import CompiledPattern
 
@@ -47,8 +47,8 @@ def evaluate(
     pattern: CompiledPattern,
     events: list[dict[str, Any]],
     *,
-    context: Optional[dict[str, Any]] = None,
-) -> Optional[PatternMatch]:
+    context: dict[str, Any] | None = None,
+) -> PatternMatch | None:
     """Return a PatternMatch if ``pattern`` holds over ``events``, else None."""
     ctx = context or {}
     ordered = sorted(events, key=_epoch)

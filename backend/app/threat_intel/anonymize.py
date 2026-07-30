@@ -21,7 +21,7 @@ import hashlib
 import hmac
 import os
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 # Hash salt — supplied by env. If absent, we use a fixed placeholder so
 # tests run, but the secret_gate flags this in production.
@@ -72,7 +72,7 @@ def redact_text(text: str) -> str:
 def bucket_timestamp(ts: datetime) -> datetime:
     """Round to the nearest hour (UTC). Hides exact timing while
     preserving daily/hourly patterns."""
-    ts = ts.astimezone(timezone.utc)
+    ts = ts.astimezone(UTC)
     return ts.replace(minute=0, second=0, microsecond=0)
 
 

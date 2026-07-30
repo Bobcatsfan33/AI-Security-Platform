@@ -12,7 +12,7 @@ production this should point at AWS Secrets Manager / HashiCorp Vault / etc.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from sqlalchemy import ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -65,10 +65,10 @@ class IdpConfig(Base, TenantScoped):
     # Verification status: {tested_at, test_result, test_user}
     verification_status: Mapped[JsonbDict]
 
-    created_by: Mapped[Optional[UUIDFk]] = mapped_column(
+    created_by: Mapped[UUIDFk | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     created_at: Mapped[TimestampUtc]
     updated_at: Mapped[TimestampUtcUpdated]
 
-    organization: Mapped["Organization"] = relationship(back_populates="idp_configs")
+    organization: Mapped[Organization] = relationship(back_populates="idp_configs")

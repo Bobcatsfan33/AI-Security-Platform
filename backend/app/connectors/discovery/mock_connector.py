@@ -23,7 +23,6 @@ from app.connectors.discovery.base import (
     DiscoveredAsset,
 )
 
-
 _FIXTURE: list[dict[str, Any]] = [
     {
         "external_id": "mock-model-gpt-4o",

@@ -30,16 +30,16 @@ from app.epa.store import (
 
 __all__ = [
     "AgentEPA",
-    "EpaSignal",
-    "absence_signal",
     "BehavioralEnvelope",
-    "EpaFleet",
-    "CrossAgentEPA",
     "CorrelationState",
     "CorrelationStore",
-    "InMemoryCorrelationStore",
-    "RedisCorrelationStore",
+    "CrossAgentEPA",
     "EnvelopeStore",
+    "EpaFleet",
+    "EpaSignal",
+    "InMemoryCorrelationStore",
     "InMemoryEnvelopeStore",
+    "RedisCorrelationStore",
     "RedisEnvelopeStore",
+    "absence_signal",
 ]

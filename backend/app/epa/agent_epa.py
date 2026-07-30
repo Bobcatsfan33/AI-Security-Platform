@@ -43,11 +43,11 @@ Severity = Literal["info", "low", "medium", "high", "critical"]
 # Thresholds (mirror app.anomaly.detector where applicable).
 VOLUME_SPIKE_MIN_COUNT = 10  # min occurrences in the recent window
 VOLUME_SPIKE_MIN_SHARE = 0.5  # node must dominate ≥half of recent traffic
-VOLUME_SPIKE_FACTOR = 3.0  # ...and ≥3× its lifetime share
+VOLUME_SPIKE_FACTOR = 3.0  # ...and ≥3x its lifetime share
 RISK_INFLATION_DELTA = 0.20
 RISK_INFLATION_MIN_AVG = 0.50
 DRIFT_RATE_MIN = 0.30  # recent novelty rate must exceed this to consider drift
-DRIFT_RATE_FACTOR = 3.0  # ...and be ≥ this × the lifetime baseline rate
+DRIFT_RATE_FACTOR = 3.0  # ...and be ≥ this x the lifetime baseline rate
 
 
 @dataclass(frozen=True)
@@ -178,7 +178,7 @@ class AgentEPA:
         # A node dominating recent traffic far beyond its lifetime share =
         # runaway loop / credential-harvest burst. Using share-of-window
         # avoids the two traps of cumulative-count z-scores: counts that only
-        # grow, and an outlier inflating its own std (z bounded by √(n−1)).
+        # grow, and an outlier inflating its own std (z bounded by √(n-1)).
         if mature:
             recent_count, recent_share, hist_share = env.volume_stats(node_id)
             if (
@@ -250,7 +250,7 @@ def _event_epoch(event: dict[str, Any]) -> float | None:
 
 def absence_signal(env: BehavioralEnvelope, *, now: float, factor: float) -> EpaSignal | None:
     """Negative/absence detection (RAPIDE §3.4): a mature agent that has gone
-    silent for ``factor`` × its normal inter-event interval. Evaluated by the
+    silent for ``factor`` x its normal inter-event interval. Evaluated by the
     fleet's sweep, not per-event (absence is the LACK of an event)."""
     if not env.mature or env.mean_interval <= 0.0:
         return None

@@ -138,11 +138,11 @@ async def create_connector(
 ) -> ConnectorRead:
     try:
         get_connector_class(payload.connector_type)
-    except UnknownConnectorTypeError:
+    except UnknownConnectorTypeError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"unknown connector_type: {payload.connector_type}",
-        )
+        ) from exc
     row = Connector(
         org_id=identity.org_id,
         name=payload.name,
@@ -194,11 +194,11 @@ async def test_connector(
     row = await _load_connector(db, connector_id, identity.org_id)
     try:
         cls = get_connector_class(row.connector_type)
-    except UnknownConnectorTypeError:
+    except UnknownConnectorTypeError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"connector_type {row.connector_type!r} not registered",
-        )
+        ) from exc
     instance = cls(config=row.config_encrypted or {})
     result: ConnectionStatus = await instance.test_connection()
     return ConnectionTestResponse(
@@ -219,7 +219,7 @@ async def trigger_sync(
     try:
         result: SyncResult = await service.run(db, connector_id)
     except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     return SyncTriggerResponse(
         sync_job_id=result.sync_job_id,
         status=result.status,

@@ -23,13 +23,13 @@ Design goals
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from typing import Any, Protocol, runtime_checkable
 
 Severity = str  # "info" | "low" | "medium" | "high" | "critical"
 
 
-class Direction(str, Enum):
+class Direction(StrEnum):
     INBOUND = "inbound"
     OUTBOUND = "outbound"
     BOTH = "both"
@@ -61,7 +61,7 @@ class DetectorResult:
     severity: Severity = "low"
     evidence: dict[str, Any] = field(default_factory=dict)
 
-    def clamp(self) -> "DetectorResult":
+    def clamp(self) -> DetectorResult:
         c = 0.0 if self.confidence < 0 else 1.0 if self.confidence > 1 else self.confidence
         return DetectorResult(self.name, self.category, round(c, 4), self.severity, self.evidence)
 

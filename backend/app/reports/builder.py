@@ -16,7 +16,6 @@ requested (optional dep — install ``platform[pdf]`` to enable).
 from __future__ import annotations
 
 import io
-from datetime import datetime, timezone
 from typing import Any, Literal
 
 ReportTemplate = Literal[

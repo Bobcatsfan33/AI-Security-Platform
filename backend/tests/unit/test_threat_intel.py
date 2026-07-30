@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -15,8 +15,8 @@ from app.threat_intel.anonymize import (
 )
 from app.threat_intel.clustering import (
     GreedyClusterer,
-    jaccard,
     is_novel,
+    jaccard,
     to_sample,
 )
 from app.threat_intel.stix_export import cluster_to_bundle, clusters_to_bundle
@@ -41,7 +41,7 @@ class TestAnonymize:
         assert redact_text("") == ""
 
     def test_buckets(self):
-        assert bucket_timestamp(datetime(2026, 6, 1, 13, 47, tzinfo=timezone.utc)).minute == 0
+        assert bucket_timestamp(datetime(2026, 6, 1, 13, 47, tzinfo=UTC)).minute == 0
         assert bucket_cost(0.137) == pytest.approx(0.1)
         assert bucket_latency_ms(842) == 800
 

@@ -11,6 +11,7 @@ import uuid
 
 import pytest
 
+from app.epa.agent_epa import EpaSignal
 from app.epa.cross_agent import CrossAgentEPA, InMemoryCorrelationStore
 from app.epa.fleet import EpaFleet
 from app.epa.service import EpaConsumerService
@@ -21,7 +22,6 @@ from app.narratives.narrative import ThreatNarrative
 from app.narratives.pipeline import NarrativePipeline, stable_narrative_id
 from app.narratives.store import InMemoryNarrativeStore
 from app.streaming.memory_backend import InMemoryEventBus
-from app.epa.agent_epa import EpaSignal
 from app.validation.scenarios import scenario_propagation_chain
 
 pytestmark = pytest.mark.unit

@@ -25,8 +25,9 @@ from __future__ import annotations
 
 import logging
 import uuid
+from collections.abc import Iterable
 from dataclasses import dataclass, field
-from typing import Any, Iterable, Literal
+from typing import Any, Literal
 
 from app.telemetry.clickhouse_writer import CLICKHOUSE_TABLE, _get_client
 
@@ -185,8 +186,8 @@ def build_attack_graph(
                 parameters={"org_id": org_id, "asset_id": asset_id},
             )
             columns = list(result.column_names)
-            rows = [dict(zip(columns, r)) for r in result.result_rows]
-        except Exception as exc:  # noqa: BLE001
+            rows = [dict(zip(columns, r, strict=False)) for r in result.result_rows]
+        except Exception as exc:
             logger.warning(
                 "attack_graph_query_failed",
                 extra={"error": str(exc)},
@@ -236,8 +237,8 @@ def fetch_causal_subtree(
                 parameters={"org_id": org_id, "asset_id": asset_id},
             )
             columns = list(result.column_names)
-            rows = [dict(zip(columns, r)) for r in result.result_rows]
-        except Exception as exc:  # noqa: BLE001
+            rows = [dict(zip(columns, r, strict=False)) for r in result.result_rows]
+        except Exception as exc:
             logger.warning("causal_subtree_query_failed", extra={"error": str(exc)})
     return causal_subtree(rows, root_event_id)
 

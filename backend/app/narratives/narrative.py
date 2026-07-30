@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any, Literal
 
 Severity = Literal["info", "low", "medium", "high", "critical"]
@@ -40,8 +40,8 @@ class ThreatNarrative:
     signal_count: int = 0
     contributing: tuple[dict[str, Any], ...] = field(default_factory=tuple)
     causal_timeline: tuple[dict[str, Any], ...] = field(default_factory=tuple)
-    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
-    status: "DispositionStatus" = "open"
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    status: DispositionStatus = "open"
     # Triage (Phase E). Set when an analyst dispositions the narrative.
     assignee: str = ""
     rationale: str = ""
@@ -69,7 +69,7 @@ class ThreatNarrative:
         }
 
     @classmethod
-    def from_dict(cls, d: dict[str, Any]) -> "ThreatNarrative":
+    def from_dict(cls, d: dict[str, Any]) -> ThreatNarrative:
         return cls(
             id=uuid.UUID(d["id"]),
             org_id=d.get("org_id", ""),
@@ -83,7 +83,7 @@ class ThreatNarrative:
             signal_count=d.get("signal_count", 0),
             contributing=tuple(d.get("contributing", [])),
             causal_timeline=tuple(d.get("causal_timeline", [])),
-            created_at=_parse_dt(d.get("created_at")) or datetime.now(timezone.utc),
+            created_at=_parse_dt(d.get("created_at")) or datetime.now(UTC),
             status=d.get("status", "open"),
             assignee=d.get("assignee", ""),
             rationale=d.get("rationale", ""),
@@ -107,7 +107,7 @@ def severity_rank(sev: str) -> int:
     return _SEVERITY_RANK.get(sev, 0)
 
 
-def narrative_to_incident(narrative: ThreatNarrative) -> "Any":
+def narrative_to_incident(narrative: ThreatNarrative) -> Any:
     """Map a Tier-3 narrative to a SOAR Incident, carrying the causal flow id
     as correlation_id and the timeline/contributing signals in detail — so the
     analyst gets the pre-built causal chain, not a bare alert (brief §6)."""

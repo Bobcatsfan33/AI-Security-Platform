@@ -8,7 +8,7 @@ feedback loop is reducing alert volume.
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
@@ -35,7 +35,7 @@ class SuppressionOut(BaseModel):
     created_by: str
     approved_by: str = ""
     created_at: str
-    expires_at: Optional[str] = None
+    expires_at: str | None = None
 
 
 class ActivateIn(BaseModel):
@@ -64,7 +64,7 @@ async def _store() -> RedisSuppressionStore:
 
 @router.get("", response_model=list[SuppressionOut])
 async def list_suppressions(
-    status: Optional[str] = Query(None),
+    status: str | None = Query(None),
     identity: IdentityContext = Depends(require_role("analyst")),
 ) -> list[SuppressionOut]:
     rules = await (await _store()).list(str(identity.org_id), status=status)

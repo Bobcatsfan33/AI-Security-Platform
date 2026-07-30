@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Optional
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Text
 from sqlalchemy.orm import Mapped, mapped_column
@@ -33,14 +32,14 @@ class Connector(Base, TenantScoped):
     # :mod:`app.security.field_crypto` to round-trip; the column itself
     # stores cipher bytes, not plaintext.
     config_encrypted: Mapped[JsonbDict]
-    schedule: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    schedule: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_enabled: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, index=True
     )
-    last_sync_at: Mapped[Optional[datetime]] = mapped_column(
+    last_sync_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
-    last_sync_status: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    last_sync_status: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     created_at: Mapped[TimestampUtc]
     updated_at: Mapped[TimestampUtcUpdated]

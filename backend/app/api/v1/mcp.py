@@ -8,7 +8,7 @@ tool invocation it sees and acts on the recommendation.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
@@ -409,7 +409,7 @@ async def resolve_violation(
     identity: IdentityContext = Depends(require_role("analyst")),
     db: AsyncSession = Depends(get_db),
 ) -> ViolationResponse:
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     resolver_id = await _require_provisioned_subject(db, identity)
     row = (
@@ -425,7 +425,7 @@ async def resolve_violation(
     row.resolution_status = payload.status
     row.resolution_notes = payload.notes
     row.resolved_by = resolver_id
-    row.resolved_at = datetime.now(timezone.utc)
+    row.resolved_at = datetime.now(UTC)
     await db.commit()
     await db.refresh(row)
     return ViolationResponse(

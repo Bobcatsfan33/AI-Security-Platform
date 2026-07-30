@@ -9,8 +9,8 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Literal, Optional
+from datetime import UTC, datetime
+from typing import Any, Literal
 
 EventType = Literal[
     "request",
@@ -55,14 +55,14 @@ class RuntimeEvent:
 
     # Optional / defaulted fields
     event_id: uuid.UUID = field(default_factory=uuid.uuid4)
-    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     prompt_hash: str = ""
     prompt_snippet: str = ""
     response_hash: str = ""
     response_snippet: str = ""
-    tool_name: Optional[str] = None
-    tool_args_hash: Optional[str] = None
+    tool_name: str | None = None
+    tool_args_hash: str | None = None
 
     # ── Causal lineage (poset spine) ──────────────────────────────────
     # These fields turn the flat event stream into a partially-ordered set
@@ -77,30 +77,30 @@ class RuntimeEvent:
     # ``parent_event_id`` None; ``__post_init__`` then sets ``root_event_id``
     # to its own ``event_id`` and ``causal_depth`` to 0. Downstream events
     # are constructed with :meth:`child`, which threads the lineage forward.
-    parent_event_id: Optional[uuid.UUID] = None
-    root_event_id: Optional[uuid.UUID] = None
+    parent_event_id: uuid.UUID | None = None
+    root_event_id: uuid.UUID | None = None
     causal_depth: int = 0
     correlation_key: str = ""
 
     policies_checked: int = 0
     policies_failed: int = 0
     policy_results: str = "[]"  # JSON string
-    block_reason: Optional[str] = None
+    block_reason: str | None = None
 
     risk_score: float = 0.0
     latency_ms: int = 0
     stage1_latency_us: int = 0
-    stage2_latency_us: Optional[int] = None
-    stage3_latency_ms: Optional[int] = None
+    stage2_latency_us: int | None = None
+    stage3_latency_ms: int | None = None
     model_latency_ms: int = 0
     token_count_input: int = 0
     token_count_output: int = 0
     estimated_cost_usd: float = 0.0
 
-    agent_step_number: Optional[int] = None
-    agent_total_steps: Optional[int] = None
-    memory_items_accessed: Optional[int] = None
-    rag_documents_retrieved: Optional[int] = None
+    agent_step_number: int | None = None
+    agent_total_steps: int | None = None
+    memory_items_accessed: int | None = None
+    rag_documents_retrieved: int | None = None
 
     source_ip: str = "0.0.0.0"
     user_identifier_hash: str = ""
@@ -117,7 +117,7 @@ class RuntimeEvent:
         if not self.correlation_key and self.root_event_id is not None:
             object.__setattr__(self, "correlation_key", str(self.root_event_id))
 
-    def child(self, **overrides: Any) -> "RuntimeEvent":
+    def child(self, **overrides: Any) -> RuntimeEvent:
         """Construct a downstream event caused by this one.
 
         Threads the poset lineage forward: the new event's parent is this

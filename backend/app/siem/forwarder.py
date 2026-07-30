@@ -19,12 +19,12 @@ Design notes
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import time
 import uuid
 from collections import defaultdict, deque
 from dataclasses import dataclass
-from typing import Optional
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -71,7 +71,7 @@ class SiemForwarder:
         self._cache: dict[str, _OrgCacheEntry] = {}
         self._cache_lock = asyncio.Lock()
         self._wake = asyncio.Event()
-        self._task: Optional[asyncio.Task[None]] = None
+        self._task: asyncio.Task[None] | None = None
         self._stopped = asyncio.Event()
 
     # ──────────────────────────────────────── lifecycle
@@ -90,7 +90,7 @@ class SiemForwarder:
         self._wake.set()
         try:
             await asyncio.wait_for(self._task, timeout=5.0)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             self._task.cancel()
         self._task = None
         logger.info("siem_forwarder_stopped")
@@ -117,12 +117,10 @@ class SiemForwarder:
 
     async def _run(self) -> None:
         while not self._stopped.is_set():
-            try:
+            with contextlib.suppress(TimeoutError):
                 await asyncio.wait_for(
                     self._wake.wait(), timeout=self._flush_interval_s
                 )
-            except asyncio.TimeoutError:
-                pass
             self._wake.clear()
             await self._flush_all()
 
@@ -161,7 +159,7 @@ class SiemForwarder:
         try:
             async with SessionLocal() as db:
                 return await _load_from_db(db, org_id)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             logger.warning(
                 "siem_config_load_failed",
                 extra={"org_id": org_id, "error": str(exc)},

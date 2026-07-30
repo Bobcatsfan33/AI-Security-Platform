@@ -19,11 +19,10 @@ import pytest
 
 from app.identity.adapter import IdentityAuthError
 from app.identity.saml_adapter import (
-    SamlAdapter,
     _NAME_ID_FORMATS,
+    SamlAdapter,
     generate_sp_metadata,
 )
-
 
 # Minimal valid config — used as the base for adapter construction tests
 _BASE_CFG: dict[str, Any] = {

@@ -23,19 +23,19 @@ pytestmark = pytest.mark.unit
 
 
 def _event(**over) -> RuntimeEvent:
-    base = dict(
-        org_id=uuid.uuid4(),
-        asset_id=uuid.uuid4(),
-        agent_instance_id="agent-1",
-        session_id="sess-1",
-        event_type="tool_call",
-        direction="internal",
-        enforcement_level="balanced",
-        pipeline_exit_stage="stage2_ml",
-        action_taken="flagged",
-        correlation_key="task-9",
-        tool_name="shell",
-    )
+    base = {
+        "org_id": uuid.uuid4(),
+        "asset_id": uuid.uuid4(),
+        "agent_instance_id": "agent-1",
+        "session_id": "sess-1",
+        "event_type": "tool_call",
+        "direction": "internal",
+        "enforcement_level": "balanced",
+        "pipeline_exit_stage": "stage2_ml",
+        "action_taken": "flagged",
+        "correlation_key": "task-9",
+        "tool_name": "shell",
+    }
     base.update(over)
     return RuntimeEvent(**base)  # type: ignore[arg-type]
 

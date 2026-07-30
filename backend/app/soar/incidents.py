@@ -13,8 +13,8 @@ from __future__ import annotations
 
 import json
 import logging
-from dataclasses import dataclass
-from datetime import datetime, timezone
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import Any, Literal, Protocol, runtime_checkable
 
 import httpx
@@ -34,7 +34,7 @@ class Incident:
     source: str          # "evaluation" | "runtime_agent" | "anomaly_detector"
     asset_id: str = ""
     correlation_id: str = ""
-    detected_at: datetime = datetime.now(timezone.utc)
+    detected_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     detail: dict[str, Any] = None  # type: ignore[assignment]
 
 
@@ -236,7 +236,7 @@ async def _post(
             )
             return False
         return True
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         logger.warning("soar_failed", extra={"sink": log_name, "error": str(exc)})
         return False
 
@@ -283,7 +283,7 @@ async def open_in_all(
     for sink in sinks:
         try:
             out[sink.name] = await sink.open(incident)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             logger.warning(
                 "soar_sink_crashed",
                 extra={"sink_name": sink.name, "error": str(exc)},

@@ -9,10 +9,10 @@ from app.observability.middleware import MetricsMiddleware
 from app.observability.tracing import setup_tracing, tracing_enabled
 
 __all__ = [
+    "MetricsMiddleware",
     "record_narrative",
     "record_signal",
     "render",
-    "MetricsMiddleware",
     "setup_tracing",
     "tracing_enabled",
 ]

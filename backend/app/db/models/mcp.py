@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Optional
 
 from sqlalchemy import (
     CheckConstraint,
@@ -134,15 +133,15 @@ class McpViolation(Base, TenantScoped):
     resolution_status: Mapped[str] = mapped_column(
         String(32), default="open", nullable=False
     )  # open | acknowledged | resolved | false_positive
-    resolution_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    resolution_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Stays nullable — NULL is the legitimate "unresolved" state. RESTRICT (not
     # SET NULL) so a resolver's stamp is never anonymized by deleting the user.
     # The CHECK below ties the stamp to the state: a violation is 'open' IFF it
     # has no resolver, so "acted-on with no resolver" is unrepresentable.
-    resolved_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+    resolved_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="RESTRICT"),
         nullable=True,
     )
-    resolved_at: Mapped[Optional[datetime]] = mapped_column(_DateTimeTz, nullable=True)
+    resolved_at: Mapped[datetime | None] = mapped_column(_DateTimeTz, nullable=True)
     created_at: Mapped[TimestampUtc]

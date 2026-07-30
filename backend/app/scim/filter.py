@@ -20,8 +20,9 @@ Out of scope (raises :class:`UnsupportedFilter`):
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any
 
 Filter = Callable[[dict[str, Any]], bool]
 
@@ -210,7 +211,7 @@ def _resolve(resource: dict[str, Any], path: str) -> Any:
     node: Any = resource
     for part in parts:
         if isinstance(node, dict):
-            for key in node.keys():
+            for key in node:
                 if key.lower() == part.lower():
                     node = node[key]
                     break
@@ -226,9 +227,7 @@ def _make_pr(attr: str) -> Filter:
         v = _resolve(resource, attr)
         if v is None:
             return False
-        if isinstance(v, (str, list, dict)) and len(v) == 0:
-            return False
-        return True
+        return not (isinstance(v, (str, list, dict)) and len(v) == 0)
 
     return f
 

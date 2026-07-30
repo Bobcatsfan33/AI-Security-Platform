@@ -50,6 +50,6 @@ def setup_tracing(app: Any, *, service_name: str = "ai-security-platform") -> bo
         FastAPIInstrumentor.instrument_app(app)
         logger.info("otel_tracing_enabled", extra={"service": service_name})
         return True
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         logger.warning("otel_tracing_setup_failed", extra={"error": str(exc)})
         return False

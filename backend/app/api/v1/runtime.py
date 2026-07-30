@@ -250,10 +250,10 @@ def _to_runtime_event(e: EventIn) -> RuntimeEvent:
     that the ClickHouse writer expects."""
     try:
         event_uuid = uuid.UUID(e.event_id)
-    except ValueError:
+    except ValueError as exc:
         # The Go agent generates UUIDs; an invalid one is a coercion
         # error we surface to the caller.
-        raise ValueError(f"invalid event_id UUID: {e.event_id!r}")
+        raise ValueError(f"invalid event_id UUID: {e.event_id!r}") from exc
     return RuntimeEvent(
         event_id=event_uuid,
         org_id=e.org_id,

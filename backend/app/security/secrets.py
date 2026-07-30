@@ -112,7 +112,7 @@ class AwsSecretsManagerResolver:
         try:
             client = boto3.client("secretsmanager", **kwargs)
             response = client.get_secret_value(SecretId=name)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             raise SecretResolutionError(
                 f"AWS Secrets Manager fetch failed for {name!r}: {exc}"
             ) from exc
@@ -152,7 +152,8 @@ class EncryptedInlineResolver:
         ciphertext = reference[len(self.prefix) :]
 
         # Lazy import to avoid a circular: secrets is imported by field_crypto.
-        from app.security.field_crypto import FieldCryptoError, decrypt as fc_decrypt
+        from app.security.field_crypto import FieldCryptoError
+        from app.security.field_crypto import decrypt as fc_decrypt
 
         try:
             return fc_decrypt(ciphertext)
@@ -200,7 +201,7 @@ class VaultResolver:
                 resp = client.get(url, headers={"X-Vault-Token": self.token})
                 resp.raise_for_status()
                 payload = resp.json()
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             raise SecretResolutionError(
                 f"Vault fetch failed for {path!r}: {exc}"
             ) from exc

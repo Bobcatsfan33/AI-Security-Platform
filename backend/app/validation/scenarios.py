@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from app.epa.envelope import MATURITY_MIN
@@ -70,7 +70,7 @@ class _Builder:
             "action_taken": action,
             "risk_score": risk,
             "tool_name": tool,
-            "timestamp": datetime.fromtimestamp(self._t, tz=timezone.utc).isoformat(),
+            "timestamp": datetime.fromtimestamp(self._t, tz=UTC).isoformat(),
         }
         e.update(fields)
         return e

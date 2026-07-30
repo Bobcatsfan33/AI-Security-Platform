@@ -27,7 +27,7 @@ def _jsonify(value: Any) -> Any:
 
 def event_to_wire(event: RuntimeEvent) -> dict[str, Any]:
     """RuntimeEvent → JSON-safe dict keyed by column name."""
-    row = dict(zip(RUNTIME_EVENTS_COLUMNS, event.to_row()))
+    row = dict(zip(RUNTIME_EVENTS_COLUMNS, event.to_row(), strict=False))
     return {k: _jsonify(v) for k, v in row.items()}
 
 

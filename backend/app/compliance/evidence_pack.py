@@ -25,7 +25,7 @@ import logging
 import uuid
 import zipfile
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any, Literal
 
 from sqlalchemy import select
@@ -179,9 +179,9 @@ def _manifest(
         "platform_version": "0.1.0",
         "org_id": str(inputs.org_id),
         "framework": inputs.framework,
-        "period_start": inputs.period_start.astimezone(timezone.utc).isoformat(),
-        "period_end": inputs.period_end.astimezone(timezone.utc).isoformat(),
-        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "period_start": inputs.period_start.astimezone(UTC).isoformat(),
+        "period_end": inputs.period_end.astimezone(UTC).isoformat(),
+        "generated_at": datetime.now(UTC).isoformat(),
         "files": [
             {
                 "path": path,

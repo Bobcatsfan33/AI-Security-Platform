@@ -37,6 +37,6 @@ class Organization(Base):
     created_at: Mapped[TimestampUtc]
     updated_at: Mapped[TimestampUtcUpdated]
 
-    users: Mapped[list["User"]] = relationship(back_populates="organization")
-    api_keys: Mapped[list["ApiKey"]] = relationship(back_populates="organization")
-    idp_configs: Mapped[list["IdpConfig"]] = relationship(back_populates="organization")
+    users: Mapped[list[User]] = relationship(back_populates="organization")
+    api_keys: Mapped[list[ApiKey]] = relationship(back_populates="organization")
+    idp_configs: Mapped[list[IdpConfig]] = relationship(back_populates="organization")

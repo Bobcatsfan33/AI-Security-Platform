@@ -19,7 +19,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any, Literal, Protocol, runtime_checkable
 
 import httpx
@@ -195,7 +195,7 @@ class SplunkHECExporter:
                     extra={"status": resp.status_code, "body": resp.text[:200]},
                 )
                 return 0
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             logger.warning("siem_splunk_failed", extra={"error": str(exc)})
             return 0
         return len(events)
@@ -280,7 +280,7 @@ class ElasticExporter:
             data = resp.json()
             if data.get("errors"):
                 logger.warning("siem_elastic_bulk_errors")
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             logger.warning("siem_elastic_failed", extra={"error": str(exc)})
             return 0
         return len(events)
@@ -348,7 +348,7 @@ class SentinelExporter:
             f"https://{self._workspace_id}.ods.opinsights.azure.com"
             "/api/logs?api-version=2016-04-01"
         )
-        date_str = datetime.now(timezone.utc).strftime(
+        date_str = datetime.now(UTC).strftime(
             "%a, %d %b %Y %H:%M:%S GMT"
         )
         signature = _sentinel_signature(
@@ -372,7 +372,7 @@ class SentinelExporter:
                     extra={"status": resp.status_code},
                 )
                 return 0
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             logger.warning("siem_sentinel_failed", extra={"error": str(exc)})
             return 0
         return len(events)
@@ -477,7 +477,7 @@ class DatadogExporter:
                     extra={"status": resp.status_code},
                 )
                 return 0
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             logger.warning("siem_datadog_failed", extra={"error": str(exc)})
             return 0
         return len(events)
@@ -531,7 +531,7 @@ class ChronicleExporter:
                     extra={"status": resp.status_code},
                 )
                 return 0
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             logger.warning("siem_chronicle_failed", extra={"error": str(exc)})
             return 0
         return len(events)
@@ -612,7 +612,7 @@ class WebhookExporter:
                     extra={"status": resp.status_code},
                 )
                 return 0
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             logger.warning("siem_webhook_failed", extra={"error": str(exc)})
             return 0
         return len(events)
@@ -680,7 +680,7 @@ def _resolve_secret_refs(etype: str, config: dict[str, Any]) -> dict[str, Any] |
             continue
         try:
             resolved[field] = resolver.resolve(str(ref))
-        except Exception:  # noqa: BLE001 — any resolver backend may raise
+        except Exception:
             # Swallow the exception entirely: its message can carry a vault
             # path, an ARN, or the secret itself, so nothing about it leaves
             # this function — not even its type. The caller logs the failure
@@ -776,7 +776,7 @@ async def export_to_all(
         try:
             count = await ex.export(events)
             results[ex.name] = count
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             logger.warning(
                 "siem_exporter_crashed",
                 extra={"exporter_name": ex.name, "error": str(exc)},

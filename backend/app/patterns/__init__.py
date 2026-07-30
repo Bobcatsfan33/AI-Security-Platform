@@ -24,18 +24,18 @@ from app.patterns.registry import (
 )
 
 __all__ = [
+    "PATTERN_RELOAD_CHANNEL",
     "CompiledPattern",
+    "PatternMatch",
+    "PatternRegistry",
     "PatternValidationError",
     "compile_pattern",
-    "PatternMatch",
     "evaluate",
-    "PatternRegistry",
-    "PATTERN_RELOAD_CHANNEL",
     "get_registry",
-    "publish_pattern_reload",
-    "reset_for_tests",
+    "library_by_name",
     "library_specs",
     "load_library",
-    "library_by_name",
     "pattern_match_to_testcase",
+    "publish_pattern_reload",
+    "reset_for_tests",
 ]

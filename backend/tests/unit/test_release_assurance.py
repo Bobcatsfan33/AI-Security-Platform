@@ -5,7 +5,6 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-
 _ROOT = Path(__file__).resolve().parents[3]
 _WORKFLOW_DIR = _ROOT / ".github" / "workflows"
 _DOCKERFILES = (
@@ -53,6 +52,12 @@ def test_release_requires_approval_and_verifies_exact_identity() -> None:
         "retention-days: 90",
     ):
         assert required in workflow
+
+
+def test_backend_ci_enforces_the_repository_wide_ruff_baseline() -> None:
+    workflow = (_WORKFLOW_DIR / "ci.yml").read_text()
+    assert "Ruff (repository-wide Python quality gate)" in workflow
+    assert "ruff check app tests" in workflow
 
 
 def test_production_charts_require_digest_identity() -> None:

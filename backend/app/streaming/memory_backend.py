@@ -8,7 +8,7 @@ This is also what the EPA fleet runs against in unit tests.
 from __future__ import annotations
 
 import asyncio
-from typing import AsyncIterator
+from collections.abc import AsyncIterator
 
 from app.streaming.serde import event_to_wire
 from app.telemetry.runtime_event import RuntimeEvent
@@ -52,7 +52,7 @@ class InMemoryEventBus:
                 return
             try:
                 yield await asyncio.wait_for(self._queue.get(), timeout=0.05)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 continue
 
     def qsize(self) -> int:

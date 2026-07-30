@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -46,7 +46,7 @@ def test_mock_connector_sync_returns_subset_of_discover() -> None:
     connector = MockConnector(config={"stable": True})
     all_assets = asyncio.run(connector.discover())
     incremental = asyncio.run(
-        connector.sync(since=datetime.now(timezone.utc))
+        connector.sync(since=datetime.now(UTC))
     )
     assert 0 < len(incremental) < len(all_assets)
     # Every incremental asset must come from the discover set

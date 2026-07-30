@@ -14,8 +14,9 @@ double).
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Awaitable, Callable, Optional
+from typing import Any
 
 from app.connectors.discovery.base import DiscoveredAsset
 from app.redteam.benchmark import ModelRunner, benchmark_models
@@ -24,7 +25,7 @@ from app.spm.risk_index import RiskIndex, compute_risk_index
 # Build a model runner for a discovered asset (e.g. a connector-backed client).
 # None → the asset isn't a callable model (dataset/pipeline) and is risk-scored
 # without a red-team pass.
-RunnerFactory = Callable[[DiscoveredAsset], Optional[ModelRunner]]
+RunnerFactory = Callable[[DiscoveredAsset], ModelRunner | None]
 
 
 @dataclass(frozen=True)
@@ -34,7 +35,7 @@ class AssetScan:
     provider: str
     redteam_success_rate: float
     risk_index: RiskIndex
-    benchmark: Optional[dict[str, Any]] = None
+    benchmark: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -51,7 +52,7 @@ async def autoscan_asset(
     asset: DiscoveredAsset,
     *,
     runner_for: RunnerFactory,
-    system_prompts: Optional[dict[str, str]] = None,
+    system_prompts: dict[str, str] | None = None,
     supply_chain_score: float = 0.0,
     iam_over_privilege: float = 0.0,
     runtime_block_rate: float = 0.0,
@@ -61,7 +62,7 @@ async def autoscan_asset(
     cfgs = system_prompts or {"baseline": ""}
     runner = runner_for(asset)
     success_rate = 0.0
-    bench: Optional[dict[str, Any]] = None
+    bench: dict[str, Any] | None = None
 
     if runner is not None:
         report = await benchmark_models({asset.external_id: runner}, system_prompts=cfgs)
@@ -90,7 +91,7 @@ async def autoscan_assets(
     assets: list[DiscoveredAsset],
     *,
     runner_for: RunnerFactory,
-    system_prompts: Optional[dict[str, str]] = None,
+    system_prompts: dict[str, str] | None = None,
 ) -> list[AssetScan]:
     """Auto-scan a batch of newly-discovered assets. Returns one AssetScan each,
     sorted by risk score (highest first) so the worst assets surface first."""

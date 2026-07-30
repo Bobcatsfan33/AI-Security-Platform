@@ -9,7 +9,7 @@ logic can be tested independently of HTTP.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import select
@@ -17,7 +17,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.mcp import McpCall, McpToolProfile, McpViolation
 from app.mcp.inspector import (
-    DEFAULT_TOOL_PROFILES,
     AccessMode,
     InspectionResult,
     ToolProfile,
@@ -26,7 +25,6 @@ from app.mcp.inspector import (
     sanitize_stored_profile,
 )
 from app.security.audit_log import AuditEventType, AuditOutcome, log_event
-
 
 # Lookback window for chain pattern matching. Calls older than this are
 # not considered part of the current chain — same default as TokenDNA's
@@ -88,7 +86,7 @@ async def recent_access_modes(
     idle session doesn't trip patterns that span hours of inactivity.
     """
     if now is None:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
     cutoff = now - timedelta(seconds=CHAIN_LOOKBACK_SECONDS)
 
     rows = (
@@ -131,7 +129,7 @@ async def inspect_and_record(
     # Append THIS call's access mode so chain matching includes it as the
     # final step (chain patterns are anchored on the latest call).
     if profile is not None:
-        history_with_current = list(history) + [profile.access_mode]
+        history_with_current = [*list(history), profile.access_mode]
     else:
         history_with_current = list(history)
 
@@ -203,11 +201,11 @@ async def inspect_and_record(
 # ─────────────────────────────────────────────── Helpers
 
 
-def _violation_to_dict(v) -> dict[str, Any]:  # noqa: ANN001
+def _violation_to_dict(v) -> dict[str, Any]:
     return {"type": v.type, "detail": v.detail, "severity": v.severity}
 
 
-def _chain_match_to_dict(c) -> dict[str, Any]:  # noqa: ANN001
+def _chain_match_to_dict(c) -> dict[str, Any]:
     return {
         "name": c.name,
         "description": c.description,

@@ -10,7 +10,8 @@ is where alert volume collapses — N Tier-2 signals become 1 Tier-3 incident.
 from __future__ import annotations
 
 import uuid
-from typing import Any, Callable, Iterable, Optional
+from collections.abc import Callable, Iterable
+from typing import Any
 
 from app.epa.agent_epa import EpaSignal
 from app.narratives.narrative import (
@@ -26,7 +27,7 @@ TimelineFetcher = Callable[[str, str, str], list[dict[str, Any]]]
 
 
 class NarrativeBuilder:
-    def __init__(self, *, timeline_fetcher: Optional[TimelineFetcher] = None) -> None:
+    def __init__(self, *, timeline_fetcher: TimelineFetcher | None = None) -> None:
         self._timeline = timeline_fetcher
 
     def _group_key(self, sig: EpaSignal) -> str:
@@ -70,7 +71,7 @@ class NarrativeBuilder:
             try:
                 events = self._timeline(org_id, asset_id, sigs[0].correlation_key)
                 timeline = tuple(events)
-            except Exception:  # noqa: BLE001 - timeline is best-effort context
+            except Exception:
                 timeline = ()
 
         return ThreatNarrative(

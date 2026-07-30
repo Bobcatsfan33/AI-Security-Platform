@@ -5,8 +5,8 @@ from __future__ import annotations
 
 import re
 
-from app.detectors.base import DetectorContext, DetectorResult, Direction
 from app.detectors import util
+from app.detectors.base import DetectorContext, DetectorResult, Direction
 from app.policy.compiled import PII_PATTERNS, luhn_check
 
 # Additional regulated identifiers beyond the Stage-1 PII_PATTERNS set.

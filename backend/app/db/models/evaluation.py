@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Optional
 
 from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import UUID
@@ -60,16 +59,16 @@ class Evaluation(Base, TenantScoped):
 
     # --- Configuration ---
     test_case_ids: Mapped[JsonbList]
-    connector_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+    connector_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), nullable=True
     )
-    max_test_cases: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    max_test_cases: Mapped[int | None] = mapped_column(Integer, nullable=True)
     timeout_seconds: Mapped[int] = mapped_column(Integer, default=600, nullable=False)
     parallel_workers: Mapped[int] = mapped_column(Integer, default=4, nullable=False)
 
     # --- Results ---
     score: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
-    risk_label: Mapped[Optional[str]] = mapped_column(
+    risk_label: Mapped[str | None] = mapped_column(
         String(32), nullable=True
     )  # good | needs_hardening | high_risk | critical
     tests_run: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
@@ -81,22 +80,22 @@ class Evaluation(Base, TenantScoped):
     model_cost_usd: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
 
     # --- CI/CD gate ---
-    gate_result: Mapped[Optional[str]] = mapped_column(
+    gate_result: Mapped[str | None] = mapped_column(
         String(32), nullable=True
     )  # pass | fail | warn | not_applicable
     gate_policy: Mapped[JsonbDict]
-    gate_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    gate_message: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # --- Metadata ---
-    started_at: Mapped[Optional[datetime]] = mapped_column(_DateTimeTz, nullable=True)
-    completed_at: Mapped[Optional[datetime]] = mapped_column(_DateTimeTz, nullable=True)
-    duration_seconds: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    initiated_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+    started_at: Mapped[datetime | None] = mapped_column(_DateTimeTz, nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(_DateTimeTz, nullable=True)
+    duration_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    initiated_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
     )
-    previous_evaluation_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+    previous_evaluation_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), nullable=True
     )
 

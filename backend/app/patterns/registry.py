@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, Optional
+from typing import Any
 
 from app.patterns.compiled import CompiledPattern, PatternValidationError, compile_pattern
 
@@ -48,7 +48,7 @@ class PatternRegistry:
 
 
 # Process-wide registry (the running web/consumer process holds one).
-_registry: Optional[PatternRegistry] = None
+_registry: PatternRegistry | None = None
 
 
 def get_registry() -> PatternRegistry:

@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Optional
 
 from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import UUID
@@ -49,7 +48,7 @@ class Finding(Base, TenantScoped):
     # --- Classification ---
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     category: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
-    sub_category: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    sub_category: Mapped[str | None] = mapped_column(String(64), nullable=True)
     severity: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
     risk_score: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
     confidence: Mapped[float] = mapped_column(Float, default=1.0, nullable=False)
@@ -57,31 +56,31 @@ class Finding(Base, TenantScoped):
     control_mappings: Mapped[JsonbList]
 
     # --- Evidence ---
-    prompt_sent: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    response_received: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    system_prompt_used: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    context_injected: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    prompt_sent: Mapped[str | None] = mapped_column(Text, nullable=True)
+    response_received: Mapped[str | None] = mapped_column(Text, nullable=True)
+    system_prompt_used: Mapped[str | None] = mapped_column(Text, nullable=True)
+    context_injected: Mapped[str | None] = mapped_column(Text, nullable=True)
     tool_calls_made: Mapped[JsonbList]
-    judge_reasoning: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    judge_reasoning: Mapped[str | None] = mapped_column(Text, nullable=True)
     policy_results: Mapped[JsonbList]
     evidence_artifacts: Mapped[JsonbList]
 
     # --- Remediation ---
-    recommendation: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    recommendation: Mapped[str | None] = mapped_column(Text, nullable=True)
     remediation_status: Mapped[str] = mapped_column(
         String(32), nullable=False, default="open"
     )  # open | in_progress | remediated | verified | accepted_risk | false_positive
-    remediation_owner: Mapped[Optional[uuid.UUID]] = mapped_column(
+    remediation_owner: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
     )
-    remediation_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    verified_by_evaluation_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+    remediation_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    verified_by_evaluation_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), nullable=True
     )
-    verified_at: Mapped[Optional[datetime]] = mapped_column(_DateTimeTz, nullable=True)
-    regression_test_case_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+    verified_at: Mapped[datetime | None] = mapped_column(_DateTimeTz, nullable=True)
+    regression_test_case_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), nullable=True
     )
 
@@ -91,7 +90,7 @@ class Finding(Base, TenantScoped):
     occurrence_count: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     created_at: Mapped[TimestampUtc]
     updated_at: Mapped[TimestampUtcUpdated]
-    updated_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+    updated_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
