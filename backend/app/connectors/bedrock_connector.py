@@ -231,9 +231,7 @@ class BedrockConnector:
                 "max_tokens": max_tokens,
                 "temperature": temperature,
                 "messages": (
-                    messages
-                    if messages is not None
-                    else [{"role": "user", "content": prompt}]
+                    messages if messages is not None else [{"role": "user", "content": prompt}]
                 ),
             }
             if system_prompt:
@@ -253,8 +251,7 @@ class BedrockConnector:
             }
 
         raise ConnectorError(
-            f"unsupported Bedrock model family {self._family!r} "
-            f"(supported: anthropic, meta)"
+            f"unsupported Bedrock model family {self._family!r} " f"(supported: anthropic, meta)"
         )
 
     async def _invoke(self, body: dict[str, Any]) -> ConnectorResponse:
@@ -284,18 +281,14 @@ class BedrockConnector:
         data = json.loads(raw_bytes)
         return self._parse_response(data, latency_ms=timer.elapsed_ms)
 
-    def _parse_response(
-        self, data: dict[str, Any], *, latency_ms: int
-    ) -> ConnectorResponse:
+    def _parse_response(self, data: dict[str, Any], *, latency_ms: int) -> ConnectorResponse:
         if self._family == "anthropic":
             return self._parse_anthropic(data, latency_ms=latency_ms)
         if self._family == "meta":
             return self._parse_meta(data, latency_ms=latency_ms)
         raise ConnectorError(f"unsupported response family {self._family!r}")
 
-    def _parse_anthropic(
-        self, data: dict[str, Any], *, latency_ms: int
-    ) -> ConnectorResponse:
+    def _parse_anthropic(self, data: dict[str, Any], *, latency_ms: int) -> ConnectorResponse:
         text_parts: list[str] = []
         tool_calls: list[ToolCall] = []
         for block in data.get("content") or []:
@@ -328,9 +321,7 @@ class BedrockConnector:
             raw_response=data,
         )
 
-    def _parse_meta(
-        self, data: dict[str, Any], *, latency_ms: int
-    ) -> ConnectorResponse:
+    def _parse_meta(self, data: dict[str, Any], *, latency_ms: int) -> ConnectorResponse:
         text = str(data.get("generation") or "")
         # Llama on Bedrock returns prompt_token_count + generation_token_count
         in_tokens = int(data.get("prompt_token_count", 0))
@@ -360,7 +351,9 @@ class BedrockConnector:
         return {
             "name": fn.get("name") or tool.get("name", ""),
             "description": fn.get("description") or tool.get("description", ""),
-            "input_schema": fn.get("parameters") or tool.get("input_schema") or {
+            "input_schema": fn.get("parameters")
+            or tool.get("input_schema")
+            or {
                 "type": "object",
                 "properties": {},
             },

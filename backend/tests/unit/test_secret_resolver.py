@@ -48,9 +48,7 @@ class TestEnvVarResolver:
 
 @pytest.mark.unit
 class TestCompositeResolver:
-    def test_dispatches_to_matching_backend(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_dispatches_to_matching_backend(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("MY_VAR", "from-env")
 
         class FakeVault:
@@ -113,9 +111,7 @@ class TestAwsSecretsManagerResolver:
         with pytest.raises(SecretResolutionError):
             AwsSecretsManagerResolver().resolve("env:VAR")
 
-    def test_missing_boto3_raises_clear_error(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_missing_boto3_raises_clear_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
         # Force ImportError for boto3 by intercepting __import__
         import builtins
 
@@ -164,25 +160,19 @@ class TestSecretGate:
         with pytest.raises(secret_gate.ConfigurationError, match="JWT_SECRET"):
             secret_gate.assert_production_secrets()
 
-    def test_rejects_known_dev_default_in_production(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_rejects_known_dev_default_in_production(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(secret_gate, "is_production", lambda: True)
         monkeypatch.setenv("JWT_SECRET", secret_gate.KNOWN_DEV_DEFAULTS["JWT_SECRET"])
         with pytest.raises(secret_gate.ConfigurationError, match="dev default"):
             secret_gate.assert_production_secrets()
 
-    def test_rejects_short_secret_in_production(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_rejects_short_secret_in_production(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(secret_gate, "is_production", lambda: True)
         monkeypatch.setenv("JWT_SECRET", "tooshort")
         with pytest.raises(secret_gate.ConfigurationError, match="shorter than"):
             secret_gate.assert_production_secrets()
 
-    def test_accepts_strong_secret_in_production(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_accepts_strong_secret_in_production(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(secret_gate, "is_production", lambda: True)
         monkeypatch.setenv(
             "JWT_SECRET",

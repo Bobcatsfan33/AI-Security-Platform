@@ -147,8 +147,8 @@ async def list_policies(
     db: AsyncSession = Depends(get_db),
 ) -> list[PolicyResponse]:
     rows = (
-        await db.execute(select(Policy).where(Policy.org_id == identity.org_id))
-    ).scalars().all()
+        (await db.execute(select(Policy).where(Policy.org_id == identity.org_id))).scalars().all()
+    )
     return [_to_response(r) for r in rows]
 
 
@@ -267,9 +267,7 @@ async def delete_policy(
     name = row.name
     await db.delete(row)
     await db.commit()
-    await publish_policy_change(
-        org_id=org_id, policy_id=pid, version=version, event="delete"
-    )
+    await publish_policy_change(org_id=org_id, policy_id=pid, version=version, event="delete")
     log_event(
         AuditEventType.POLICY_DELETED,
         AuditOutcome.SUCCESS,
@@ -280,13 +278,9 @@ async def delete_policy(
     )
 
 
-async def _load_owned(
-    db: AsyncSession, policy_id: uuid.UUID, org_id: uuid.UUID
-) -> Policy:
+async def _load_owned(db: AsyncSession, policy_id: uuid.UUID, org_id: uuid.UUID) -> Policy:
     row = (
-        await db.execute(
-            select(Policy).where(Policy.id == policy_id, Policy.org_id == org_id)
-        )
+        await db.execute(select(Policy).where(Policy.id == policy_id, Policy.org_id == org_id))
     ).scalar_one_or_none()
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")

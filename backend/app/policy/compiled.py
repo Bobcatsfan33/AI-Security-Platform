@@ -87,9 +87,7 @@ PII_PATTERNS: dict[str, re.Pattern[str]] = {
     # in Python rather than regex)
     "credit_card": re.compile(r"\b(?:\d[- ]?){12,18}\d\b"),
     # US phone — covers 10-digit and +1-prefixed forms
-    "phone_us": re.compile(
-        r"\b(?:\+?1[- .]?)?\(?\d{3}\)?[- .]?\d{3}[- .]?\d{4}\b"
-    ),
+    "phone_us": re.compile(r"\b(?:\+?1[- .]?)?\(?\d{3}\)?[- .]?\d{3}[- .]?\d{4}\b"),
     # IPv4
     "ipv4": re.compile(
         r"\b(?:(?:25[0-5]|2[0-4]\d|1?\d{1,2})\.){3}(?:25[0-5]|2[0-4]\d|1?\d{1,2})\b"
@@ -139,18 +137,12 @@ def compile_policy(*, policy_row: dict[str, Any]) -> CompiledPolicy:
         version=int(policy_row.get("version", 1)),
         enforcement_level=policy_row.get("enforcement_level", "fast"),
         fail_behavior=policy_row.get("fail_behavior", "open"),
-        ml_confidence_threshold_high=float(
-            policy_row.get("ml_confidence_threshold_high", 0.7)
-        ),
-        ml_confidence_threshold_low=float(
-            policy_row.get("ml_confidence_threshold_low", 0.3)
-        ),
+        ml_confidence_threshold_high=float(policy_row.get("ml_confidence_threshold_high", 0.7)),
+        ml_confidence_threshold_low=float(policy_row.get("ml_confidence_threshold_low", 0.3)),
         rules=tuple(rules),
         tool_allowlist=frozenset(policy_row.get("tool_allowlist") or []),
         tool_denylist=frozenset(policy_row.get("tool_denylist") or []),
-        tool_approval_required=frozenset(
-            policy_row.get("tool_approval_required") or []
-        ),
+        tool_approval_required=frozenset(policy_row.get("tool_approval_required") or []),
         rate_limits=dict(policy_row.get("rate_limits") or {}),
         content_filters=dict(policy_row.get("content_filters") or {}),
     )

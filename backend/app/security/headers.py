@@ -94,8 +94,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         response.headers["Permissions-Policy"] = (
-            "camera=(), microphone=(), geolocation=(), "
-            "payment=(), usb=(), bluetooth=()"
+            "camera=(), microphone=(), geolocation=(), " "payment=(), usb=(), bluetooth=()"
         )
 
         # Cross-Origin isolation
@@ -106,9 +105,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
         # Cache-Control for API responses (paths under /v1/)
         if request.url.path.startswith("/v1/"):
-            response.headers["Cache-Control"] = (
-                "no-store, no-cache, must-revalidate, private"
-            )
+            response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, private"
             response.headers["Pragma"] = "no-cache"
 
         # Scrub server fingerprint

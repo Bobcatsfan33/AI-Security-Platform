@@ -62,7 +62,7 @@ class CampaignReport:
     success_rate: float
     by_strategy: dict[str, dict[str, Any]]
     by_category: dict[str, dict[str, Any]]
-    novel_findings: tuple[AttackResult, ...]   # LLM-generated AND successful
+    novel_findings: tuple[AttackResult, ...]  # LLM-generated AND successful
     total_cost_usd: float
     total_target_calls: int
     target_errors: int
@@ -120,9 +120,7 @@ class CampaignRunner:
         strategies: list[AttackStrategy] | None = None,
         max_attacks: int | None = None,
     ) -> CampaignReport:
-        attacks = await self._generator.generate(
-            request=request, strategies=strategies
-        )
+        attacks = await self._generator.generate(request=request, strategies=strategies)
         if max_attacks is not None:
             attacks = attacks[:max_attacks]
 
@@ -181,9 +179,7 @@ class CampaignRunner:
             verdict=verdict,
         )
 
-    def _aggregate(
-        self, *, asset_id: str, results: list[AttackResult]
-    ) -> CampaignReport:
+    def _aggregate(self, *, asset_id: str, results: list[AttackResult]) -> CampaignReport:
         total = len(results)
         successful = sum(1 for r in results if r.succeeded)
         rate = (successful / total) if total else 0.0
@@ -197,9 +193,7 @@ class CampaignRunner:
         for r in results:
             sid = r.attack.strategy_id
             cat = r.attack.category
-            s_bucket = by_strategy.setdefault(
-                sid, {"total": 0, "successful": 0, "category": cat}
-            )
+            s_bucket = by_strategy.setdefault(sid, {"total": 0, "successful": 0, "category": cat})
             s_bucket["total"] += 1
             if r.succeeded:
                 s_bucket["successful"] += 1

@@ -101,15 +101,24 @@ async def org_with_bare_asset() -> AsyncIterator[tuple[uuid.UUID, uuid.UUID]]:
         await db.flush()
         db.add(
             Connector(
-                id=connector_id, org_id=org_id, name="c", connector_type="mock",
-                config_encrypted={}, is_enabled=True,
+                id=connector_id,
+                org_id=org_id,
+                name="c",
+                connector_type="mock",
+                config_encrypted={},
+                is_enabled=True,
             )
         )
         db.add(
             AIAsset(
-                id=asset_id, org_id=org_id, name="bare", asset_type="model",
-                provider="openai", external_id=f"ext-{asset_id.hex[:8]}",
-                connector_id=connector_id, metadata_json={},
+                id=asset_id,
+                org_id=org_id,
+                name="bare",
+                asset_type="model",
+                provider="openai",
+                external_id=f"ext-{asset_id.hex[:8]}",
+                connector_id=connector_id,
+                metadata_json={},
             )
         )
         await db.commit()
@@ -205,14 +214,22 @@ async def org_with_malformed_asset() -> AsyncIterator[tuple[uuid.UUID, uuid.UUID
         await db.flush()
         db.add(
             Connector(
-                id=connector_id, org_id=org_id, name="c", connector_type="mock",
-                config_encrypted={}, is_enabled=True,
+                id=connector_id,
+                org_id=org_id,
+                name="c",
+                connector_type="mock",
+                config_encrypted={},
+                is_enabled=True,
             )
         )
         db.add(
             AIAsset(
-                id=asset_id, org_id=org_id, name="bad", asset_type="agent",
-                provider="openai", external_id=f"ext-{asset_id.hex[:8]}",
+                id=asset_id,
+                org_id=org_id,
+                name="bad",
+                asset_type="agent",
+                provider="openai",
+                external_id=f"ext-{asset_id.hex[:8]}",
                 connector_id=connector_id,
                 metadata_json={
                     "is_agentic": "false",  # truthy string
@@ -250,7 +267,9 @@ async def test_no_endpoint_500s_on_malformed_metadata(app_client, org_with_malfo
             assert resp.status_code == 200, f"{suffix} 500'd on malformed data: {resp.text}"
 
 
-async def test_malformed_blast_radius_fabricates_nothing(app_client, org_with_malformed_asset) -> None:
+async def test_malformed_blast_radius_fabricates_nothing(
+    app_client, org_with_malformed_asset
+) -> None:
     """The Tier A honesty claim under garbage input: nothing is invented. The
     truthy-string is_agentic does not score agentic; 'shell' is not 5 tools; the
     bool budget is not a budget; the unmapped exposure says unrecognised."""

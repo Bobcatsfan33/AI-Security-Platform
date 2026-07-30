@@ -101,9 +101,7 @@ def _safe_query(query: str, parameters: dict[str, Any]) -> list[dict[str, Any]]:
 # ──────────────────────────────────────────────── runtime overview
 
 
-def runtime_overview(
-    *, org_id: uuid.UUID, time_range: TimeRange = "24h"
-) -> RuntimeOverview:
+def runtime_overview(*, org_id: uuid.UUID, time_range: TimeRange = "24h") -> RuntimeOverview:
     interval = _range_interval(time_range)
     bucket = _bucket_function(time_range)
 

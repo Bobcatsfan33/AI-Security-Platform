@@ -34,7 +34,7 @@ logger = logging.getLogger("platform.connectors.ollama")
 
 DEFAULT_BASE_URL = "http://localhost:11434"
 DEFAULT_TIMEOUT_S = 120.0  # local inference can be slow on CPU
-DEFAULT_MAX_RETRIES = 1   # network problems on localhost are rare; don't mask them
+DEFAULT_MAX_RETRIES = 1  # network problems on localhost are rare; don't mask them
 
 
 class OllamaConnector:
@@ -119,9 +119,7 @@ class OllamaConnector:
                 raise ConnectorError(f"ollama_unreachable: {exc}") from exc
         if resp.status_code == 200:
             return True
-        raise ConnectorError(
-            f"ollama_health_check_failed: status={resp.status_code}"
-        )
+        raise ConnectorError(f"ollama_health_check_failed: status={resp.status_code}")
 
     # ─────────────────────────────────────────── internals
 
@@ -140,9 +138,7 @@ class OllamaConnector:
                         )
                 except (httpx.TimeoutException, httpx.RequestError) as exc:
                     if attempt > self._max_retries:
-                        raise ConnectorTransientError(
-                            f"ollama_request_error: {exc}"
-                        ) from exc
+                        raise ConnectorTransientError(f"ollama_request_error: {exc}") from exc
                     await self._backoff(attempt)
                     continue
 
@@ -150,23 +146,18 @@ class OllamaConnector:
                 return self._parse_response(resp.json(), latency_ms=timer.elapsed_ms)
             if 500 <= resp.status_code < 600:
                 if attempt > self._max_retries:
-                    raise ConnectorTransientError(
-                        f"ollama_server_error status={resp.status_code}"
-                    )
+                    raise ConnectorTransientError(f"ollama_server_error status={resp.status_code}")
                 await self._backoff(attempt)
                 continue
             raise ConnectorError(
-                f"ollama_request_failed status={resp.status_code} "
-                f"body={resp.text[:500]}"
+                f"ollama_request_failed status={resp.status_code} " f"body={resp.text[:500]}"
             )
 
     async def _backoff(self, attempt: int) -> None:
         base = min(2 ** (attempt - 1), 10.0)
         await asyncio.sleep(base + random.uniform(0, base * 0.25))
 
-    def _parse_response(
-        self, data: dict[str, Any], *, latency_ms: int
-    ) -> ConnectorResponse:
+    def _parse_response(self, data: dict[str, Any], *, latency_ms: int) -> ConnectorResponse:
         message = data.get("message") or {}
         text = message.get("content") or ""
 

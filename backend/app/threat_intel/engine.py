@@ -62,10 +62,8 @@ async def rebuild_clusters(db: AsyncSession) -> EngineState:
         return new_state
 
     rows = (
-        await db.execute(
-            select(Finding).where(Finding.org_id.in_(opted_in_orgs))
-        )
-    ).scalars().all()
+        (await db.execute(select(Finding).where(Finding.org_id.in_(opted_in_orgs)))).scalars().all()
+    )
 
     for row in rows:
         sample = to_sample(
@@ -89,11 +87,7 @@ async def rebuild_clusters(db: AsyncSession) -> EngineState:
 
 async def _opted_in_org_ids(db: AsyncSession) -> list[uuid.UUID]:
     rows = (await db.execute(select(Organization))).scalars().all()
-    return [
-        r.id
-        for r in rows
-        if (r.settings or {}).get("threat_intel_share", False) is True
-    ]
+    return [r.id for r in rows if (r.settings or {}).get("threat_intel_share", False) is True]
 
 
 def _replace_state(new: EngineState) -> None:

@@ -83,14 +83,10 @@ class SamlAdapter:
         self.idp_sso_url: str = self._cfg["sso_url"]
         self.idp_slo_url: str | None = self._cfg.get("slo_url") or None
         self.idp_certificate: str = self._cfg["certificate"]
-        self.attribute_mappings: dict[str, str] = dict(
-            self._cfg.get("attribute_mappings") or {}
-        )
+        self.attribute_mappings: dict[str, str] = dict(self._cfg.get("attribute_mappings") or {})
 
         name_id_short = self._cfg.get("name_id_format", "email")
-        self.name_id_format = _NAME_ID_FORMATS.get(
-            name_id_short, _NAME_ID_FORMATS["email"]
-        )
+        self.name_id_format = _NAME_ID_FORMATS.get(name_id_short, _NAME_ID_FORMATS["email"])
 
         # SP entity_id and ACS URL can be overridden in config; otherwise
         # they're synthesized at runtime from the request URL we receive.
@@ -158,17 +154,13 @@ class SamlAdapter:
         if not auth.is_authenticated():
             errors = auth.get_errors()
             reason = auth.get_last_error_reason() or "unauthenticated"
-            raise IdentityAuthError(
-                f"saml_assertion_invalid: {reason} (errors: {errors})"
-            )
+            raise IdentityAuthError(f"saml_assertion_invalid: {reason} (errors: {errors})")
 
         return self._claims_from_auth(auth)
 
     # ─────────────────────────────────────────── internals
 
-    def _build_auth(
-        self, *, request_data: dict[str, Any], sp_acs_url: str
-    ) -> Any:
+    def _build_auth(self, *, request_data: dict[str, Any], sp_acs_url: str) -> Any:
         """Construct a OneLogin_Saml2_Auth instance from the per-call context."""
         try:
             from onelogin.saml2.auth import OneLogin_Saml2_Auth  # type: ignore[import-untyped]
@@ -324,7 +316,7 @@ def generate_sp_metadata(*, sp_entity_id: str, sp_acs_url: str) -> str:
         '                      WantAssertionsSigned="true"\n'
         '                      protocolSupportEnumeration="urn:oasis:names:tc:SAML:2.0:protocol">\n'
         f'    <md:NameIDFormat>{_NAME_ID_FORMATS["email"]}</md:NameIDFormat>\n'
-        '    <md:AssertionConsumerService\n'
+        "    <md:AssertionConsumerService\n"
         '        Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST"\n'
         f'        Location="{sp_acs_url}"\n'
         '        index="0"\n'

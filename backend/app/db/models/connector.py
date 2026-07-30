@@ -33,12 +33,8 @@ class Connector(Base, TenantScoped):
     # stores cipher bytes, not plaintext.
     config_encrypted: Mapped[JsonbDict]
     schedule: Mapped[str | None] = mapped_column(Text, nullable=True)
-    is_enabled: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, default=True, index=True
-    )
-    last_sync_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    is_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, index=True)
+    last_sync_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_sync_status: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     created_at: Mapped[TimestampUtc]

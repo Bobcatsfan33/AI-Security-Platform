@@ -261,7 +261,9 @@ async def test_gated_exporter_enabled_flip_only_update(app_client, org, monkeypa
         assert resp.status_code == 400, resp.text
 
 
-async def test_pure_disable_works_even_if_the_secret_var_is_gone(app_client, org, monkeypatch) -> None:
+async def test_pure_disable_works_even_if_the_secret_var_is_gone(
+    app_client, org, monkeypatch
+) -> None:
     """F4: an operator whose secret var rotated away must still be able to turn a
     Tier B exporter OFF — a pure disable skips ref validation, so it does not
     trap them into delete-only."""

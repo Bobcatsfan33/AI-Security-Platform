@@ -65,7 +65,7 @@ class RiskComponent:
 @dataclass(frozen=True)
 class SupplyChainRisk:
     asset_id: str
-    score: float                    # 0-100
+    score: float  # 0-100
     components: tuple[RiskComponent, ...]
     factors: dict[str, Any] = field(default_factory=dict)
 
@@ -167,9 +167,7 @@ def score_supply_chain(asset: dict[str, Any]) -> SupplyChainRisk:
             score=agentic_risk,
             weight=0.10,
             detail=(
-                f"agentic={is_agentic}, blast_radius_score={blast}"
-                if is_agentic
-                else "non-agentic"
+                f"agentic={is_agentic}, blast_radius_score={blast}" if is_agentic else "non-agentic"
             ),
         )
     )

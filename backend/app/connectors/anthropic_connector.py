@@ -123,9 +123,7 @@ class AnthropicConnector:
         # Anthropic's tool schema is {"name", "description", "input_schema"}.
         # Most callers will already be in OpenAI shape ({"type": "function",
         # "function": {"name", "parameters"}}). Translate.
-        anthropic_tools = [
-            self._translate_tool(t) for t in tools
-        ]
+        anthropic_tools = [self._translate_tool(t) for t in tools]
         body: dict[str, Any] = {
             "model": self.model,
             "max_tokens": 1024,
@@ -156,9 +154,7 @@ class AnthropicConnector:
             return True
         if resp.status_code == 401:
             raise ConnectorAuthError("anthropic_health_check_unauthorized")
-        raise ConnectorError(
-            f"anthropic_health_check_failed: status={resp.status_code}"
-        )
+        raise ConnectorError(f"anthropic_health_check_failed: status={resp.status_code}")
 
     # ─────────────────────────────────────────── internals
 
@@ -189,7 +185,9 @@ class AnthropicConnector:
         return {
             "name": fn.get("name") or tool.get("name", ""),
             "description": fn.get("description") or tool.get("description", ""),
-            "input_schema": fn.get("parameters") or tool.get("input_schema") or {
+            "input_schema": fn.get("parameters")
+            or tool.get("input_schema")
+            or {
                 "type": "object",
                 "properties": {},
             },
@@ -219,9 +217,7 @@ class AnthropicConnector:
                     continue
                 except httpx.RequestError as exc:
                     if attempt > self._max_retries:
-                        raise ConnectorTransientError(
-                            f"anthropic_request_error: {exc}"
-                        ) from exc
+                        raise ConnectorTransientError(f"anthropic_request_error: {exc}") from exc
                     await self._backoff(attempt)
                     continue
 
@@ -247,8 +243,7 @@ class AnthropicConnector:
                 continue
 
             raise ConnectorError(
-                f"anthropic_request_failed status={resp.status_code} "
-                f"body={resp.text[:500]}"
+                f"anthropic_request_failed status={resp.status_code} " f"body={resp.text[:500]}"
             )
 
     @staticmethod
@@ -261,9 +256,7 @@ class AnthropicConnector:
         except ValueError:
             return None
 
-    async def _backoff(
-        self, attempt: int, *, retry_after: float | None = None
-    ) -> None:
+    async def _backoff(self, attempt: int, *, retry_after: float | None = None) -> None:
         if retry_after is not None:
             delay = retry_after
         else:
@@ -275,9 +268,7 @@ class AnthropicConnector:
         )
         await asyncio.sleep(delay)
 
-    def _parse_response(
-        self, data: dict[str, Any], *, latency_ms: int
-    ) -> ConnectorResponse:
+    def _parse_response(self, data: dict[str, Any], *, latency_ms: int) -> ConnectorResponse:
         # content is an array of typed blocks. Concatenate text blocks; tool_use
         # blocks become ToolCalls.
         text_parts: list[str] = []

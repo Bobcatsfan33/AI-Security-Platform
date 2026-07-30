@@ -72,16 +72,12 @@ class TestOidcClaimsMapping:
         )
         assert single.groups == ("Engineering",)
 
-        listed = adapter._claims_to_identity(
-            {"sub": "u", "email": "e@x.com", "groups": ["A", "B"]}
-        )
+        listed = adapter._claims_to_identity({"sub": "u", "email": "e@x.com", "groups": ["A", "B"]})
         assert listed.groups == ("A", "B")
 
     def test_name_falls_back_to_email_when_missing(self) -> None:
         adapter = _adapter()
-        identity = adapter._claims_to_identity(
-            {"sub": "u", "email": "no-name@example.com"}
-        )
+        identity = adapter._claims_to_identity({"sub": "u", "email": "no-name@example.com"})
         assert identity.name == "no-name@example.com"
 
     def test_missing_subject_raises(self) -> None:

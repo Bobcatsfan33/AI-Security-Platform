@@ -117,7 +117,9 @@ def render_pdf(markdown: str) -> bytes:
 # ─────────────────────────────────────────────── Templates
 
 
-def _header(template_name: str, asset: dict[str, Any], evaluation: dict[str, Any], org_name: str) -> str:
+def _header(
+    template_name: str, asset: dict[str, Any], evaluation: dict[str, Any], org_name: str
+) -> str:
     return (
         f"# {template_name}\n\n"
         f"**Asset:** {asset.get('name', asset.get('id'))}  \n"
@@ -208,7 +210,10 @@ def _technical_detail(
     severity_order = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
     ordered = sorted(
         findings,
-        key=lambda f: (severity_order.get(f.get("severity", "medium"), 2), -float(f.get("risk_score", 0))),
+        key=lambda f: (
+            severity_order.get(f.get("severity", "medium"), 2),
+            -float(f.get("risk_score", 0)),
+        ),
     )
 
     for f in ordered:
@@ -268,9 +273,9 @@ def _owasp_top10(
         bucket = by_owasp.get(cid, [])
         worst = "—"
         if bucket:
-            worst = max(
-                bucket, key=lambda f: severity_rank.get(f.get("severity", "info"), 0)
-            ).get("severity", "—")
+            worst = max(bucket, key=lambda f: severity_rank.get(f.get("severity", "info"), 0)).get(
+                "severity", "—"
+            )
         out.write(f"| {cid} | {name} | {len(bucket)} | {worst} |\n")
     out.write("\n")
 
@@ -343,9 +348,7 @@ def _nist_ai_rmf(
         out.write("All findings have been remediated or risk-accepted.\n")
     else:
         for f in open_findings[:20]:
-            out.write(
-                f"- **{f.get('title')}** ({f.get('severity')}) — {f.get('category')}\n"
-            )
+            out.write(f"- **{f.get('title')}** ({f.get('severity')}) — {f.get('category')}\n")
     return out.getvalue()
 
 
@@ -397,7 +400,9 @@ def _eu_ai_act(
     data_class = asset.get("data_classification", "internal")
     risk_class = _eu_risk_class(exposure, data_class)
 
-    out.write(f"## Risk Classification\n\n**This asset is provisionally categorized as: {risk_class}**\n\n")
+    out.write(
+        f"## Risk Classification\n\n**This asset is provisionally categorized as: {risk_class}**\n\n"
+    )
     out.write(
         "*Note: Final risk classification is the operator's responsibility "
         "under the EU AI Act. This report provides a starting point based "

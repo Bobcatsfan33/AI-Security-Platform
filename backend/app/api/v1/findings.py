@@ -128,9 +128,7 @@ async def list_findings(
         stmt = stmt.where(Finding.remediation_status == remediation_status)
     if category:
         stmt = stmt.where(Finding.category == category)
-    stmt = stmt.order_by(
-        Finding.severity.desc(), Finding.created_at.desc()
-    ).limit(limit)
+    stmt = stmt.order_by(Finding.severity.desc(), Finding.created_at.desc()).limit(limit)
     rows = (await db.execute(stmt)).scalars().all()
     return [_to_response(r) for r in rows]
 
@@ -179,15 +177,9 @@ async def update_remediation(
     return _to_response(row)
 
 
-async def _load_owned(
-    db: AsyncSession, finding_id: uuid.UUID, org_id: uuid.UUID
-) -> Finding:
+async def _load_owned(db: AsyncSession, finding_id: uuid.UUID, org_id: uuid.UUID) -> Finding:
     row = (
-        await db.execute(
-            select(Finding).where(
-                Finding.id == finding_id, Finding.org_id == org_id
-            )
-        )
+        await db.execute(select(Finding).where(Finding.id == finding_id, Finding.org_id == org_id))
     ).scalar_one_or_none()
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")

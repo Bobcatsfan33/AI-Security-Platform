@@ -78,9 +78,7 @@ async def traffic_by_asset(
     limit: int = Query(50, ge=1, le=200),
     identity: IdentityContext = Depends(require_role("analyst")),
 ) -> TrafficByAssetResponse:
-    result = q.traffic_by_asset(
-        org_id=identity.org_id, time_range=time_range, limit=limit
-    )
+    result = q.traffic_by_asset(org_id=identity.org_id, time_range=time_range, limit=limit)
     return TrafficByAssetResponse(time_range=result.time_range, rows=result.rows)
 
 
@@ -89,9 +87,7 @@ async def policy_effectiveness(
     time_range: TimeRange = Query("24h"),
     identity: IdentityContext = Depends(require_role("analyst")),
 ) -> PolicyEffectivenessResponse:
-    result = q.policy_effectiveness(
-        org_id=identity.org_id, time_range=time_range
-    )
+    result = q.policy_effectiveness(org_id=identity.org_id, time_range=time_range)
     return PolicyEffectivenessResponse(
         time_range=result.time_range,
         stage1_hits=result.stage1_hits,

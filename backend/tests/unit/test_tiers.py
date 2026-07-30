@@ -333,6 +333,6 @@ def test_admin_only_tier_b_is_absent_from_the_badge_list(
         for path in _routes_under(app, prefix):
             assert PREVIEW_TAG in _tags_for(app, path), f"{path} is Tier B but not preview-tagged"
         # …and it is NOT badged in the UI (there is no page)
-        assert prefix not in _frontend_tier_b_routes(), (
-            f"{prefix} is admin-only (no page) but appears in the UI badge list"
-        )
+        assert (
+            prefix not in _frontend_tier_b_routes()
+        ), f"{prefix} is admin-only (no page) but appears in the UI badge list"

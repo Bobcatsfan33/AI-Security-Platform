@@ -94,8 +94,7 @@ CONTROL_MAPPINGS: dict[Framework, dict[str, dict[str, str]]] = {
         "A.8.16": {
             "title": "Monitoring activities",
             "evidence": (
-                "audit_log.jsonl is hash-chained per NIST 800-53 AU-9; "
-                "tamper-evident."
+                "audit_log.jsonl is hash-chained per NIST 800-53 AU-9; " "tamper-evident."
             ),
         },
     },
@@ -107,8 +106,7 @@ CONTROL_MAPPINGS: dict[Framework, dict[str, dict[str, str]]] = {
         "AU-9": {
             "title": "Protection of Audit Information",
             "evidence": (
-                "HMAC-SHA256 chain; integrity verified nightly via "
-                "verify_log_integrity()."
+                "HMAC-SHA256 chain; integrity verified nightly via " "verify_log_integrity()."
             ),
         },
         "RA-5": {
@@ -135,7 +133,7 @@ class EvidencePackInputs:
     framework: Framework
     period_start: datetime
     period_end: datetime
-    audit_log_jsonl: str = ""   # caller-supplied; this module doesn't tail the file
+    audit_log_jsonl: str = ""  # caller-supplied; this module doesn't tail the file
 
 
 async def build_pack(
@@ -153,13 +151,19 @@ async def build_pack(
         raise ValueError(f"unsupported framework: {inputs.framework}")
 
     files: dict[str, bytes] = {}
-    files[f"controls/{inputs.framework}.json"] = json.dumps(
-        controls, indent=2
-    ).encode("utf-8")
+    files[f"controls/{inputs.framework}.json"] = json.dumps(controls, indent=2).encode("utf-8")
     files["findings.jsonl"] = _to_jsonl(_finding_dicts(findings))
     files["evaluations.csv"] = _to_csv(
-        ["id", "asset_id", "started_at", "completed_at", "status", "score",
-         "findings_count", "critical_findings"],
+        [
+            "id",
+            "asset_id",
+            "started_at",
+            "completed_at",
+            "status",
+            "score",
+            "findings_count",
+            "critical_findings",
+        ],
         _evaluation_rows(evaluations),
     )
     files["policies.json"] = json.dumps(_policy_dicts(policies), indent=2).encode()
@@ -171,9 +175,7 @@ async def build_pack(
     return _zip(files)
 
 
-def _manifest(
-    inputs: EvidencePackInputs, files: dict[str, bytes]
-) -> dict[str, Any]:
+def _manifest(inputs: EvidencePackInputs, files: dict[str, bytes]) -> dict[str, Any]:
     return {
         "platform": "ai-security-platform",
         "platform_version": "0.1.0",
@@ -196,9 +198,7 @@ def _manifest(
 # ─────────────────────────────────────────── loaders
 
 
-async def _load_findings(
-    db: AsyncSession, inputs: EvidencePackInputs
-) -> list[Finding]:
+async def _load_findings(db: AsyncSession, inputs: EvidencePackInputs) -> list[Finding]:
     stmt = (
         select(Finding)
         .where(Finding.org_id == inputs.org_id)
@@ -208,9 +208,7 @@ async def _load_findings(
     return list((await db.execute(stmt)).scalars().all())
 
 
-async def _load_evaluations(
-    db: AsyncSession, inputs: EvidencePackInputs
-) -> list[Evaluation]:
+async def _load_evaluations(db: AsyncSession, inputs: EvidencePackInputs) -> list[Evaluation]:
     stmt = (
         select(Evaluation)
         .where(Evaluation.org_id == inputs.org_id)
@@ -220,9 +218,7 @@ async def _load_evaluations(
     return list((await db.execute(stmt)).scalars().all())
 
 
-async def _load_policies(
-    db: AsyncSession, org_id: uuid.UUID
-) -> list[Policy]:
+async def _load_policies(db: AsyncSession, org_id: uuid.UUID) -> list[Policy]:
     stmt = select(Policy).where(Policy.org_id == org_id)
     return list((await db.execute(stmt)).scalars().all())
 

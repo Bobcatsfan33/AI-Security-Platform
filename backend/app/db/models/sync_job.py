@@ -37,16 +37,14 @@ class SyncJob(Base, TenantScoped):
     connector_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("connectors.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    status: Mapped[str] = mapped_column(
-        SYNC_STATUS_ENUM, nullable=False, default="pending"
-    )
+    status: Mapped[str] = mapped_column(SYNC_STATUS_ENUM, nullable=False, default="pending")
     started_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=_utcnow,
+        DateTime(timezone=True),
+        nullable=False,
+        default=_utcnow,
         index=True,
     )
-    completed_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     assets_discovered: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     assets_updated: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     assets_removed: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

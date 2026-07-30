@@ -31,12 +31,12 @@ _TOKEN_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]{2,}")
 class AttackSample:
     """A single anonymised finding ready to be clustered."""
 
-    finding_hash: str           # HMAC hash of the original finding ID
-    org_hash: str               # HMAC hash of org_id
-    category: str               # e.g. prompt_injection, pii_leakage
+    finding_hash: str  # HMAC hash of the original finding ID
+    org_hash: str  # HMAC hash of org_id
+    category: str  # e.g. prompt_injection, pii_leakage
     severity: str
     control_mappings: tuple[str, ...]
-    keywords: frozenset[str]    # tokens from the redacted prompt
+    keywords: frozenset[str]  # tokens from the redacted prompt
 
 
 @dataclass
@@ -141,9 +141,7 @@ class GreedyClusterer:
     @staticmethod
     def _similarity_to_cluster(cluster: Cluster, sample: AttackSample) -> float:
         # Compare sample to the cluster's top-keyword fingerprint.
-        cluster_top = frozenset(
-            t for t, _ in cluster.keyword_counts.most_common(20)
-        )
+        cluster_top = frozenset(t for t, _ in cluster.keyword_counts.most_common(20))
         return jaccard(cluster_top, sample.keywords)
 
     @staticmethod

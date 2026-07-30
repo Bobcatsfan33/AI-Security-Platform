@@ -45,9 +45,7 @@ logger = structlog.get_logger("platform.telemetry")
 # ─────────────────────────────────────────────── Configuration
 
 CLICKHOUSE_BATCH_SIZE: int = int(os.getenv("CLICKHOUSE_BATCH_SIZE", "100"))
-CLICKHOUSE_FLUSH_INTERVAL_S: float = float(
-    os.getenv("CLICKHOUSE_FLUSH_INTERVAL_S", "5.0")
-)
+CLICKHOUSE_FLUSH_INTERVAL_S: float = float(os.getenv("CLICKHOUSE_FLUSH_INTERVAL_S", "5.0"))
 CLICKHOUSE_QUEUE_MAX: int = int(os.getenv("CLICKHOUSE_QUEUE_MAX", "10000"))
 CLICKHOUSE_TABLE: str = "runtime_events"
 
@@ -198,8 +196,7 @@ async def _flush_loop() -> None:
             batch.append(item)
 
         should_flush = (
-            len(batch) >= CLICKHOUSE_BATCH_SIZE
-            or asyncio.get_event_loop().time() >= deadline
+            len(batch) >= CLICKHOUSE_BATCH_SIZE or asyncio.get_event_loop().time() >= deadline
         )
         if should_flush and batch:
             await _insert_batch(batch)
@@ -216,9 +213,7 @@ async def _insert_batch(batch: list[RuntimeEvent]) -> None:
     """
     client = _get_client()
     if client is None:
-        logger.warning(
-            "clickhouse_batch_dropped_no_client", batch_size=len(batch)
-        )
+        logger.warning("clickhouse_batch_dropped_no_client", batch_size=len(batch))
         return
 
     rows = [event.to_row() for event in batch]

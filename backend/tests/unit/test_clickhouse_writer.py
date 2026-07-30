@@ -34,9 +34,7 @@ class _FakeClient:
     def __init__(self) -> None:
         self.inserts: list[tuple[str, list[tuple], list[str]]] = []
 
-    def insert(
-        self, table: str, rows: list[tuple], column_names: list[str]
-    ) -> None:
+    def insert(self, table: str, rows: list[tuple], column_names: list[str]) -> None:
         self.inserts.append((table, list(rows), list(column_names)))
 
     @property
@@ -101,9 +99,7 @@ class TestRecordRuntimeEvent:
         finally:
             await stop_writer()
 
-    async def test_drain_on_shutdown_inserts_all_pending(
-        self, fake_client: _FakeClient
-    ) -> None:
+    async def test_drain_on_shutdown_inserts_all_pending(self, fake_client: _FakeClient) -> None:
         await start_writer()
         for _ in range(7):
             await record_runtime_event(_event())
@@ -136,9 +132,7 @@ class TestRecordRuntimeEvent:
         # Don't start the flusher — let the queue fill
         from app.telemetry.clickhouse_writer import _STOP  # noqa: F401
 
-        clickhouse_writer._queue = asyncio.Queue(  # type: ignore[attr-defined]
-            maxsize=2
-        )
+        clickhouse_writer._queue = asyncio.Queue(maxsize=2)  # type: ignore[attr-defined]
         try:
             assert await record_runtime_event(_event()) is True
             assert await record_runtime_event(_event()) is True
@@ -187,9 +181,7 @@ class TestResilience:
         finally:
             await stop_writer()
 
-    async def test_no_client_does_not_break_writer(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    async def test_no_client_does_not_break_writer(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(clickhouse_writer, "_get_client", lambda: None)
         reset_for_tests()
         await start_writer()

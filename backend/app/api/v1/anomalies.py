@@ -70,9 +70,7 @@ async def get_attack_graph(
     window: Window = Query("24h"),
     identity: IdentityContext = Depends(require_role("analyst")),
 ) -> AttackGraphResponse:
-    graph = build_attack_graph(
-        org_id=identity.org_id, asset_id=asset_id, window=window
-    )
+    graph = build_attack_graph(org_id=identity.org_id, asset_id=asset_id, window=window)
     return AttackGraphResponse(**graph.to_dict())
 
 

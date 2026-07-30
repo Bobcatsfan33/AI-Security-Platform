@@ -31,7 +31,7 @@ class Incident:
     title: str
     severity: Severity
     description: str
-    source: str          # "evaluation" | "runtime_agent" | "anomaly_detector"
+    source: str  # "evaluation" | "runtime_agent" | "anomaly_detector"
     asset_id: str = ""
     correlation_id: str = ""
     detected_at: datetime = field(default_factory=lambda: datetime.now(UTC))
@@ -166,7 +166,11 @@ class OpsgenieSink:
 
 def _og_priority(s: Severity) -> str:
     return {
-        "info": "P5", "low": "P4", "medium": "P3", "high": "P2", "critical": "P1",
+        "info": "P5",
+        "low": "P4",
+        "medium": "P3",
+        "high": "P2",
+        "critical": "P1",
     }[s]
 
 
@@ -226,9 +230,7 @@ async def _post(
 ) -> bool:
     try:
         async with httpx.AsyncClient(timeout=timeout_s) as c:
-            resp = await c.post(
-                url, content=json.dumps(body, default=str), headers=headers
-            )
+            resp = await c.post(url, content=json.dumps(body, default=str), headers=headers)
         if resp.status_code >= 400:
             logger.warning(
                 "soar_non_2xx",
@@ -276,9 +278,7 @@ def _build_one(entry: dict[str, Any]) -> IncidentSink | None:
     return None
 
 
-async def open_in_all(
-    sinks: list[IncidentSink], incident: Incident
-) -> dict[str, bool]:
+async def open_in_all(sinks: list[IncidentSink], incident: Incident) -> dict[str, bool]:
     out: dict[str, bool] = {}
     for sink in sinks:
         try:

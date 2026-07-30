@@ -150,9 +150,7 @@ class AzureOpenAIConnector:
             return True
         if resp.status_code == 401:
             raise ConnectorAuthError("azure_openai_health_check_unauthorized")
-        raise ConnectorError(
-            f"azure_openai_health_check_failed: status={resp.status_code}"
-        )
+        raise ConnectorError(f"azure_openai_health_check_failed: status={resp.status_code}")
 
     # ─────────────────────────────────────────── internals
 
@@ -201,9 +199,7 @@ class AzureOpenAIConnector:
                     continue
                 except httpx.RequestError as exc:
                     if attempt > self._max_retries:
-                        raise ConnectorTransientError(
-                            f"azure_openai_request_error: {exc}"
-                        ) from exc
+                        raise ConnectorTransientError(f"azure_openai_request_error: {exc}") from exc
                     await self._backoff(attempt)
                     continue
 
@@ -227,8 +223,7 @@ class AzureOpenAIConnector:
                 await self._backoff(attempt)
                 continue
             raise ConnectorError(
-                f"azure_openai_request_failed status={resp.status_code} "
-                f"body={resp.text[:500]}"
+                f"azure_openai_request_failed status={resp.status_code} " f"body={resp.text[:500]}"
             )
 
     @staticmethod
@@ -241,9 +236,7 @@ class AzureOpenAIConnector:
         except ValueError:
             return None
 
-    async def _backoff(
-        self, attempt: int, *, retry_after: float | None = None
-    ) -> None:
+    async def _backoff(self, attempt: int, *, retry_after: float | None = None) -> None:
         if retry_after is not None:
             delay = retry_after
         else:
@@ -255,9 +248,7 @@ class AzureOpenAIConnector:
         )
         await asyncio.sleep(delay)
 
-    def _parse_response(
-        self, data: dict[str, Any], *, latency_ms: int
-    ) -> ConnectorResponse:
+    def _parse_response(self, data: dict[str, Any], *, latency_ms: int) -> ConnectorResponse:
         choices = data.get("choices") or []
         if not choices:
             raise ConnectorError("azure_openai_response_missing_choices")
@@ -268,9 +259,7 @@ class AzureOpenAIConnector:
             ToolCall(
                 id=tc.get("id", ""),
                 name=(tc.get("function") or {}).get("name", ""),
-                arguments=_safe_json_loads(
-                    (tc.get("function") or {}).get("arguments", "{}")
-                ),
+                arguments=_safe_json_loads((tc.get("function") or {}).get("arguments", "{}")),
             )
             for tc in tool_calls_raw
         )

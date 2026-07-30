@@ -75,12 +75,14 @@ class CompiledPolicyCache:
         """Pre-load every active policy for one org. Returns count loaded."""
         async with SessionLocal() as db:
             rows = (
-                await db.execute(
-                    select(Policy).where(
-                        Policy.org_id == org_id, Policy.status == "active"
+                (
+                    await db.execute(
+                        select(Policy).where(Policy.org_id == org_id, Policy.status == "active")
                     )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
         count = 0
         for row in rows:
             self._by_id[row.id] = compile_policy(policy_row=_row_to_dict(row))
@@ -190,12 +192,8 @@ class CompiledPolicyCache:
         )
 
     @staticmethod
-    async def _fetch(
-        db: AsyncSession, policy_id: uuid.UUID
-    ) -> dict[str, Any] | None:
-        row = (
-            await db.execute(select(Policy).where(Policy.id == policy_id))
-        ).scalar_one_or_none()
+    async def _fetch(db: AsyncSession, policy_id: uuid.UUID) -> dict[str, Any] | None:
+        row = (await db.execute(select(Policy).where(Policy.id == policy_id))).scalar_one_or_none()
         if row is None:
             return None
         return _row_to_dict(row)

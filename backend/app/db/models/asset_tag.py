@@ -13,9 +13,7 @@ from app.db.tenancy import TenantScoped
 
 class AssetTag(Base, TenantScoped):
     __tablename__ = "asset_tags"
-    __table_args__ = (
-        UniqueConstraint("asset_id", "key", name="uq_asset_tags_asset_key"),
-    )
+    __table_args__ = (UniqueConstraint("asset_id", "key", name="uq_asset_tags_asset_key"),)
 
     id: Mapped[UUIDPk]
     org_id: Mapped[uuid.UUID] = mapped_column(

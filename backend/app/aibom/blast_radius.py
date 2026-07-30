@@ -194,7 +194,9 @@ def compute_blast_radius(asset: dict[str, Any]) -> BlastRadius:
     if not is_agentic:
         autonomy_score = 0.0
         if agentic_malformed:
-            autonomy_detail = "is_agentic present but not a boolean — unscored (treated non-agentic)"
+            autonomy_detail = (
+                "is_agentic present but not a boolean — unscored (treated non-agentic)"
+            )
         else:
             autonomy_detail = "non-agentic (no autonomous action)"
     else:

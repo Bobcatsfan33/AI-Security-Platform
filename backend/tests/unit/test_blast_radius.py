@@ -156,27 +156,21 @@ def test_string_false_is_not_agentic() -> None:
 def test_string_false_human_in_loop_is_not_claimed_as_containment() -> None:
     """The operator recorded human_in_loop as absent (string 'false'); a
     mitigation must not be claimed present."""
-    br = compute_blast_radius(
-        {"id": "m2", "is_agentic": True, "human_in_loop_required": "false"}
-    )
+    br = compute_blast_radius({"id": "m2", "is_agentic": True, "human_in_loop_required": "false"})
     assert not any("human-in-the-loop" in c for c in br.containment)
     assert "human_in_loop=unparseable (treated absent)" in _reasons(br)["autonomy"]
 
 
 def test_bool_budget_is_not_a_budget() -> None:
     """max_tool_calls_per_session=True must not become 'capped at 1'."""
-    br = compute_blast_radius(
-        {"id": "m3", "is_agentic": True, "max_tool_calls_per_session": True}
-    )
+    br = compute_blast_radius({"id": "m3", "is_agentic": True, "max_tool_calls_per_session": True})
     assert br.reach["autonomy"]["max_tool_calls_per_session"] is None
     assert not any("budget capped" in c for c in br.containment)
     assert "max_tool_calls=unparseable" in _reasons(br)["autonomy"]
 
 
 def test_negative_budget_is_not_a_budget() -> None:
-    br = compute_blast_radius(
-        {"id": "m4", "is_agentic": True, "max_tool_calls_per_session": -3}
-    )
+    br = compute_blast_radius({"id": "m4", "is_agentic": True, "max_tool_calls_per_session": -3})
     assert br.reach["autonomy"]["max_tool_calls_per_session"] is None
     assert not any("-3" in c for c in br.containment)
 

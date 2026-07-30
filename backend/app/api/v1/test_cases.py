@@ -30,9 +30,7 @@ router = APIRouter(tags=["test_cases"])
 
 
 Severity = Literal["info", "low", "medium", "high", "critical"]
-AttackType = Literal[
-    "single_turn", "multi_turn", "indirect", "tool_based", "rag_based", "encoded"
-]
+AttackType = Literal["single_turn", "multi_turn", "indirect", "tool_based", "rag_based", "encoded"]
 
 
 class TestCaseCreate(BaseModel):
@@ -130,9 +128,7 @@ async def list_test_cases(
     return [_to_response(r) for r in rows]
 
 
-@router.post(
-    "", response_model=TestCaseResponse, status_code=status.HTTP_201_CREATED
-)
+@router.post("", response_model=TestCaseResponse, status_code=status.HTTP_201_CREATED)
 async def create_test_case(
     payload: TestCaseCreate,
     identity: IdentityContext = Depends(require_role("analyst")),
@@ -208,9 +204,7 @@ async def seed_default_library(
     for spec in DEFAULT_LIBRARY:
         existing = (
             await db.execute(
-                select(TestCase).where(
-                    TestCase.org_id.is_(None), TestCase.name == spec["name"]
-                )
+                select(TestCase).where(TestCase.org_id.is_(None), TestCase.name == spec["name"])
             )
         ).scalar_one_or_none()
         if existing is not None:

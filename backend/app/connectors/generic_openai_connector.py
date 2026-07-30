@@ -85,9 +85,7 @@ class GenericOpenAIConnector(OpenAIConnector):
             headers["Authorization"] = f"Bearer {api_key}"
         return headers
 
-    def _parse_response(
-        self, data: dict[str, Any], *, latency_ms: int
-    ) -> ConnectorResponse:
+    def _parse_response(self, data: dict[str, Any], *, latency_ms: int) -> ConnectorResponse:
         """Override cost calculation to use the per-config fixed rate."""
         from app.connectors.base import calculate_cost
 

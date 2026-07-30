@@ -108,9 +108,7 @@ class TestJwtService:
         with pytest.raises(jwt_service.TokenError):
             await jwt_service.verify_access_token(tampered)
 
-    async def test_refresh_token_rotation_invalidates_old(
-        self, fake_redis: _FakeRedis
-    ) -> None:
+    async def test_refresh_token_rotation_invalidates_old(self, fake_redis: _FakeRedis) -> None:
         pair = await jwt_service.issue_token_pair(
             org_id=uuid.uuid4(),
             user_id=uuid.uuid4(),

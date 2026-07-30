@@ -46,9 +46,7 @@ def apply_patch(resource: dict[str, Any], patch_doc: dict[str, Any]) -> dict[str
         path = op.get("path")
         value = op.get("value")
         if path and ("[" in path or "]" in path):
-            raise UnsupportedPatch(
-                "value-filtered paths (path[filter]) are not yet supported"
-            )
+            raise UnsupportedPatch("value-filtered paths (path[filter]) are not yet supported")
         if op_name == "remove":
             if not path:
                 raise PatchError("remove requires path")

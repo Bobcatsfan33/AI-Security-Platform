@@ -46,9 +46,7 @@ class Policy(Base, TenantScoped):
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="draft")
     enforcement_level: Mapped[str] = mapped_column(String(16), nullable=False, default="fast")
     fail_behavior: Mapped[str] = mapped_column(String(8), nullable=False, default="open")
-    ml_confidence_threshold_high: Mapped[float] = mapped_column(
-        Float, nullable=False, default=0.7
-    )
+    ml_confidence_threshold_high: Mapped[float] = mapped_column(Float, nullable=False, default=0.7)
     ml_confidence_threshold_low: Mapped[float] = mapped_column(Float, nullable=False, default=0.3)
     judge_model_endpoint: Mapped[str | None] = mapped_column(String(512), nullable=True)
     rules: Mapped[JsonbList]

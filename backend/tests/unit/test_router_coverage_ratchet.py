@@ -314,6 +314,6 @@ def test_every_exemption_carries_a_reason() -> None:
     """A reason with a phase is a plan. A bare TODO is a hope."""
     for prefix, reason in NEEDS_HTTP_TESTS.items():
         assert len(reason) > 20, f"{prefix}: exemption needs a real reason"
-        assert "Phase" in reason or "Tier C" in reason, (
-            f"{prefix}: exemption must name the phase that retires it"
-        )
+        assert (
+            "Phase" in reason or "Tier C" in reason
+        ), f"{prefix}: exemption must name the phase that retires it"

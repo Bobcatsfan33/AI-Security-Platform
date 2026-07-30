@@ -49,18 +49,18 @@ def cluster_to_bundle(cluster: Cluster) -> dict[str, Any]:
             f"Mapped controls: {controls or 'n/a'}."
         ),
         "labels": [cluster.category, cluster.severity],
-        "external_references": [
-            {"source_name": "ai-security-platform", "external_id": cluster.id}
-        ],
+        "external_references": [{"source_name": "ai-security-platform", "external_id": cluster.id}],
     }
 
     # Pattern is the cluster's keyword fingerprint. Real STIX patterns
     # use the STIX Patterning Language; we emit the simplest form a
     # downstream system can keyword-match.
-    pattern = " AND ".join(
-        f"[ai-attack:keyword = '{kw}']"
-        for kw, _ in cluster.keyword_counts.most_common(5)
-    ) or "[ai-attack:cluster_id = '" + cluster.id + "']"
+    pattern = (
+        " AND ".join(
+            f"[ai-attack:keyword = '{kw}']" for kw, _ in cluster.keyword_counts.most_common(5)
+        )
+        or "[ai-attack:cluster_id = '" + cluster.id + "']"
+    )
 
     indicator = {
         "type": "indicator",

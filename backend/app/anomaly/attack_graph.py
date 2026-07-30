@@ -35,8 +35,19 @@ logger = logging.getLogger("platform.anomaly.graph")
 
 
 NodeKind = Literal[
-    "request", "response", "tool", "rag", "memory", "file", "external_api",
-    "policy_violation", "block", "downgrade", "kill_switch", "alert", "other",
+    "request",
+    "response",
+    "tool",
+    "rag",
+    "memory",
+    "file",
+    "external_api",
+    "policy_violation",
+    "block",
+    "downgrade",
+    "kill_switch",
+    "alert",
+    "other",
 ]
 
 
@@ -144,9 +155,7 @@ def _classify(event: dict[str, Any]) -> Node:
         return Node("external_api", tool or "*")
     if et in {"request", "response"}:
         return Node(et, et)  # type: ignore[arg-type]
-    if et in {
-        "policy_violation", "block", "downgrade", "kill_switch", "alert"
-    }:
+    if et in {"policy_violation", "block", "downgrade", "kill_switch", "alert"}:
         return Node(et, et)  # type: ignore[arg-type]
     return Node("other", str(et))
 
@@ -193,9 +202,7 @@ def build_attack_graph(
                 extra={"error": str(exc)},
             )
 
-    return _fold_rows(
-        org_id=org_id, asset_id=asset_id, window=window, rows=rows
-    )
+    return _fold_rows(org_id=org_id, asset_id=asset_id, window=window, rows=rows)
 
 
 _WINDOW_INTERVALS = {
@@ -256,9 +263,7 @@ def _norm(value: Any) -> str:
     return s
 
 
-def _add_edge(
-    graph: AttackGraph, src: Node, dst: Node, *, causal: bool
-) -> None:
+def _add_edge(graph: AttackGraph, src: Node, dst: Node, *, causal: bool) -> None:
     """Add or increment an edge. Self-loops (src == dst) are skipped — they
     carry no transition signal and would dominate tight tool-retry loops."""
     if src.id == dst.id:
@@ -316,9 +321,7 @@ def _fold_rows(
         stats.count += 1
         if row.get("action_taken") in {"blocked"}:
             stats.blocked_count += 1
-        risk_sum[node.id] = risk_sum.get(node.id, 0.0) + float(
-            row.get("risk_score") or 0.0
-        )
+        risk_sum[node.id] = risk_sum.get(node.id, 0.0) + float(row.get("risk_score") or 0.0)
 
         event_id = _norm(row.get("event_id"))
         if event_id:
@@ -351,17 +354,13 @@ def _fold_rows(
     )
 
     for node_id, stats in graph.nodes.items():
-        stats.avg_risk = (
-            risk_sum.get(node_id, 0.0) / stats.count if stats.count else 0.0
-        )
+        stats.avg_risk = risk_sum.get(node_id, 0.0) / stats.count if stats.count else 0.0
 
     graph.session_count = len(sessions_seen)
     return graph
 
 
-def causal_subtree(
-    rows: Iterable[dict[str, Any]], root_event_id: str
-) -> list[dict[str, Any]]:
+def causal_subtree(rows: Iterable[dict[str, Any]], root_event_id: str) -> list[dict[str, Any]]:
     """Return the causal subtree rooted at ``root_event_id``: that event plus
     every event transitively caused by it (descendants via parent_event_id).
 
