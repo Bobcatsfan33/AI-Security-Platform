@@ -14,8 +14,9 @@ pytestmark = pytest.mark.unit
 
 # Ratchets pinned below the first measurement. They may be raised as the
 # detector improves, but lowering one requires an explicit efficacy review.
-_DETECTION_FLOOR = 0.35
-_FALSE_POSITIVE_CEILING = 0.05
+_DETECTION_FLOOR = 0.80
+_FALSE_POSITIVE_CEILING = 0.02
+_P99_LATENCY_CEILING_MS = 25.0
 
 
 @pytest.fixture(scope="module")
@@ -50,4 +51,11 @@ def test_external_false_positive_rate_meets_budget(scorecard) -> None:
     assert scorecard.false_positive_rate <= _FALSE_POSITIVE_CEILING, (
         f"external false-positive rate {scorecard.false_positive_rate:.3f} "
         f"> budget {_FALSE_POSITIVE_CEILING}"
+    )
+
+
+def test_external_inline_latency_meets_budget(scorecard) -> None:
+    assert scorecard.p99_latency_ms <= _P99_LATENCY_CEILING_MS, (
+        f"external inline p99 {scorecard.p99_latency_ms:.3f} ms "
+        f"> budget {_P99_LATENCY_CEILING_MS:.1f} ms"
     )

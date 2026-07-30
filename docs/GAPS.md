@@ -187,11 +187,13 @@ with env-var refs:
   per-type required-config schema and an audit-on-denial pass.
 
 ### GAP-006 — Detection efficacy lacks production-representative evidence — 🟡 external baseline
-**What:** the Stage 1+2 pipeline now has a reproducible in-repo scorecard and a
-digest-pinned, Apache-2.0 external prompt-injection test split with detection
-and false-positive ratchets. The attack graph and anomaly detector still lack
-an efficacy suite, and the public corpus does not cover multilingual traffic,
-indirect injection, tool-call abuse, or multi-turn attacks.
+**What:** the Stage 1+2 pipeline now has a reproducible in-repo scorecard, a
+digest-pinned CC-BY-4.0 train/test split, and a checksum-verified linear model
+that is applied only at explicit untrusted-content boundaries. The independent
+test moved from 23/60 attacks and 2/56 false positives to 49/60 and 0/56. The
+attack graph and anomaly detector still lack an efficacy suite, and this
+single-source public corpus does not cover broad multilingual traffic,
+multi-turn attacks, tool-call abuse, or realistic customer distribution shift.
 **Why it matters:** "behavioural anomaly detection" and "three-stage policy
 pipeline" are the product. A synthetic or single-source benchmark is a
 regression floor, not a production efficacy claim. A design partner's first

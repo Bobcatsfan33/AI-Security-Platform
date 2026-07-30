@@ -40,6 +40,7 @@ def load_external_prompt_injection_corpus() -> tuple[CorpusCase, ...]:
                 text=str(row["text"]),
                 label=label,
                 attack_class=str(row.get("attack_class", "")),
+                content_trust="untrusted",
             )
         )
     if len(cases) != manifest["rows"]:

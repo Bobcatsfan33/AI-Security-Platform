@@ -31,7 +31,7 @@ what is tagged, and what this table says are the same thing.
 | **Runtime agent** — inline proxy, 3-stage pipeline | [`runtime-agent/`](../runtime-agent) | ✅ ships | 84 Go tests. Coverage: proxy 75.7%, policy 75.8%, controlplane 82.8%; **`management` 0%, `cmd/agent` 0%** (GAP-010). No benchmark harness (GAP-002). Deny-by-default now holds end to end: Stage 2 honours `fail_behavior` (GAP-004 closed) and cold start is governed by `AGENT_NO_POLICY_BEHAVIOR`, defaulting closed in production (GAP-003 closed). |
 | **Attack graph + behavioural anomalies** — `/v1/anomalies` | [`anomaly/`](../backend/app/anomaly) | ✅ mounted | Good unit coverage (`test_attack_graph.py` 14, `test_causal.py` 14). No HTTP tests. **No efficacy suite and no published false-positive budget** — detection quality is currently unmeasured (GAP-006). UI dumps raw JSON per anomaly. |
 | **Blast radius / AI-BOM** — `/v1/aibom` | [`aibom/`](../backend/app/aibom) | ✅ **mounted** (GAP-001) | `/{id}`, `/{id}/risk`, `/{id}/drift`, and the computed `/{id}/blast-radius` — a reachability decomposition (downstream fan-out, external-action surface, tool/MCP reach, autonomy, exposure), not the stored scalar. Adapted to the v2 `metadata_json` model (the router previously read deleted columns and would `AttributeError`). Function proven against a real asset row *before* mount; honest-when-thin and deterministic, asserted in tests. Tier A: no preview tag. |
-| **AI Guard** — `/v1/aiguard` (Stage-2 classify, Stage-3 judge) | [`api/v1/aiguard.py`](../backend/app/api/v1/aiguard.py) | ✅ mounted | Tier A by dependency: these back the agent's pipeline. 14 unit tests at service level; no HTTP tests. |
+| **AI Guard** — `/v1/aiguard` (Stage-2 classify, Stage-3 judge) | [`api/v1/aiguard.py`](../backend/app/api/v1/aiguard.py) | ✅ mounted | Tier A by dependency: these back the agent's pipeline. Detector/service tests plus authenticated HTTP contract coverage prove direct-vs-untrusted trust handling; cross-org isolation remains explicitly ratcheted. |
 | **Policies / runtime ingest** — `/v1/policies`, `/v1/runtime` | — | ✅ mounted | Tier A by dependency: `/policies` serves the agent's policy cache, `/runtime` receives its telemetry. `test_policy_stages.py` 20; `/runtime` untested. |
 | **SDK fail-closed** — Python + Node | [`sdks/`](../sdks) | ✅ ships | 38 Python + 36 Node tests against one shared contract, gated by the `SDKs (fail-closed)` CI job. Both suites mutation-verified: removing the fail-closed default kills 8 and 7 tests respectively. Was the most severe row in this document (GAP-005 closed). |
 
@@ -70,10 +70,9 @@ Not deleted. The code stays, the tests stay, the capability is off.
 `/v1/dashboards`, `/v1/narratives`, `/v1/suppressions`, `/v1/validation`,
 `/v1/remediation`, `/v1/risk-index`, `/v1/benchmark`, plus health probes.
 
-Assessment: `/connectors`, `/assets`, `/discovery` and `/dashboard` are the
-**only four of 25 mounted routers with HTTP-layer tests** — and the only four
-with a cross-org isolation test. That ratio is now enforced rather than
-rediscovered: see
+Assessment: HTTP and cross-org coverage are tracked independently and may only
+improve. AI Guard now joins the HTTP-covered surfaces while its cross-org
+isolation row remains open. The ratchets live in
 [`test_router_coverage_ratchet.py`](../backend/tests/unit/test_router_coverage_ratchet.py),
 whose exemption list may only shrink.
 

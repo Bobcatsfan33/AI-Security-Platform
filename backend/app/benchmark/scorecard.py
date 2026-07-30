@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from app.benchmark.corpus import DETECTION_CORPUS, CorpusCase
+from app.detectors.base import DetectorContext
 
 # A detector callable: text -> "allow" | "detect" | "block".
 ActionFn = Callable[[str], str]
@@ -31,6 +32,9 @@ CONTENT_POLICY_DETECTORS = (
     "off_topic",
     "competition",
     "brand_reputation",
+    # Quality telemetry, not a security control; foreign-language noun phrases
+    # otherwise become false positives in a prompt-injection benchmark.
+    "gibberish",
 )
 
 
@@ -38,14 +42,15 @@ def _security_config() -> dict[str, dict[str, str]]:
     return {name: {"action": "off"} for name in CONTENT_POLICY_DETECTORS}
 
 
-def _default_action_fn() -> ActionFn:
+def _default_action_fn() -> Callable[[str, str], str]:
     from app.aiguard.service import get_service
 
     service = get_service()
     config = _security_config()
 
-    def _inspect(text: str) -> str:
-        return service.inspect(text=text, config=config).action
+    def _inspect(text: str, content_trust: str) -> str:
+        context = DetectorContext(extra={"content_trust": content_trust})
+        return service.inspect(text=text, config=config, context=context).action
 
     return _inspect
 
@@ -139,7 +144,7 @@ def run_detection_benchmark(
     ``action_fn`` maps text → the AI Guard action; defaults to the live
     service. Injectable so tests can drive a deterministic stub.
     """
-    act = action_fn or _default_action_fn()
+    default_act = _default_action_fn() if action_fn is None else None
 
     per_class_total: dict[str, int] = {}
     per_class_detected: dict[str, int] = {}
@@ -149,7 +154,11 @@ def run_detection_benchmark(
 
     for case in corpus:
         start = time.perf_counter()
-        action = act(case.text)
+        if action_fn is not None:
+            action = action_fn(case.text)
+        else:
+            assert default_act is not None
+            action = default_act(case.text, case.content_trust)
         latencies.append((time.perf_counter() - start) * 1000.0)
         detected = action != "allow"
 

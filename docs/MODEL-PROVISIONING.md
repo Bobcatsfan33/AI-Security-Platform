@@ -4,6 +4,14 @@ How a trained prompt-injection / jailbreak classifier is built, versioned,
 signed, and delivered to a runtime-agent deployment so the agent runs **ONNX
 inference inline** at Stage 2 instead of the zero-config heuristic.
 
+This optional runtime-agent sidecar is separate from the small, bundled
+`deepset-char-logreg-v1` detector used by the control-plane AI Guard inspection
+API. The bundled detector is checksum-verified, dependency-free, and runs only
+for content explicitly labeled `untrusted`; its held-out 81.7% result does not
+measure or certify the ONNX sidecar. See
+[`AI-GUARD.md`](AI-GUARD.md) and
+[`efficacy/EXTERNAL-CORPUS.md`](efficacy/EXTERNAL-CORPUS.md).
+
 ## Where the model runs
 
 The Go agent stays a single static binary; the model runs in a co-located

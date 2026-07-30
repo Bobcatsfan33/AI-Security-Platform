@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from app.detectors.base import Detector
 from app.detectors.advice import FinancialAdviceDetector, LegalAdviceDetector
+from app.detectors.base import Detector
 from app.detectors.code_lang import (
     LanguageDetector,
     ProgrammingLanguageDetector,
@@ -14,6 +14,7 @@ from app.detectors.injection import (
     JailbreakDetector,
     PromptInjectionDetector,
 )
+from app.detectors.linear_prompt_injection import PromptInjectionModelDetector
 from app.detectors.sensitive import (
     BrandReputationDetector,
     CompetitionDetector,
@@ -30,6 +31,7 @@ from app.detectors.urls import MaliciousURLDetector, UnreachableURLDetector
 
 ALL_DETECTORS: tuple[Detector, ...] = (
     PromptInjectionDetector(),
+    PromptInjectionModelDetector(),
     JailbreakDetector(),
     InvisibleTextDetector(),
     ToxicityDetector(),
