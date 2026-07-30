@@ -1,0 +1,226 @@
+{
+  "schemaVersion": 1,
+  "product": "AI Security Platform",
+  "repository": "Bobcatsfan33/AI-Security-Platform",
+  "assessment": {
+    "asOf": "2026-07-29",
+    "reviewBy": "2026-10-29",
+    "softwareReleaseCandidate": false,
+    "deploymentDecision": "not-approved",
+    "decisionReason": "Release assurance exists, but production hardening, independent assurance, live recovery, efficacy, and operating-model gates remain open."
+  },
+  "frameworks": [
+    {
+      "id": "nist-ssdf-1.1",
+      "name": "NIST SP 800-218 Secure Software Development Framework",
+      "version": "1.1",
+      "url": "https://csrc.nist.gov/pubs/sp/800/218/final"
+    },
+    {
+      "id": "slsa-1.2",
+      "name": "Supply-chain Levels for Software Artifacts",
+      "version": "1.2",
+      "url": "https://slsa.dev/spec/v1.2/"
+    },
+    {
+      "id": "owasp-asvs-5.0.0",
+      "name": "OWASP Application Security Verification Standard",
+      "version": "5.0.0",
+      "url": "https://owasp.org/www-project-application-security-verification-standard/"
+    },
+    {
+      "id": "csa-ccm-caiq-4.1",
+      "name": "CSA Cloud Controls Matrix and CAIQ",
+      "version": "4.1",
+      "url": "https://cloudsecurityalliance.org/artifacts/cloud-controls-matrix-v4-1"
+    },
+    {
+      "id": "nist-ai-rmf-1.0",
+      "name": "NIST Artificial Intelligence Risk Management Framework",
+      "version": "1.0",
+      "url": "https://www.nist.gov/publications/artificial-intelligence-risk-management-framework-ai-rmf-10"
+    },
+    {
+      "id": "csa-ai-caiq-1.0.2",
+      "name": "CSA AI Consensus Assessments Initiative Questionnaire",
+      "version": "1.0.2",
+      "url": "https://cloudsecurityalliance.org/artifacts/ai-consensus-assessments-initiative-questionnaire-ai-caiq"
+    }
+  ],
+  "controls": [
+    {
+      "id": "GOV-01",
+      "title": "Security governance and product boundary",
+      "status": "implemented",
+      "frameworks": ["nist-ssdf-1.1", "nist-ai-rmf-1.0"],
+      "evidence": ["README.md", "SECURITY.md", "docs/SDLC-POLICY.md", "docs/GAPS.md", "docs/GA-READINESS-CHECKLIST.md"],
+      "gaps": []
+    },
+    {
+      "id": "SDLC-01",
+      "title": "Secure development and change verification",
+      "status": "implemented",
+      "frameworks": ["nist-ssdf-1.1", "owasp-asvs-5.0.0"],
+      "evidence": [".github/CODEOWNERS", ".github/workflows/ci.yml", ".github/workflows/security.yml", "docs/SDLC-POLICY.md"],
+      "gaps": []
+    },
+    {
+      "id": "APPSEC-01",
+      "title": "Technical security verification",
+      "status": "partial",
+      "frameworks": ["owasp-asvs-5.0.0", "csa-ccm-caiq-4.1"],
+      "evidence": [".github/workflows/security.yml", "docs/SECURITY-AUDIT-CHECKLIST.md", "docs/GA-READINESS-CHECKLIST.md"],
+      "gaps": [
+        "No commissioned independent penetration test exists.",
+        "The backend coverage ratchet is 70 percent, below the 80 percent target, and the security audit checklist is not externally attested.",
+        "The repository-wide Ruff baseline is not clean or enforced; high-severity Bandit SAST is the current blocking Python static-analysis gate."
+      ]
+    },
+    {
+      "id": "SUPPLY-01",
+      "title": "Release integrity, SBOM, signing, and provenance",
+      "status": "implemented",
+      "frameworks": ["nist-ssdf-1.1", "slsa-1.2", "csa-ccm-caiq-4.1"],
+      "evidence": [".github/workflows/security.yml", "docs/RELEASE-ASSURANCE.md", "backend/tests/unit/test_release_assurance.py"],
+      "gaps": []
+    },
+    {
+      "id": "IAM-01",
+      "title": "Identity, authorization, and tenant isolation",
+      "status": "partial",
+      "frameworks": ["owasp-asvs-5.0.0", "csa-ccm-caiq-4.1", "csa-ai-caiq-1.0.2"],
+      "evidence": ["backend/app/auth/rbac.py", "backend/app/db/tenancy.py", "backend/app/identity/oidc_adapter.py", "docs/TIERS.md"],
+      "gaps": [
+        "SCIM and IdP administration are implemented but deliberately unmounted until enterprise promotion.",
+        "Independent cross-tenant authorization testing remains open."
+      ]
+    },
+    {
+      "id": "CRYPTO-01",
+      "title": "Transport, storage encryption, and key management",
+      "status": "partial",
+      "frameworks": ["owasp-asvs-5.0.0", "csa-ccm-caiq-4.1"],
+      "evidence": ["backend/app/security/field_crypto.py", "docs/AGENT-MTLS.md", "deploy/helm/ai-security-platform/values.yaml"],
+      "gaps": [
+        "Production KMS or HSM custody, rotation evidence, and deployment-specific at-rest encryption validation are organizational gates."
+      ]
+    },
+    {
+      "id": "DATA-01",
+      "title": "Data protection, privacy, retention, and deletion",
+      "status": "partial",
+      "frameworks": ["csa-ccm-caiq-4.1", "csa-ai-caiq-1.0.2", "nist-ai-rmf-1.0"],
+      "evidence": ["backend/app/security/field_crypto.py", "backend/app/threat_intel/anonymize.py", "docs/HA-DR-RUNBOOK.md"],
+      "gaps": [
+        "Tenant-to-region data residency is not implemented.",
+        "Production retention, deletion, legal-basis, and data-processing evidence require deployment and organizational controls."
+      ]
+    },
+    {
+      "id": "RES-01",
+      "title": "Backup, recovery, failover, and resilience",
+      "status": "partial",
+      "frameworks": ["csa-ccm-caiq-4.1"],
+      "evidence": ["docs/HA-DR-RUNBOOK.md", ".github/workflows/ci.yml", "deploy/helm/ai-security-platform/values.yaml"],
+      "gaps": [
+        "The production HA topology is not configured and backup, restore, failover, RPO, and RTO have not been exercised in a game-day."
+      ]
+    },
+    {
+      "id": "OBS-01",
+      "title": "Operational observability and SLO evidence",
+      "status": "partial",
+      "frameworks": ["csa-ccm-caiq-4.1", "csa-ai-caiq-1.0.2"],
+      "evidence": ["backend/app/observability/metrics.py", "backend/app/observability/tracing.py", "docs/BENCHMARKS.md", "docs/OPERATOR-RUNBOOK.md"],
+      "gaps": [
+        "The runtime-agent metrics surface lacks required security decision metrics.",
+        "Approved production SLOs, alert validation, and sustained customer-topology evidence remain open."
+      ]
+    },
+    {
+      "id": "IR-01",
+      "title": "Incident and vulnerability response",
+      "status": "partial",
+      "frameworks": ["nist-ssdf-1.1", "csa-ccm-caiq-4.1"],
+      "evidence": ["SECURITY.md", "docs/incident-response.md", "docs/OPERATOR-RUNBOOK.md"],
+      "gaps": [
+        "Named 24x7 responders, customer notification, and an exercised production incident drill are organizational gates."
+      ]
+    },
+    {
+      "id": "VM-01",
+      "title": "Dependency and vulnerability management",
+      "status": "implemented",
+      "frameworks": ["nist-ssdf-1.1", "csa-ccm-caiq-4.1"],
+      "evidence": [".github/dependabot.yml", ".github/workflows/ci.yml", ".github/workflows/security.yml", "backend/tests/unit/test_dependency_locks.py"],
+      "gaps": []
+    },
+    {
+      "id": "AIRISK-01",
+      "title": "Detection efficacy, model integrity, and AI governance",
+      "status": "partial",
+      "frameworks": ["nist-ai-rmf-1.0", "csa-ai-caiq-1.0.2"],
+      "evidence": ["docs/AI-GUARD.md", "docs/efficacy/EXTERNAL-CORPUS.md", "backend/app/benchmark/scorecard.py", "docs/GAPS.md"],
+      "gaps": [
+        "The single-source prompt-injection benchmark does not establish production efficacy across multilingual, multi-turn, indirect-injection, tool-call, or customer distribution shift.",
+        "Attack-graph and anomaly detection still lack independent efficacy evidence."
+      ]
+    }
+  ],
+  "externalGates": [
+    {
+      "id": "EXT-PENTEST",
+      "title": "Independent penetration test",
+      "status": "open",
+      "blocking": true,
+      "ownerRole": "Product Security",
+      "acceptanceCriteria": "Signed final report covers the control plane, runtime agent, SDK trust boundary, tenant isolation, model endpoints, and production deployment; critical and high findings are closed or CISO-accepted.",
+      "evidence": []
+    },
+    {
+      "id": "EXT-DR",
+      "title": "Production-topology recovery and failover exercise",
+      "status": "open",
+      "blocking": true,
+      "ownerRole": "SRE",
+      "acceptanceCriteria": "Signed game-day evidence proves approved RPO and RTO, restore integrity, audit-chain continuity, service failover, and detection continuity.",
+      "evidence": []
+    },
+    {
+      "id": "EXT-EFFICACY",
+      "title": "Production-representative independent efficacy evaluation",
+      "status": "open",
+      "blocking": true,
+      "ownerRole": "AI Security",
+      "acceptanceCriteria": "Approved multi-corpus and design-partner evaluation reports precision, recall, false-positive rate, detection latency, confidence intervals, and known limits for every promoted detection surface.",
+      "evidence": []
+    },
+    {
+      "id": "EXT-OPERATIONS",
+      "title": "Support, incident, SLO, and escalation readiness",
+      "status": "open",
+      "blocking": true,
+      "ownerRole": "Operations",
+      "acceptanceCriteria": "Named support and security rotations, tested escalation and notification procedures, approved SLOs, alert catalog, status communications, and exercised incident evidence are retained.",
+      "evidence": []
+    },
+    {
+      "id": "EXT-COMPLIANCE",
+      "title": "Organizational, privacy, and legal assurance",
+      "status": "open",
+      "blocking": true,
+      "ownerRole": "GRC and Legal",
+      "acceptanceCriteria": "Approved customer evidence package includes applicable SOC 2 or ISO evidence, SIG or CAIQ responses, DPA, privacy and residency terms, subprocessors, insurance, accessibility, and license terms.",
+      "evidence": []
+    },
+    {
+      "id": "ENG-PRODUCTION",
+      "title": "Production hardening and enterprise identity promotion",
+      "status": "open",
+      "blocking": true,
+      "ownerRole": "Engineering",
+      "acceptanceCriteria": "SCIM and IdP administration are safely mounted, production security metrics and the 80 percent coverage goal pass, data residency and fairness controls are implemented, and release-candidate deployment evidence is retained.",
+      "evidence": []
+    }
+  ]
+}

@@ -11,6 +11,32 @@ permissions:
   contents: read
 
 jobs:
+  enterprise-readiness:
+    name: Enterprise evidence and decision integrity
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.13"
+      - run: python3 scripts/verify_enterprise_readiness.py
+      - name: Refuse false production approval
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          source = Path("docs/enterprise-readiness.json")
+          target = Path("/tmp/ai-security-platform-false-approval.json")
+          document = json.loads(source.read_text(encoding="utf-8"))
+          document["assessment"]["deploymentDecision"] = "approved"
+          target.write_text(json.dumps(document), encoding="utf-8")
+          PY
+          if python3 scripts/verify_enterprise_readiness.py /tmp/ai-security-platform-false-approval.json; then
+            echo "::error::readiness verifier accepted false production approval"
+            exit 1
+          fi
+
   helm:
     name: Helm chart validation
     runs-on: ubuntu-latest
