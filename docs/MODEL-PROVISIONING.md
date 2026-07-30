@@ -6,9 +6,9 @@ inference inline** at Stage 2 instead of the zero-config heuristic.
 
 This optional runtime-agent sidecar is separate from the small, bundled
 `deepset-char-logreg-v1` detector used by the control-plane AI Guard inspection
-API. The bundled detector is checksum-verified, dependency-free, and runs only
-for content explicitly labeled `untrusted`; its held-out 81.7% result does not
-measure or certify the ONNX sidecar. See
+API. The bundled detector is checksum-verified and dependency-free; the complete
+control-plane ensemble's held-out 95.0% result for explicitly untrusted content
+does not measure or certify the ONNX sidecar. See
 [`AI-GUARD.md`](AI-GUARD.md) and
 [`efficacy/EXTERNAL-CORPUS.md`](efficacy/EXTERNAL-CORPUS.md).
 

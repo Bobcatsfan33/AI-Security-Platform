@@ -64,8 +64,10 @@ Training uses only the digest-pinned upstream train split and calibrates the
 threshold with five-fold out-of-fold predictions. The independent test split
 is never read by the trainer.
 
-The current independent score is 49/60 attacks (81.7% recall) and 0/56 benign
-false positives for explicitly untrusted content. This is a regression gate,
-not a production certification. See
+The current independent ensemble score is 57/60 attacks (95.0% recall) and
+0/56 benign false positives for explicitly untrusted content. Trust-aware
+structural override signals supplement the bundled model without applying
+ambiguous forced-response patterns to direct user prompts. This is a regression
+gate, not a production certification. See
 [`efficacy/EXTERNAL-CORPUS.md`](efficacy/EXTERNAL-CORPUS.md) for scope and the
 remaining ≥90% multi-corpus/customer-replay release gate.

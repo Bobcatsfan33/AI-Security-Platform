@@ -35,16 +35,19 @@ committed artifact digest before loading. Exporter/runtime parity vectors guard
 the feature and probability math.
 
 Current held-out measurement for the complete security-detector ensemble when
-every row is explicitly labeled `untrusted`: 49/60 attacks detected (81.7%)
-and 0/56 benign samples flagged (0%). CI ratchets those values at an 80%
-detection floor and 2% false-positive ceiling. The prior deterministic-only
-baseline was 23/60 (38.3%) and 2/56 (3.6%).
+every row is explicitly labeled `untrusted`: 57/60 attacks detected (95.0%)
+and 0/56 benign samples flagged (0%), with a 2.10 ms p99 on the reference
+development environment. CI ratchets those values at a 90% detection floor,
+2% false-positive ceiling, and 25 ms p99 ceiling. The prior deterministic-only
+baseline was 23/60 (38.3%) and 2/56 (3.6%); the first bundled-model baseline
+was 49/60 (81.7%) and 0/56.
 
 This is a material independent-test improvement, not a launch claim. One small
 public corpus does not establish production efficacy on customer traffic,
 indirect injection, tool-call abuse, multi-turn attacks, or distribution
-shift. The Fortune 500 release gate remains ≥90% recall with confidence
-intervals across multiple independent frozen corpora plus customer replay,
-with ≤5% false positives by deployment segment.
+shift. This clears the numeric recall floor on this corpus, not the Fortune 500
+release gate. That gate remains ≥90% recall with confidence intervals across
+multiple independent frozen corpora plus customer replay, with ≤5% false
+positives by deployment segment.
 
 Source: <https://huggingface.co/datasets/deepset/prompt-injections>
