@@ -72,7 +72,7 @@
       "evidence": [".github/workflows/security.yml", "docs/SECURITY-AUDIT-CHECKLIST.md", "docs/GA-READINESS-CHECKLIST.md"],
       "gaps": [
         "No commissioned independent penetration test exists.",
-        "The backend suite measures 75.06 percent coverage and retains a 70 percent ratchet, below the 80 percent target; the security audit checklist is not externally attested.",
+        "The backend suite measures 75.29 percent coverage and retains a 70 percent ratchet, below the 80 percent target; the security audit checklist is not externally attested.",
         "The repository-wide Ruff baseline is not clean or enforced; high-severity Bandit SAST is the current blocking Python static-analysis gate."
       ]
     },
@@ -109,9 +109,17 @@
       "title": "Data protection, privacy, retention, and deletion",
       "status": "partial",
       "frameworks": ["csa-ccm-caiq-4.1", "csa-ai-caiq-1.0.2", "nist-ai-rmf-1.0"],
-      "evidence": ["backend/app/security/field_crypto.py", "backend/app/threat_intel/anonymize.py", "docs/HA-DR-RUNBOOK.md"],
+      "evidence": [
+        "backend/app/security/field_crypto.py",
+        "backend/app/security/residency.py",
+        "backend/app/threat_intel/anonymize.py",
+        "backend/alembic/versions/20260730_0012_tenant_data_region.py",
+        "backend/tests/integration/test_data_residency.py",
+        "deploy/helm/ai-security-platform/templates/validate.yaml",
+        "docs/HA-DR-RUNBOOK.md"
+      ],
       "gaps": [
-        "Tenant-to-region data residency is not implemented.",
+        "Tenant-to-region pinning and regional-cell fail-closed routing are implemented; a production-topology residency and controlled region-migration exercise remains open.",
         "Production retention, deletion, legal-basis, and data-processing evidence require deployment and organizational controls."
       ]
     },

@@ -21,15 +21,15 @@ from collections.abc import AsyncIterator
 
 from fastapi import Depends, Header, status
 from passlib.hash import bcrypt
-from sqlalchemy import select, text
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.idp_config import IdpConfig
 from app.db.models.organization import Organization
 from app.db.session import get_db
-from app.db.tenancy import current_org_id
+from app.db.tenancy import tenant_scope
 from app.scim.types import SCIMError
-from app.security.audit_log import AuditEventType, log_event
+from app.security.residency import TenantRegionMismatchError, enforce_organization_region
 
 
 async def scim_authenticated_idp(
@@ -57,55 +57,43 @@ async def scim_authenticated_idp(
     org = (
         await db.execute(select(Organization).where(Organization.slug == org_slug))
     ).scalar_one_or_none()
-    if org is None:
-        raise SCIMError(status=status.HTTP_404_NOT_FOUND, detail="org_not_found")
-
-    # Sanctioned tenant-guard bypass #2: IdpConfig is tenant-scoped, but this
-    # lookup resolves which IdP the inbound token belongs to and runs before org
-    # context is armed. Audited so every bypass is observable. (grep:
-    # bypass_tenant_guard)
-    log_event(
-        AuditEventType.TENANT_GUARD_BYPASS,
-        tenant_id=str(org.id),
-        resource="idp_configs",
-        detail={"reason": "scim_idp_resolution"},
-    )
-    idp = (
-        await db.execute(
-            select(IdpConfig).where(
-                IdpConfig.org_id == org.id,
-                IdpConfig.provider_type == "scim",
-                IdpConfig.status == "active",
-            ),
-            execution_options={"bypass_tenant_guard": True},
-        )
-    ).scalar_one_or_none()
-    if idp is None:
-        raise SCIMError(
-            status=status.HTTP_404_NOT_FOUND,
-            detail="no_active_scim_config_for_org",
-        )
-
-    stored_hash = (idp.scim_config or {}).get("bearer_token_hash") or ""
-    if not stored_hash or not _verify_token(token, stored_hash):
-        raise SCIMError(
-            status=status.HTTP_401_UNAUTHORIZED,
-            detail="invalid_bearer_token",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    # Token verified — arm both isolation walls for the provisioning queries that
-    # follow (all of which filter by this org explicitly; the walls make that a
-    # guarantee, not a convention).
-    ctx_token = current_org_id.set(org.id)
-    await db.execute(
-        text("SELECT set_config('app.current_org', :org, true)"),
-        {"org": str(org.id)},
-    )
     try:
+        enforce_organization_region(org, surface=f"/v1/scim/v2/{org_slug}")
+    except TenantRegionMismatchError as exc:
+        raise SCIMError(
+            status=status.HTTP_421_MISDIRECTED_REQUEST,
+            detail="tenant_region_unavailable",
+        ) from exc
+
+    # The URL slug identifies a region-validated tenant root, so both isolation
+    # walls can safely constrain the IdP lookup before the bearer secret is
+    # checked. No ORM or RLS bypass is needed.
+    async with tenant_scope(db, org.id):
+        idp = (
+            await db.execute(
+                select(IdpConfig).where(
+                    IdpConfig.org_id == org.id,
+                    IdpConfig.provider_type == "scim",
+                    IdpConfig.status == "active",
+                )
+            )
+        ).scalar_one_or_none()
+        if idp is None:
+            raise SCIMError(
+                status=status.HTTP_404_NOT_FOUND,
+                detail="no_active_scim_config_for_org",
+            )
+
+        stored_hash = (idp.scim_config or {}).get("bearer_token_hash") or ""
+        if not stored_hash or not _verify_token(token, stored_hash):
+            raise SCIMError(
+                status=status.HTTP_401_UNAUTHORIZED,
+                detail="invalid_bearer_token",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
+        # Keep both walls armed for all provisioning queries in the route.
         yield org, idp
-    finally:
-        current_org_id.reset(ctx_token)
 
 
 def _verify_token(plaintext: str, hashed: str) -> bool:

@@ -27,6 +27,10 @@ class Settings(BaseSettings):
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
     api_v1_prefix: str = "/v1"
     cors_origins: str = "http://localhost:3000"
+    # Every production process is bound to one deployment region. Authenticated
+    # tenants whose immutable Organization.data_region differs are rejected
+    # before tenant context or a data-plane write is armed.
+    deployment_region: str = Field(default="local", pattern=r"^[a-z][a-z0-9-]{1,31}$")
 
     # PostgreSQL — operational data (source of truth for "what is configured")
     database_url: str = "postgresql+asyncpg://platform:platform@localhost:5432/platform"
@@ -116,6 +120,12 @@ class Settings(BaseSettings):
             raise ValueError("production CORS origins must be explicitly configured")
         if "*" in origins:
             raise ValueError("wildcard CORS is not allowed in production")
+        if self.deployment_region in {"local", "unassigned"}:
+            raise ValueError("production requires an explicit deployment region")
+        if not self.runtime_events_topic.endswith(f".{self.deployment_region}"):
+            raise ValueError(
+                "production runtime events topic must be suffixed with the deployment region"
+            )
         return self
 
 

@@ -14,22 +14,43 @@ Wall 2 — Postgres Row-Level Security: every tenant table carries an RLS policy
 
 Fail-closed semantics: a query against tenant-scoped data with no org in context
 returns zero rows (criteria ``1=0``), never all rows. The only escape hatch is
-an explicit, grep-able execution option (``bypass_tenant_guard``) used at exactly
-two sanctioned call sites — API-key resolution and SCIM IdP resolution — each of
-which emits a ``tenant.guard_bypass`` audit event.
+an explicit, grep-able execution option (``bypass_tenant_guard``) used for
+API-key prefix resolution. It is audited and remains constrained by a
+prefix-bound, read-only RLS policy.
 """
 
 from __future__ import annotations
 
 import uuid
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from contextvars import ContextVar
 
-from sqlalchemy import ForeignKey, event, false, or_
+from sqlalchemy import ForeignKey, event, false, or_, text
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, Session, declared_attr, mapped_column, with_loader_criteria
 
 # The authenticated org for the current request/task. None outside a request,
 # which fails tenant-scoped queries closed (zero rows) rather than open.
 current_org_id: ContextVar[uuid.UUID | None] = ContextVar("current_org_id", default=None)
+
+
+@asynccontextmanager
+async def tenant_scope(db: AsyncSession, org_id: uuid.UUID) -> AsyncIterator[None]:
+    """Arm both isolation walls for a bounded database operation.
+
+    Use this for pre-session identity flows (OIDC, SAML, and SCIM) once the
+    organization root and residency binding have been validated.
+    """
+    token = current_org_id.set(org_id)
+    try:
+        await db.execute(
+            text("SELECT set_config('app.current_org', :org, true)"),
+            {"org": str(org_id)},
+        )
+        yield
+    finally:
+        current_org_id.reset(token)
 
 
 class TenantScoped:

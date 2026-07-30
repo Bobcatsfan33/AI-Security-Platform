@@ -29,6 +29,9 @@ class Organization(Base):
     plan_tier: Mapped[str] = mapped_column(
         String(32), nullable=False, default="assessment"
     )  # assessment | continuous | runtime | intelligence
+    # Immutable outside a separately approved migration: every production
+    # process rejects this tenant unless it equals Settings.deployment_region.
+    data_region: Mapped[str] = mapped_column(String(32), nullable=False, default="local")
     settings: Mapped[JsonbDict]
 
     created_at: Mapped[TimestampUtc]

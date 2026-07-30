@@ -16,11 +16,15 @@ environment: production
 # the release: secrets.existingSecret must contain database-url, redis-url,
 # clickhouse-url, and redpanda-brokers alongside jwt-secret.
 config:
+  # One deployment cell per approved region. Production rendering rejects
+  # local/unassigned values and requires a region-suffixed Redpanda topic.
+  deploymentRegion: ""
   databaseUrl: "postgresql+asyncpg://platform:platform@postgres:5432/platform"
   redisUrl: "redis://redis:6379/0"
   clickhouseUrl: "http://clickhouse:8123"
   redpandaBrokers: "redpanda:9092"
   streamingEnabled: "true" # API dual-writes ingested events to the EPA stream
+  runtimeEventsTopic: ""
   corsOrigins: ""
 
 # Stage-2 ML classifier (AI Guard, Phase 1A). Pinned to the checksum-verified

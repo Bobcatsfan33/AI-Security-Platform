@@ -48,8 +48,8 @@ jobs:
           CI_BACKEND_DIGEST: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
           CI_FRONTEND_DIGEST: sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
         run: |
-          helm lint deploy/helm/ai-security-platform --set secrets.existingSecret=ci-platform-secrets --set image.digest="${CI_BACKEND_DIGEST}" --set frontend.image.digest="${CI_FRONTEND_DIGEST}"
-          helm template ci deploy/helm/ai-security-platform --set secrets.existingSecret=ci-platform-secrets --set image.digest="${CI_BACKEND_DIGEST}" --set frontend.image.digest="${CI_FRONTEND_DIGEST}" --set frontend.ingress.enabled=true > /tmp/control-plane.yaml
+          helm lint deploy/helm/ai-security-platform --set secrets.existingSecret=ci-platform-secrets --set image.digest="${CI_BACKEND_DIGEST}" --set frontend.image.digest="${CI_FRONTEND_DIGEST}" --set config.deploymentRegion=us-east-1 --set config.runtimeEventsTopic=runtime.events.us-east-1
+          helm template ci deploy/helm/ai-security-platform --set secrets.existingSecret=ci-platform-secrets --set image.digest="${CI_BACKEND_DIGEST}" --set frontend.image.digest="${CI_FRONTEND_DIGEST}" --set frontend.ingress.enabled=true --set config.deploymentRegion=us-east-1 --set config.runtimeEventsTopic=runtime.events.us-east-1 > /tmp/control-plane.yaml
           grep -q "ghcr.io/bobcatsfan33/ai-security-platform@${CI_BACKEND_DIGEST}" /tmp/control-plane.yaml
           grep -q "ghcr.io/bobcatsfan33/asp-frontend@${CI_FRONTEND_DIGEST}" /tmp/control-plane.yaml
           grep -q "path: /v1" /tmp/control-plane.yaml
@@ -57,15 +57,34 @@ jobs:
           grep -q "kind: ServiceAccount" /tmp/control-plane.yaml
           grep -q "automountServiceAccountToken: false" /tmp/control-plane.yaml
           grep -q "secretKeyRef:" /tmp/control-plane.yaml
+          grep -q "name: DEPLOYMENT_REGION" /tmp/control-plane.yaml
+          grep -q "name: RUNTIME_EVENTS_TOPIC" /tmp/control-plane.yaml
           if grep -q "postgresql+asyncpg://" /tmp/control-plane.yaml; then
             echo "::error::production manifest leaked a database connection string"
             exit 1
           fi
-          if helm template unsafe deploy/helm/ai-security-platform --set image.digest="${CI_BACKEND_DIGEST}" --set frontend.image.digest="${CI_FRONTEND_DIGEST}" --set secrets.jwtSecret=literal-is-not-production-safe > /dev/null 2>&1; then
+          if helm template unsafe-region deploy/helm/ai-security-platform \
+            --set secrets.existingSecret=ci-platform-secrets \
+            --set image.digest="${CI_BACKEND_DIGEST}" \
+            --set frontend.image.digest="${CI_FRONTEND_DIGEST}" \
+            --set config.runtimeEventsTopic=runtime.events.us-east-1 > /dev/null 2>&1; then
+            echo "::error::production control plane accepted a missing deployment region"
+            exit 1
+          fi
+          if helm template unsafe-topic deploy/helm/ai-security-platform \
+            --set secrets.existingSecret=ci-platform-secrets \
+            --set image.digest="${CI_BACKEND_DIGEST}" \
+            --set frontend.image.digest="${CI_FRONTEND_DIGEST}" \
+            --set config.deploymentRegion=us-east-1 \
+            --set config.runtimeEventsTopic=runtime.events.eu-west-1 > /dev/null 2>&1; then
+            echo "::error::production control plane accepted a cross-region runtime topic"
+            exit 1
+          fi
+          if helm template unsafe deploy/helm/ai-security-platform --set image.digest="${CI_BACKEND_DIGEST}" --set frontend.image.digest="${CI_FRONTEND_DIGEST}" --set secrets.jwtSecret=literal-is-not-production-safe --set config.deploymentRegion=us-east-1 --set config.runtimeEventsTopic=runtime.events.us-east-1 > /dev/null 2>&1; then
             echo "::error::production control plane accepted a literal JWT secret"
             exit 1
           fi
-          if helm template unsafe-frontend deploy/helm/ai-security-platform --set secrets.existingSecret=ci-platform-secrets --set image.digest="${CI_BACKEND_DIGEST}" > /dev/null 2>&1; then
+          if helm template unsafe-frontend deploy/helm/ai-security-platform --set secrets.existingSecret=ci-platform-secrets --set image.digest="${CI_BACKEND_DIGEST}" --set config.deploymentRegion=us-east-1 --set config.runtimeEventsTopic=runtime.events.us-east-1 > /dev/null 2>&1; then
             echo "::error::production control plane accepted a mutable frontend image"
             exit 1
           fi
@@ -73,6 +92,8 @@ jobs:
             --set secrets.existingSecret=ci-platform-secrets \
             --set image.digest="${CI_BACKEND_DIGEST}" \
             --set frontend.image.digest="${CI_FRONTEND_DIGEST}" \
+            --set config.deploymentRegion=us-east-1 \
+            --set config.runtimeEventsTopic=runtime.events.us-east-1 \
             --set secrets.secretProviderClass.enabled=true \
             --set secrets.secretProviderClass.provider=aws \
             --set secrets.secretProviderClass.secretObjects[0].secretName=ci-platform-secrets \
@@ -86,6 +107,8 @@ jobs:
             --set secrets.existingSecret=ci-platform-secrets \
             --set image.digest="${CI_BACKEND_DIGEST}" \
             --set frontend.image.digest="${CI_FRONTEND_DIGEST}" \
+            --set config.deploymentRegion=us-east-1 \
+            --set config.runtimeEventsTopic=runtime.events.us-east-1 \
             --set secrets.secretProviderClass.enabled=true \
             > /dev/null 2>&1; then
             echo "::error::Secrets Store CSI accepted a missing provider and synchronization contract"

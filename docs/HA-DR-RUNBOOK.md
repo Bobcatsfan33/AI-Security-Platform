@@ -54,11 +54,51 @@ Targets (proposed — confirm with the business): **RPO ≤ 5 min, RTO ≤ 30 mi
 
 ## Data residency
 
-- Pin each tenant's operational (PG) and telemetry (ClickHouse) data to a region;
-  document the per-region data-flow diagram. ☐ not implemented (needs a
-  tenant→region mapping + region-scoped connections).
-- Redpanda topics and Redis must be region-local; cross-region replication only
-  for DR, with residency-compatible destinations.
+**Engineering control implemented; deployment validation remains open.** Every
+`Organization` has a non-null `data_region`. Each production process and Helm
+release must declare exactly one `DEPLOYMENT_REGION`; JWT, API-key, SSO, SAML
+metadata, refresh, and SCIM entry points return `421 tenant_region_unavailable`
+before tenant context or a write is armed when the values differ. Refresh
+tokens are inspected for routing without consuming the single-use token in the
+wrong cell. `/v1/auth/me` returns the verified `data_region`.
+
+Each regional cell must use region-local PostgreSQL, ClickHouse, Redis, audit
+sinks, and Redpanda. Production configuration requires
+`RUNTIME_EVENTS_TOPIC` to end in `.<DEPLOYMENT_REGION>` so regional EPA fleets
+cannot accidentally share the same topic name. Helm renders neither operational
+URLs nor credentials from values in production; the region's externally
+managed Secret supplies those endpoints.
+
+### Provisioning and verification
+
+1. Approve the tenant's region and data-flow record before creating data.
+   Migration `0012_tenant_data_region` deliberately marks existing tenants
+   `local`; production rejects them until an operator assigns an approved
+   region under change control.
+2. Set the tenant mapping in its current authoritative PostgreSQL cell:
+   `UPDATE organizations SET data_region = 'us-east-1' WHERE id = '<tenant>';`.
+   There is no tenant self-service region-change endpoint.
+3. Deploy one release per region with, for example,
+   `config.deploymentRegion=us-east-1` and
+   `config.runtimeEventsTopic=runtime.events.us-east-1`. Use region-specific
+   Secrets, namespaces/accounts, ingress, audit destinations, backup stores,
+   KMS keys, and network allowlists.
+4. Configure the trusted global ingress from its protected tenant directory.
+   Regional services do not reveal or redirect to the target region.
+5. Verify a resident JWT and API key return the configured region from
+   `/v1/auth/me`; replay both against another cell and retain the expected 421
+   responses plus `tenant.residency.route_denied` audit evidence.
+6. Verify the regional topic, consumer group, ClickHouse rows, Redis keys,
+   PostgreSQL rows, audit output, backups, and model/provider egress remain
+   inside the approved boundary.
+
+A region change is a controlled data migration, not a field edit: quiesce the
+tenant, copy and verify every store, preserve audit-chain continuity, change
+the ingress mapping and `data_region` atomically, test both cells, then destroy
+the old copies under the approved retention policy. Cross-region replication
+is permitted only for DR destinations covered by the tenant's residency terms.
+The production-topology residency exercise and its signed evidence are still
+open.
 
 ## Tenant isolation under load
 

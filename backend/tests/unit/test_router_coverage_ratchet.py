@@ -74,7 +74,6 @@ def _api_prefix() -> str:
 # router pass; write the test instead.
 # ──────────────────────────────────────────────────────────────────
 NEEDS_HTTP_TESTS: dict[str, str] = {
-    "/auth": "Phase 4 — service-level tests only (SAML/OIDC/JWT); no HTTP-layer test.",
     "/anomalies": "Phase 1 — attack graph + anomaly efficacy suite lands here.",
     "/dashboards": "Phase 4 — operability phase covers the runtime views.",
     "/runtime": "Phase 2 — covered by the agent failure-mode matrix.",
@@ -234,7 +233,7 @@ def test_no_unexempted_router_lacks_tenant_isolation_tests() -> None:
     nothing."""
     covered = _routers_with_tenant_isolation_tests()
     missing = sorted(_gated_prefixes() - covered - set(NEEDS_TENANT_ISOLATION_TESTS))
-    assert not missing, "These mounted routers have no cross-org isolation test: " f"{missing}"
+    assert not missing, f"These mounted routers have no cross-org isolation test: {missing}"
 
 
 # ─────────────────────────────────────────── the one-way door
@@ -315,6 +314,6 @@ def test_every_exemption_carries_a_reason() -> None:
     """A reason with a phase is a plan. A bare TODO is a hope."""
     for prefix, reason in NEEDS_HTTP_TESTS.items():
         assert len(reason) > 20, f"{prefix}: exemption needs a real reason"
-        assert (
-            "Phase" in reason or "Tier C" in reason
-        ), f"{prefix}: exemption must name the phase that retires it"
+        assert "Phase" in reason or "Tier C" in reason, (
+            f"{prefix}: exemption must name the phase that retires it"
+        )

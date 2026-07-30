@@ -104,6 +104,7 @@ class AuditEventType(str, Enum):
 
     # Tenant isolation — sanctioned ORM-guard bypass (pre-org-context lookups)
     TENANT_GUARD_BYPASS = "tenant.guard_bypass"
+    RESIDENCY_ROUTE_DENIED = "tenant.residency.route_denied"
 
     # System
     CONFIG_CHANGED = "system.config_changed"
