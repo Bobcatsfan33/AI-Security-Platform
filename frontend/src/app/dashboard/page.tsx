@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 
 import {
@@ -23,14 +23,8 @@ export default function DashboardPage() {
   const [window, setWindow] = useState<Window>("24h");
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    void loadAll();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [window]);
-
-  async function loadAll(): Promise<void> {
+  const loadAll = useCallback(async (): Promise<void> => {
     try {
-      setError(null);
       const [ov, pe, tr, as] = await Promise.all([
         api.get<DashboardRuntimeOverview>(`/v1/dashboards/runtime?time_range=${window}`),
         api.get<DashboardPolicyEffectiveness>(
@@ -41,6 +35,7 @@ export default function DashboardPage() {
         ),
         api.get<Asset[]>("/v1/assets"),
       ]);
+      setError(null);
       setOverview(ov);
       setPolicy(pe);
       setTraffic(tr.rows);
@@ -48,7 +43,13 @@ export default function DashboardPage() {
     } catch (err: unknown) {
       setError(err instanceof ApiError ? err.message : "load failed");
     }
-  }
+  }, [window]);
+
+  useEffect(() => {
+    // The callback only updates state after its API promises settle.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void loadAll();
+  }, [loadAll]);
 
   const postureScore = computePostureScore(assets);
 

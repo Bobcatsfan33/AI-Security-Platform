@@ -1,6 +1,7 @@
 name: CI
 
 on:
+  workflow_dispatch:
   push:
     branches: [main]
   pull_request:
@@ -18,11 +19,14 @@ jobs:
       - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4
       - name: Lint and render control plane
         env:
-          CI_IMAGE_DIGEST: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+          CI_BACKEND_DIGEST: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+          CI_FRONTEND_DIGEST: sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
         run: |
-          helm lint deploy/helm/ai-security-platform --set secrets.existingSecret=ci-platform-secrets --set image.digest="${CI_IMAGE_DIGEST}"
-          helm template ci deploy/helm/ai-security-platform --set secrets.existingSecret=ci-platform-secrets --set image.digest="${CI_IMAGE_DIGEST}" > /tmp/control-plane.yaml
-          grep -q "ghcr.io/bobcatsfan33/ai-security-platform@${CI_IMAGE_DIGEST}" /tmp/control-plane.yaml
+          helm lint deploy/helm/ai-security-platform --set secrets.existingSecret=ci-platform-secrets --set image.digest="${CI_BACKEND_DIGEST}" --set frontend.image.digest="${CI_FRONTEND_DIGEST}"
+          helm template ci deploy/helm/ai-security-platform --set secrets.existingSecret=ci-platform-secrets --set image.digest="${CI_BACKEND_DIGEST}" --set frontend.image.digest="${CI_FRONTEND_DIGEST}" --set frontend.ingress.enabled=true > /tmp/control-plane.yaml
+          grep -q "ghcr.io/bobcatsfan33/ai-security-platform@${CI_BACKEND_DIGEST}" /tmp/control-plane.yaml
+          grep -q "ghcr.io/bobcatsfan33/asp-frontend@${CI_FRONTEND_DIGEST}" /tmp/control-plane.yaml
+          grep -q "path: /v1" /tmp/control-plane.yaml
           grep -q "kind: NetworkPolicy" /tmp/control-plane.yaml
           grep -q "kind: ServiceAccount" /tmp/control-plane.yaml
           grep -q "automountServiceAccountToken: false" /tmp/control-plane.yaml
@@ -31,13 +35,18 @@ jobs:
             echo "::error::production manifest leaked a database connection string"
             exit 1
           fi
-          if helm template unsafe deploy/helm/ai-security-platform --set secrets.jwtSecret=literal-is-not-production-safe > /dev/null 2>&1; then
+          if helm template unsafe deploy/helm/ai-security-platform --set image.digest="${CI_BACKEND_DIGEST}" --set frontend.image.digest="${CI_FRONTEND_DIGEST}" --set secrets.jwtSecret=literal-is-not-production-safe > /dev/null 2>&1; then
             echo "::error::production control plane accepted a literal JWT secret"
+            exit 1
+          fi
+          if helm template unsafe-frontend deploy/helm/ai-security-platform --set secrets.existingSecret=ci-platform-secrets --set image.digest="${CI_BACKEND_DIGEST}" > /dev/null 2>&1; then
+            echo "::error::production control plane accepted a mutable frontend image"
             exit 1
           fi
           helm template csi deploy/helm/ai-security-platform \
             --set secrets.existingSecret=ci-platform-secrets \
-            --set image.digest="${CI_IMAGE_DIGEST}" \
+            --set image.digest="${CI_BACKEND_DIGEST}" \
+            --set frontend.image.digest="${CI_FRONTEND_DIGEST}" \
             --set secrets.secretProviderClass.enabled=true \
             --set secrets.secretProviderClass.provider=aws \
             --set secrets.secretProviderClass.secretObjects[0].secretName=ci-platform-secrets \
@@ -49,6 +58,8 @@ jobs:
           grep -q "driver: secrets-store.csi.k8s.io" /tmp/control-plane-csi.yaml
           if helm template unsafe-csi deploy/helm/ai-security-platform \
             --set secrets.existingSecret=ci-platform-secrets \
+            --set image.digest="${CI_BACKEND_DIGEST}" \
+            --set frontend.image.digest="${CI_FRONTEND_DIGEST}" \
             --set secrets.secretProviderClass.enabled=true \
             > /dev/null 2>&1; then
             echo "::error::Secrets Store CSI accepted a missing provider and synchronization contract"
@@ -213,12 +224,15 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: "20"
+          node-version: "22"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - name: Install
         working-directory: frontend
         run: npm ci
+      - name: Lint
+        working-directory: frontend
+        run: npm run lint
       - name: Build
         working-directory: frontend
         run: npm run build

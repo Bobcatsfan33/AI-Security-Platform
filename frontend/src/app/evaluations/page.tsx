@@ -1,7 +1,7 @@
 "use client";
 
 import { PreviewBadge } from "@/components/PreviewBadge";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 
 import { api, ApiError, type Evaluation } from "@/lib/api";
@@ -10,21 +10,23 @@ export default function EvaluationsPage() {
   const [evals, setEvals] = useState<Evaluation[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    void load();
-    const t = setInterval(() => void load(), 5000);
-    return () => clearInterval(t);
-  }, []);
-
-  async function load(): Promise<void> {
+  const load = useCallback(async (): Promise<void> => {
     try {
-      setError(null);
       const data = await api.get<Evaluation[]>("/v1/evaluations");
+      setError(null);
       setEvals(data);
     } catch (err: unknown) {
       setError(err instanceof ApiError ? err.message : "load failed");
     }
-  }
+  }, []);
+
+  useEffect(() => {
+    // The callback only updates state after its API promise settles.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void load();
+    const t = setInterval(() => void load(), 5000);
+    return () => clearInterval(t);
+  }, [load]);
 
   return (
     <div>

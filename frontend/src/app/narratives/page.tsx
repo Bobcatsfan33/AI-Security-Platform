@@ -29,20 +29,21 @@ export default function WorkbenchPage() {
 
   const load = useCallback(async () => {
     try {
-      setError(null);
       const data = await narratives.list({
         status: statusFilter,
         severity: severityFilter,
       });
+      setError(null);
       setItems(data);
-      if (data.length > 0 && !selected) setSelected(data[0]);
+      setSelected((current) => current ?? data[0] ?? null);
     } catch (err: unknown) {
       setError(err instanceof ApiError ? err.message : "load failed");
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [statusFilter, severityFilter]);
 
   useEffect(() => {
+    // The callback only updates state after its API promise settles.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void load();
   }, [load]);
 

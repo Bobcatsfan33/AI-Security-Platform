@@ -23,6 +23,14 @@ helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version }}
 {{- end -}}
 {{- end -}}
 
+{{- define "aisp.frontendImage" -}}
+{{- if .Values.frontend.image.digest -}}
+{{- printf "%s@%s" .Values.frontend.image.repository .Values.frontend.image.digest -}}
+{{- else -}}
+{{- printf "%s:%s" .Values.frontend.image.repository (default .Chart.AppVersion .Values.frontend.image.tag) -}}
+{{- end -}}
+{{- end -}}
+
 {{- define "aisp.secretName" -}}
 {{- if .Values.secrets.existingSecret -}}{{ .Values.secrets.existingSecret }}{{- else -}}{{ include "aisp.fullname" . }}-secrets{{- end -}}
 {{- end -}}

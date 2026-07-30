@@ -1,7 +1,7 @@
 "use client";
 
 import { PreviewBadge } from "@/components/PreviewBadge";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 
 import {
@@ -25,21 +25,23 @@ export default function CompliancePage() {
   const [error, setError] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
 
-  useEffect(() => {
-    void load();
-  }, []);
-
-  async function load(): Promise<void> {
+  const load = useCallback(async (): Promise<void> => {
     try {
-      setError(null);
       const data = await api.get<ComplianceFramework[]>(
         "/v1/compliance/frameworks",
       );
+      setError(null);
       setFrameworks(data);
     } catch (err: unknown) {
       setError(err instanceof ApiError ? err.message : "load failed");
     }
-  }
+  }, []);
+
+  useEffect(() => {
+    // The callback only updates state after its API promise settles.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void load();
+  }, [load]);
 
   async function downloadPack(): Promise<void> {
     setDownloading(true);

@@ -6,8 +6,10 @@
 // callback. The callback currently returns JSON; the login page reads
 // that and stashes the token.
 
-export const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
+// Production uses the chart's same-origin ingress: /v1 routes to the API and
+// all other paths route to this frontend. Local development can still set
+// NEXT_PUBLIC_API_BASE_URL=http://localhost:8000 explicitly.
+export const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
 
 const TOKEN_KEY = "platform_access_token";
 const USER_KEY = "platform_user";

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 
 import {
+  API_BASE,
   clearSession,
   getUser,
   setSession,
@@ -25,9 +26,7 @@ export default function LoginPage() {
       setError("Enter an org slug first");
       return;
     }
-    const apiBase =
-      process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
-    window.location.href = `${apiBase}/v1/auth/oidc/${encodeURIComponent(orgSlug)}/login`;
+    window.location.href = `${API_BASE}/v1/auth/oidc/${encodeURIComponent(orgSlug)}/login`;
   }
 
   function useDevToken() {

@@ -2,6 +2,7 @@
 
 Components:
   API:          {{ if .Values.api.enabled }}enabled ({{ if .Values.api.autoscaling.enabled }}HPA {{ .Values.api.autoscaling.minReplicas }}-{{ .Values.api.autoscaling.maxReplicas }}{{ else }}{{ .Values.api.replicaCount }} replicas{{ end }}){{ else }}disabled{{ end }}
+  Frontend:     {{ if .Values.frontend.enabled }}enabled ({{ if .Values.frontend.autoscaling.enabled }}HPA {{ .Values.frontend.autoscaling.minReplicas }}-{{ .Values.frontend.autoscaling.maxReplicas }}{{ else }}{{ .Values.frontend.replicaCount }} replicas{{ end }}){{ else }}disabled{{ end }}
   EPA consumer: {{ if .Values.epaConsumer.enabled }}enabled ({{ .Values.epaConsumer.replicaCount }} replicas){{ else }}disabled{{ end }}
   Worker:       {{ if .Values.worker.enabled }}enabled{{ else }}disabled{{ end }}
 
@@ -13,6 +14,14 @@ WARNING: a managed Secret holds the JWT secret as a literal. For production set
 
 Reach the API:
   kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "aisp.fullname" . }}-api {{ .Values.api.service.port }}:{{ .Values.api.service.port }}
+
+{{- if .Values.frontend.ingress.enabled }}
+Open the dashboard:
+  https://{{ .Values.frontend.ingress.host }}/
+{{- else }}
+The production dashboard requires a reverse proxy or frontend.ingress.enabled=true
+so /v1 reaches the API and / reaches the frontend.
+{{- end }}
 
 Run DB migrations before first traffic (one-off Job or exec):
   kubectl -n {{ .Release.Namespace }} exec deploy/{{ include "aisp.fullname" . }}-api -- alembic upgrade head

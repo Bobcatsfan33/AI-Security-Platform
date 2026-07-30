@@ -1,7 +1,7 @@
 "use client";
 
 import { PreviewBadge } from "@/components/PreviewBadge";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 
 import { api, ApiError, type TestCase } from "@/lib/api";
@@ -22,24 +22,26 @@ export default function TestCasesPage() {
   const [includeGlobal, setIncludeGlobal] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    void load();
-  }, [category, includeGlobal]);
-
-  async function load(): Promise<void> {
+  const load = useCallback(async (): Promise<void> => {
     try {
-      setError(null);
       const params = new URLSearchParams();
       if (category) params.set("category", category);
       params.set("include_global", String(includeGlobal));
       const data = await api.get<TestCase[]>(
         `/v1/test-cases?${params.toString()}`,
       );
+      setError(null);
       setCases(data);
     } catch (err: unknown) {
       setError(err instanceof ApiError ? err.message : "load failed");
     }
-  }
+  }, [category, includeGlobal]);
+
+  useEffect(() => {
+    // The callback only updates state after its API promise settles.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void load();
+  }, [load]);
 
   return (
     <div>
