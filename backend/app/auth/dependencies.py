@@ -19,29 +19,20 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import AsyncIterator, Iterable
+from dataclasses import replace
 
 from fastapi import Depends, Header, HTTPException, Request, status
-from sqlalchemy import text
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.api_key_service import verify_api_key
 from app.auth.jwt_service import TokenError, verify_access_token
 from app.auth.rbac import has_role_at_least, is_in
+from app.db.models.organization import Organization
 from app.db.session import get_db
-from app.db.tenancy import current_org_id
+from app.db.tenancy import tenant_scope
 from app.identity.types import IdentityContext
-
-
-async def _bind_org(db: AsyncSession, org_id: uuid.UUID) -> None:
-    """Wall 2: set the transaction-local GUC the RLS policies read.
-
-    ``set_config(..., true)`` scopes it to the current transaction, which is
-    safe under connection pooling.
-    """
-    await db.execute(
-        text("SELECT set_config('app.current_org', :org, true)"),
-        {"org": str(org_id)},
-    )
+from app.security.residency import TenantRegionMismatchError, enforce_organization_region
 
 
 async def current_identity(
@@ -99,13 +90,24 @@ async def current_identity(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    request.state.identity = identity
-    token = current_org_id.set(identity.org_id)  # Wall 1 armed
-    await _bind_org(db, identity.org_id)  # Wall 2 armed
+    # Residency wall: validate the tenant root before arming ORM/RLS context.
+    # Organization is intentionally not TenantScoped, so this lookup can occur
+    # before current_org_id/app.current_org are set.
+    org = (
+        await db.execute(select(Organization).where(Organization.id == identity.org_id))
+    ).scalar_one_or_none()
     try:
+        resident_org = enforce_organization_region(org, surface=request.url.path)
+    except TenantRegionMismatchError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_421_MISDIRECTED_REQUEST,
+            detail="tenant_region_unavailable",
+        ) from exc
+    identity = replace(identity, data_region=resident_org.data_region)
+
+    request.state.identity = identity
+    async with tenant_scope(db, identity.org_id):
         yield identity
-    finally:
-        current_org_id.reset(token)  # never leaks across requests
 
 
 def require_role(minimum: str):

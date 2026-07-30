@@ -5,6 +5,7 @@ metadata:
   labels:
     {{- include "aisp.labels" . | nindent 4 }}
 data:
+  deployment-region: {{ .Values.config.deploymentRegion | quote }}
   {{- if ne .Values.environment "production" }}
   database-url: {{ .Values.config.databaseUrl | quote }}
   redis-url: {{ .Values.config.redisUrl | quote }}
@@ -12,6 +13,7 @@ data:
   redpanda-brokers: {{ .Values.config.redpandaBrokers | quote }}
   {{- end }}
   streaming-enabled: {{ .Values.config.streamingEnabled | quote }}
+  runtime-events-topic: {{ .Values.config.runtimeEventsTopic | quote }}
   cors-origins: {{ .Values.config.corsOrigins | quote }}
   stage2-model-url: {{ .Values.stage2.modelUrl | quote }}
   stage2-model-sha256: {{ .Values.stage2.modelSha256 | quote }}

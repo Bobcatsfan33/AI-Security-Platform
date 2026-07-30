@@ -11,7 +11,9 @@ helm install aisp deploy/helm/ai-security-platform \
   --set image.digest=sha256:REPLACE_WITH_APPROVED_RELEASE_DIGEST \
   --set frontend.image.repository=ghcr.io/you/asp-frontend \
   --set frontend.image.digest=sha256:REPLACE_WITH_APPROVED_FRONTEND_DIGEST \
-  --set secrets.existingSecret=aisp-secrets
+  --set secrets.existingSecret=aisp-secrets \
+  --set config.deploymentRegion=us-east-1 \
+  --set config.runtimeEventsTopic=runtime.events.us-east-1
 ```
 
 ## What it creates
@@ -38,6 +40,10 @@ helm install aisp deploy/helm/ai-security-platform \
 - **Stateful deps are NOT in this chart.** Point `config.*` at managed
   Postgres+pgvector, ClickHouse (replicated), Redis (cluster/sentinel), and
   Redpanda (RF≥3). See `docs/HA-DR-RUNBOOK.md`.
+- **Residency cell:** set one explicit `config.deploymentRegion` and a
+  `config.runtimeEventsTopic` suffixed with that region. Use only region-local
+  backing endpoints and audit/backup destinations in the cell's Secret.
+  Production rendering rejects a missing region or cross-region topic.
 - **Secrets:** set `secrets.existingSecret` to a Secret backed by Vault / AWS
   Secrets Manager / Azure Key Vault / GCP Secret Manager; it must contain
   `jwt-secret`, `database-url`, `redis-url`, `clickhouse-url`, and
@@ -62,11 +68,15 @@ helm install aisp deploy/helm/ai-security-platform \
 helm lint deploy/helm/ai-security-platform \
   --set secrets.existingSecret=aisp-secrets \
   --set image.digest=sha256:REPLACE_WITH_APPROVED_RELEASE_DIGEST \
-  --set frontend.image.digest=sha256:REPLACE_WITH_APPROVED_FRONTEND_DIGEST
+  --set frontend.image.digest=sha256:REPLACE_WITH_APPROVED_FRONTEND_DIGEST \
+  --set config.deploymentRegion=us-east-1 \
+  --set config.runtimeEventsTopic=runtime.events.us-east-1
 helm template aisp deploy/helm/ai-security-platform \
   --set secrets.existingSecret=aisp-secrets \
   --set image.digest=sha256:REPLACE_WITH_APPROVED_RELEASE_DIGEST \
   --set frontend.image.digest=sha256:REPLACE_WITH_APPROVED_FRONTEND_DIGEST \
+  --set config.deploymentRegion=us-east-1 \
+  --set config.runtimeEventsTopic=runtime.events.us-east-1 \
   --set frontend.ingress.enabled=true \
   | kubectl apply --dry-run=server -f -
 ```

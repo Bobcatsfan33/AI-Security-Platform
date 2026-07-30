@@ -32,10 +32,11 @@ class IdentityContext:
     """
 
     org_id: uuid.UUID
-    user_id: Optional[uuid.UUID]            # None when authenticated via API key
-    role: str                                # owner | admin | analyst | viewer | api_only
-    auth_method: str                         # oidc | saml | api_key | refresh
+    user_id: Optional[uuid.UUID]  # None when authenticated via API key
+    role: str  # owner | admin | analyst | viewer | api_only
+    auth_method: str  # oidc | saml | api_key | refresh
     scopes: tuple[str, ...] = field(default_factory=tuple)
     idp_subject_id: Optional[str] = None
     api_key_id: Optional[uuid.UUID] = None
-    jwt_id: Optional[str] = None             # JTI claim, for revocation
+    jwt_id: Optional[str] = None  # JTI claim, for revocation
+    data_region: Optional[str] = None  # verified regional cell binding

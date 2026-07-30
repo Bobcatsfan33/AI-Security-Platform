@@ -54,6 +54,8 @@ JWT_SECRET from the Secret. Usage: {{- include "aisp.env" . | nindent 12 }}
 {{- define "aisp.env" -}}
 - name: ENVIRONMENT
   value: {{ .Values.environment | quote }}
+- name: DEPLOYMENT_REGION
+  valueFrom: { configMapKeyRef: { name: {{ include "aisp.fullname" . }}-config, key: deployment-region } }
 - name: DATABASE_URL
   valueFrom:
     {{- if eq .Values.environment "production" }}
@@ -84,6 +86,8 @@ JWT_SECRET from the Secret. Usage: {{- include "aisp.env" . | nindent 12 }}
     {{- end }}
 - name: STREAMING_ENABLED
   valueFrom: { configMapKeyRef: { name: {{ include "aisp.fullname" . }}-config, key: streaming-enabled } }
+- name: RUNTIME_EVENTS_TOPIC
+  valueFrom: { configMapKeyRef: { name: {{ include "aisp.fullname" . }}-config, key: runtime-events-topic } }
 - name: JWT_SECRET
   valueFrom: { secretKeyRef: { name: {{ include "aisp.secretName" . }}, key: jwt-secret } }
 {{- end -}}

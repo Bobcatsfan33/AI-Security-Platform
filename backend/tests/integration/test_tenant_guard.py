@@ -19,10 +19,11 @@ from urllib.parse import urlsplit, urlunsplit
 import pytest
 import pytest_asyncio
 from sqlalchemy import event, select, text, update
-from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import NullPool
 
+from app.auth.api_key_service import create_api_key, verify_api_key
 from app.db.models.connector import Connector
 from app.db.models.mcp import McpToolProfile
 from app.db.models.organization import Organization
@@ -255,6 +256,81 @@ async def test_rls_blocks_raw_sql_as_unprivileged_role(org_a, org_b):
                 )
             ).fetchall()
         assert rows == []  # RLS hid org B's row from the org-A-scoped connection
+    finally:
+        await app_engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_api_key_prefix_resolution_policy_is_read_only_and_bounded(org_a, org_b):
+    """A NOBYPASSRLS app role may pre-auth read only the supplied public prefix."""
+    async with SessionLocal() as db:
+        created = await create_api_key(
+            db,
+            org_id=org_b,
+            name="prefix-policy",
+            scopes=["runtime:ingest"],
+            created_by=None,
+        )
+        key_id = created.record.id
+        prefix = created.record.key_prefix
+        await db.execute(
+            text(
+                "DO $$ BEGIN "
+                f"IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '{_APP_ROLE}') THEN "
+                f"CREATE ROLE {_APP_ROLE} LOGIN PASSWORD '{_APP_PW}' NOBYPASSRLS; "
+                "END IF; END $$;"
+            )
+        )
+        await db.execute(text(f"GRANT USAGE ON SCHEMA public TO {_APP_ROLE}"))
+        await db.execute(text(f"GRANT SELECT ON api_keys TO {_APP_ROLE}"))
+        await db.commit()
+
+    import os
+
+    parts = urlsplit(os.environ["DATABASE_URL"])
+    netloc = f"{_APP_ROLE}:{_APP_PW}@{parts.hostname}:{parts.port or 5432}"
+    app_dsn = urlunsplit((parts.scheme, netloc, parts.path, "", ""))
+
+    app_engine = create_async_engine(app_dsn, poolclass=NullPool)
+    try:
+        app_session = async_sessionmaker(bind=app_engine, expire_on_commit=False)
+        async with app_session() as db:
+            verified = await verify_api_key(db, created.plaintext)
+            assert verified is not None
+            assert verified.id == key_id
+
+        async with app_engine.connect() as conn:
+            hidden = (
+                await conn.execute(
+                    text("SELECT id FROM api_keys WHERE id = :id"),
+                    {"id": str(key_id)},
+                )
+            ).fetchall()
+            assert hidden == []
+
+            await conn.execute(
+                text("SELECT set_config('app.api_key_prefix', :p, true)"),
+                {"p": "WrongKey"},
+            )
+            wrong_prefix = (
+                await conn.execute(
+                    text("SELECT id FROM api_keys WHERE id = :id"),
+                    {"id": str(key_id)},
+                )
+            ).fetchall()
+            assert wrong_prefix == []
+
+            await conn.execute(
+                text("SELECT set_config('app.api_key_prefix', :p, true)"),
+                {"p": prefix},
+            )
+            matched = (
+                await conn.execute(
+                    text("SELECT id FROM api_keys WHERE id = :id"),
+                    {"id": str(key_id)},
+                )
+            ).fetchall()
+            assert len(matched) == 1
     finally:
         await app_engine.dispose()
 

@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.dependencies import current_identity
 from app.auth.jwt_service import (
     consume_refresh_token,
+    inspect_refresh_token,
     issue_token_pair,
     revoke_jti,
     signing_context,
@@ -26,12 +27,14 @@ from app.core.logging import get_logger
 from app.db.models.idp_config import IdpConfig
 from app.db.models.organization import Organization
 from app.db.session import get_db
+from app.db.tenancy import tenant_scope
 from app.identity.adapter import IdentityAuthError
 from app.identity.registry import build_adapter
 from app.identity.saml_adapter import generate_sp_metadata
 from app.identity.types import IdentityContext
 from app.security.audit_log import AuditEventType, AuditOutcome, log_event
 from app.security.rate_limit import LOGIN, TOKEN, rate_limit_ip
+from app.security.residency import TenantRegionMismatchError, enforce_organization_region
 from app.services.redis_client import get_redis
 
 router = APIRouter(tags=["auth"])
@@ -76,18 +79,24 @@ async def _get_org_idp(
     org = (
         await db.execute(select(Organization).where(Organization.slug == org_slug))
     ).scalar_one_or_none()
-    if org is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="org_not_found")
+    try:
+        enforce_organization_region(org, surface=f"/v1/auth/{provider_type}/{org_slug}")
+    except TenantRegionMismatchError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_421_MISDIRECTED_REQUEST,
+            detail="tenant_region_unavailable",
+        ) from exc
 
-    idp = (
-        await db.execute(
-            select(IdpConfig).where(
-                IdpConfig.org_id == org.id,
-                IdpConfig.provider_type == provider_type,
-                IdpConfig.status == "active",
+    async with tenant_scope(db, org.id):
+        idp = (
+            await db.execute(
+                select(IdpConfig).where(
+                    IdpConfig.org_id == org.id,
+                    IdpConfig.provider_type == provider_type,
+                    IdpConfig.status == "active",
+                )
             )
-        )
-    ).scalar_one_or_none()
+        ).scalar_one_or_none()
     if idp is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -186,8 +195,9 @@ async def oidc_callback(
         )
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(e)) from e
 
-    user = await upsert_user_from_claims(db, idp=idp, claims=claims)
-    await db.commit()
+    async with tenant_scope(db, org.id):
+        user = await upsert_user_from_claims(db, idp=idp, claims=claims)
+        await db.commit()
 
     pair = await issue_token_pair(
         org_id=org.id,
@@ -326,8 +336,9 @@ async def saml_acs(
         )
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(e)) from e
 
-    user = await upsert_user_from_claims(db, idp=idp, claims=claims)
-    await db.commit()
+    async with tenant_scope(db, org.id):
+        user = await upsert_user_from_claims(db, idp=idp, claims=claims)
+        await db.commit()
 
     pair = await issue_token_pair(
         org_id=org.id,
@@ -377,13 +388,28 @@ async def saml_acs(
 
 
 @router.get("/saml/{org_slug}/metadata")
-async def saml_sp_metadata(org_slug: str, request: Request) -> Response:
+async def saml_sp_metadata(
+    org_slug: str,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+) -> Response:
     """Return SP metadata XML for upload to the customer's IdP.
 
     This endpoint is unauthenticated by design — SP metadata is public; the
     customer needs to download it to configure their IdP. Knowing the URL
     is not a security boundary.
     """
+    org = (
+        await db.execute(select(Organization).where(Organization.slug == org_slug))
+    ).scalar_one_or_none()
+    try:
+        enforce_organization_region(org, surface=f"/v1/auth/saml/{org_slug}/metadata")
+    except TenantRegionMismatchError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_421_MISDIRECTED_REQUEST,
+            detail="tenant_region_unavailable",
+        ) from exc
+
     sp_entity_id = _saml_sp_entity_id_for(request, org_slug)
     sp_acs_url = _saml_acs_url_for(request, org_slug)
     xml = generate_sp_metadata(sp_entity_id=sp_entity_id, sp_acs_url=sp_acs_url)
@@ -394,7 +420,41 @@ async def saml_sp_metadata(org_slug: str, request: Request) -> Response:
 
 
 @router.post("/refresh", response_model=TokenPairResponse, dependencies=[Depends(_token_rl)])
-async def refresh(req: RefreshRequest) -> TokenPairResponse:
+async def refresh(
+    req: RefreshRequest,
+    db: AsyncSession = Depends(get_db),
+) -> TokenPairResponse:
+    candidate = await inspect_refresh_token(req.refresh_token)
+    if candidate is not None:
+        try:
+            org_id = uuid.UUID(candidate["org_id"])
+        except (KeyError, TypeError, ValueError):
+            # A corrupt server-side refresh record must not become a routing
+            # denial or survive for repeated retries. Consume it and fail with
+            # the same generic response as an invalid/replayed credential.
+            await consume_refresh_token(req.refresh_token)
+            log_event(
+                AuditEventType.AUTH_REFRESH_REUSE_DETECTED,
+                AuditOutcome.FAILURE,
+                resource="/v1/auth/refresh",
+                detail={"reason": "malformed_refresh_token"},
+            )
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="invalid_refresh_token",
+            ) from None
+        org = (
+            await db.execute(select(Organization).where(Organization.id == org_id))
+        ).scalar_one_or_none()
+        try:
+            enforce_organization_region(org, surface="/v1/auth/refresh")
+        except TenantRegionMismatchError as exc:
+            # Do not consume the single-use token at the wrong regional cell.
+            raise HTTPException(
+                status_code=status.HTTP_421_MISDIRECTED_REQUEST,
+                detail="tenant_region_unavailable",
+            ) from exc
+
     payload = await consume_refresh_token(req.refresh_token)
     if payload is None:
         log_event(
@@ -459,6 +519,7 @@ async def me(identity: IdentityContext = Depends(current_identity)) -> dict[str,
         "role": identity.role,
         "auth_method": identity.auth_method,
         "scopes": list(identity.scopes),
+        "data_region": identity.data_region,
     }
 
 

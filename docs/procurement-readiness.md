@@ -6,8 +6,10 @@ approval claim while controls or blocking gates remain open.
 
 The current decision is **not approved**, and the product is **not yet a software release
 candidate**. Signed images, SBOMs, provenance, hardened Helm paths, and strong engineering evidence
-exist. They do not replace a penetration test, production HA/DR exercise, representative efficacy
-evaluation, enterprise identity promotion, security operations, or organizational assurance.
+exist. Tenant-to-region pinning now fails closed across enterprise identity entry points and
+regional runtime topics, but production topology and migration evidence is still required. These
+controls do not replace a penetration test, production HA/DR/residency exercise, representative
+efficacy evaluation, security operations, or organizational assurance.
 
 The index is organized for [NIST SSDF 1.1](https://csrc.nist.gov/pubs/sp/800/218/final),
 [SLSA 1.2](https://slsa.dev/spec/v1.2/),

@@ -11,6 +11,13 @@
   {{- if not .Values.secrets.existingSecret }}
     {{- fail "production requires secrets.existingSecret; literal Helm values must not carry JWT signing material" }}
   {{- end }}
+  {{- if or (eq .Values.config.deploymentRegion "") (eq .Values.config.deploymentRegion "local") (eq .Values.config.deploymentRegion "unassigned") (not (regexMatch "^[a-z][a-z0-9-]{1,31}$" .Values.config.deploymentRegion)) }}
+    {{- fail "production requires config.deploymentRegion to be an explicit region identifier" }}
+  {{- end }}
+  {{- $topicSuffix := printf ".%s" .Values.config.deploymentRegion }}
+  {{- if not (hasSuffix $topicSuffix .Values.config.runtimeEventsTopic) }}
+    {{- fail "production requires config.runtimeEventsTopic to be suffixed with config.deploymentRegion" }}
+  {{- end }}
 {{- end }}
 {{- if and .Values.frontend.ingress.enabled (not .Values.api.enabled) }}
   {{- fail "frontend ingress requires api.enabled=true because /v1 routes to the API service" }}

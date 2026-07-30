@@ -72,10 +72,12 @@ def test_organization_is_not_scoped():
     assert not issubclass(Organization, TenantScoped)
 
 
-def test_exactly_two_sanctioned_bypass_sites():
-    """The ORM-guard escape hatch may be used at exactly two audited sites:
-    API-key resolution and SCIM IdP resolution. Grep-enforced so a third,
-    unreviewed bypass cannot slip in."""
+def test_exactly_one_sanctioned_bypass_site():
+    """Only API-key prefix resolution may bypass the ORM guard.
+
+    The matching read-only RLS policy still limits the query to that public
+    prefix. Grep enforcement prevents an unreviewed bypass from slipping in.
+    """
     import pathlib
 
     app_dir = pathlib.Path(__file__).resolve().parents[2] / "app"
@@ -83,7 +85,7 @@ def test_exactly_two_sanctioned_bypass_sites():
     hits = sorted(
         f"{p.relative_to(app_dir)}" for p in app_dir.rglob("*.py") if needle in p.read_text()
     )
-    assert hits == ["auth/api_key_service.py", "scim/auth.py"], hits
+    assert hits == ["auth/api_key_service.py"], hits
 
 
 def test_install_tenant_guard_is_idempotent():

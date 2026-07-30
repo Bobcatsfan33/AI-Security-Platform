@@ -15,12 +15,12 @@ from __future__ import annotations
 
 import secrets
 import uuid
+from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import datetime
-from typing import Sequence
+from datetime import UTC, datetime
 
 from passlib.hash import bcrypt
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.api_key import ApiKey
@@ -88,12 +88,22 @@ async def verify_api_key(db: AsyncSession, plaintext: str) -> ApiKey | None:
         resource="api_keys",
         detail={"reason": "api_key_resolution"},
     )
+    # Wall 2 remains active during pre-auth resolution. The dedicated SELECT
+    # policy admits only rows whose public prefix matches this transaction-local
+    # value; it never grants write access or exposes unrelated tenant rows.
+    await db.execute(
+        text("SELECT set_config('app.api_key_prefix', :prefix, true)"),
+        {"prefix": prefix},
+    )
     stmt = select(ApiKey).where(
         ApiKey.key_prefix == prefix,
         ApiKey.is_active.is_(True),
     )
-    result = await db.execute(stmt, execution_options={"bypass_tenant_guard": True})
-    candidates = result.scalars().all()
+    try:
+        result = await db.execute(stmt, execution_options={"bypass_tenant_guard": True})
+        candidates = result.scalars().all()
+    finally:
+        await db.execute(text("SELECT set_config('app.api_key_prefix', '', true)"))
 
     for candidate in candidates:
         # bcrypt.verify is constant-time per candidate. We loop because two keys
@@ -101,9 +111,7 @@ async def verify_api_key(db: AsyncSession, plaintext: str) -> ApiKey | None:
         try:
             if bcrypt.verify(plaintext, candidate.key_hash):
                 if candidate.expires_at is not None:
-                    from datetime import timezone
-
-                    now = datetime.now(timezone.utc)
+                    now = datetime.now(UTC)
                     if candidate.expires_at < now:
                         return None
                 return candidate

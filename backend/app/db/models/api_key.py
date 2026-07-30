@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import uuid
-from typing import TYPE_CHECKING, Optional
+from datetime import datetime
+from typing import TYPE_CHECKING
 
-from sqlalchemy import ForeignKey, String
+from sqlalchemy import DateTime, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, JsonbList, TimestampUtc, UUIDFk, UUIDPk
@@ -32,13 +33,16 @@ class ApiKey(Base, TenantScoped):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     scopes: Mapped[JsonbList]  # ["assets:read", "evaluations:write", ...]
 
-    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
-    expires_at: Mapped[Optional[TimestampUtc]] = mapped_column(nullable=True)
-    last_used_at: Mapped[Optional[TimestampUtc]] = mapped_column(nullable=True)
+    # Do not use Optional[TimestampUtc] here: TimestampUtc carries a default of
+    # "now", which would make every API key expire at creation time. Nullable
+    # lifecycle timestamps intentionally have no client-side default.
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     is_active: Mapped[bool] = mapped_column(default=True, nullable=False)
 
     created_at: Mapped[TimestampUtc]
 
-    organization: Mapped["Organization"] = relationship(back_populates="api_keys")
+    organization: Mapped[Organization] = relationship(back_populates="api_keys")

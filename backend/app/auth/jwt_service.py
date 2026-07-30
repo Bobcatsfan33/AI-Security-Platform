@@ -216,3 +216,15 @@ async def consume_refresh_token(refresh_token: str) -> dict[str, Any] | None:
         # Lost a race — another consumer popped it first. Treat as invalid.
         return None
     return payload
+
+
+async def inspect_refresh_token(refresh_token: str) -> dict[str, Any] | None:
+    """Read a refresh payload without consuming it.
+
+    Used only for pre-consumption residency routing. The caller must still use
+    :func:`consume_refresh_token` and trust only that atomic result; this peek
+    does not weaken single-use rotation under concurrent requests.
+    """
+    redis = await get_redis()
+    payload = await redis.hgetall(REFRESH_PREFIX + refresh_token)
+    return payload or None
