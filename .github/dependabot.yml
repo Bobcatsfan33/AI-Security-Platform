@@ -6,8 +6,8 @@
 # the deal: pinning without a mechanism to move the pins is how a supply chain
 # ends up frozen at a known-vulnerable version because nobody dared touch it.
 #
-# Part of the supply-chain story alongside CodeQL, Trivy, the CycloneDX SBOM,
-# cosign signing and SLSA provenance (.github/workflows/security.yml). Those
+# Part of the supply-chain story alongside CodeQL, Trivy, the SPDX SBOM,
+# cosign signing and GitHub build provenance (.github/workflows/security.yml). Those
 # describe and attest what we ship; the lock makes it reproducible; this keeps
 # it current. pip-audit in CI is the backstop that fails the build if a known
 # vuln lands anyway.

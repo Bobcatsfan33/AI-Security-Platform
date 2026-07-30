@@ -19,6 +19,8 @@
 
 # The customer-deployed inline agent.
 /runtime-agent/         @Bobcatsfan33
+/backend/Dockerfile     @Bobcatsfan33
+/frontend/Dockerfile    @Bobcatsfan33
 
 # CI/CD, supply chain, and deployment topology.
 /.github/               @Bobcatsfan33

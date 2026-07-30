@@ -6,17 +6,23 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
 jobs:
   helm:
     name: Helm chart validation
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4
       - name: Lint and render control plane
+        env:
+          CI_IMAGE_DIGEST: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
         run: |
-          helm lint deploy/helm/ai-security-platform --set secrets.existingSecret=ci-platform-secrets
-          helm template ci deploy/helm/ai-security-platform --set secrets.existingSecret=ci-platform-secrets > /tmp/control-plane.yaml
+          helm lint deploy/helm/ai-security-platform --set secrets.existingSecret=ci-platform-secrets --set image.digest="${CI_IMAGE_DIGEST}"
+          helm template ci deploy/helm/ai-security-platform --set secrets.existingSecret=ci-platform-secrets --set image.digest="${CI_IMAGE_DIGEST}" > /tmp/control-plane.yaml
+          grep -q "ghcr.io/bobcatsfan33/ai-security-platform@${CI_IMAGE_DIGEST}" /tmp/control-plane.yaml
           grep -q "kind: NetworkPolicy" /tmp/control-plane.yaml
           grep -q "kind: ServiceAccount" /tmp/control-plane.yaml
           grep -q "automountServiceAccountToken: false" /tmp/control-plane.yaml
@@ -31,6 +37,7 @@ jobs:
           fi
           helm template csi deploy/helm/ai-security-platform \
             --set secrets.existingSecret=ci-platform-secrets \
+            --set image.digest="${CI_IMAGE_DIGEST}" \
             --set secrets.secretProviderClass.enabled=true \
             --set secrets.secretProviderClass.provider=aws \
             --set secrets.secretProviderClass.secretObjects[0].secretName=ci-platform-secrets \
@@ -48,9 +55,12 @@ jobs:
             exit 1
           fi
       - name: Lint and render runtime agent
+        env:
+          CI_IMAGE_DIGEST: sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
         run: |
-          helm lint deploy/helm/ai-security-agent --set mtls.enabled=true --set config.platformUrl=https://api.platform.svc.cluster.local:8000
-          helm template ci deploy/helm/ai-security-agent --set mtls.enabled=true --set config.platformUrl=https://api.platform.svc.cluster.local:8000 > /tmp/runtime-agent.yaml
+          helm lint deploy/helm/ai-security-agent --set mtls.enabled=true --set config.platformUrl=https://api.platform.svc.cluster.local:8000 --set image.digest="${CI_IMAGE_DIGEST}"
+          helm template ci deploy/helm/ai-security-agent --set mtls.enabled=true --set config.platformUrl=https://api.platform.svc.cluster.local:8000 --set image.digest="${CI_IMAGE_DIGEST}" > /tmp/runtime-agent.yaml
+          grep -q "ghcr.io/bobcatsfan33/ai-security-platform-agent@${CI_IMAGE_DIGEST}" /tmp/runtime-agent.yaml
           grep -q "kind: NetworkPolicy" /tmp/runtime-agent.yaml
           grep -q "kind: ServiceAccount" /tmp/runtime-agent.yaml
           grep -q "automountServiceAccountToken: false" /tmp/runtime-agent.yaml
@@ -85,8 +95,8 @@ jobs:
       REDIS_URL: redis://localhost:6379/0
       ENVIRONMENT: test
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.12"
           cache: pip
@@ -158,8 +168,8 @@ jobs:
     name: Runtime agent (Go)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version: stable
           cache-dependency-path: runtime-agent/go.sum
@@ -174,8 +184,8 @@ jobs:
     name: Agent bench gate (regression)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           # PINNED (not "stable") on purpose: the gate compares allocs/op + B/op
           # against a committed baseline generated on this exact toolchain. A Go
@@ -200,8 +210,8 @@ jobs:
     name: Frontend (Next.js)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "20"
           cache: npm
@@ -221,9 +231,9 @@ jobs:
     # in the repo was also the most security-load-bearing. Both languages are
     # gated here because they make the same promise and must not drift apart.
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.12"
       - name: Python SDK — install
@@ -233,7 +243,7 @@ jobs:
         working-directory: sdks/python
         run: pytest -q
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "20"
       - name: Node SDK — install
@@ -260,8 +270,8 @@ jobs:
     name: Security gates
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version: stable
 
@@ -274,7 +284,7 @@ jobs:
 
       # ── Python SAST (pip-audit runs in the backend job, where the full
       #    dependency set is installed) ─────────────────────────────────────
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.12"
       - name: bandit (Python SAST, high severity)
@@ -284,7 +294,7 @@ jobs:
         working-directory: backend
 
       # ── Node dependency audit (high severity) ───────────────────────────
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "20"
       - name: npm audit gate (blocking, with expiring exceptions)

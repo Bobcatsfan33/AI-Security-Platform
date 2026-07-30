@@ -43,12 +43,14 @@ documented, governed process rather than an undisclosed one (SSDF PO.3, PW.1).
 | Python SAST | `Security gates` → bandit (high) | yes |
 | Go SAST | `Security gates` → gosec (high/high) | yes |
 | Dependency audit | `Security gates` → npm audit (high), pip-audit | yes |
-| SAST (CodeQL) | `security-suite / codeql` (python, go, javascript) | yes¹ |
-| Image scan | `security-suite / build-scan-sign` → Trivy (HIGH/CRITICAL) | yes¹ |
-| SBOM + signing + provenance | `security-suite` → CycloneDX, cosign, SLSA | yes¹ |
+| SAST (CodeQL) | `security and release assurance / CodeQL` (python, go, javascript) | yes |
+| Image scan | component image policy jobs → Trivy (fixable HIGH/CRITICAL) | yes |
+| SBOM | component image policy jobs → SPDX JSON | yes |
+| Signing + provenance | protected tag release → cosign + GitHub provenance | release |
 
-¹ Added by the supply-chain workstream (A-3); calls the org-level reusable
-workflow `Bobcatsfan33/.github/.github/workflows/security-reusable.yml`.
+The release workflow is local, action-SHA-pinned, and reviewed with the
+repository. It publishes only from protected semantic-version tags after the
+`production-release` environment is approved; see `docs/RELEASE-ASSURANCE.md`.
 
 ## 5. Tenant isolation (SC, AC)
 

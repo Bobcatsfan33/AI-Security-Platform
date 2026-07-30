@@ -1,4 +1,7 @@
 {{- if eq .Values.config.environment "production" }}
+  {{- if not (regexMatch "^sha256:[a-f0-9]{64}$" .Values.image.digest) }}
+    {{- fail "production requires image.digest to be an exact sha256 release digest" }}
+  {{- end }}
   {{- if not (hasPrefix "https://" .Values.config.platformUrl) }}
     {{- fail "production requires config.platformUrl to use https://" }}
   {{- end }}

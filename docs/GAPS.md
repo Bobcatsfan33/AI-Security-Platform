@@ -490,12 +490,11 @@ exactly its honesty:
   and one this repo has already lived through twice with starlette-via-fastapi.
   **`pip-audit` in CI is the sole transitive signal.** "Dependabot covers pip"
   would imply more than is true.
-* **Build-backend deps are still unpinned.** `pip install --no-deps .` uses PEP
-  517 build isolation, which fetches `setuptools`/`wheel` (from
-  `[build-system] requires`) at build time with no hashes. Smaller hole than the
-  runtime tree, but it is in the image build. Fix is `--no-build-isolation` plus
-  pinned build deps; not attempted here because it cannot be verified without a
-  local Docker.
+* **The production image no longer invokes the build backend.** The runtime
+  loads the source copied into `/app`, so the redundant `pip install --no-deps
+  .` was removed. That closes the PEP 517 build-isolation download of floating
+  `setuptools`/`wheel`; every installed Python artifact in the image now comes
+  from the hashed runtime lock.
 * **Not everything at build time is pinned.** uv is version-pinned (and
   `lock.sh` now *enforces* the pin rather than naming it, since uv's output
   format is version-dependent), but not hash-pinned; `pip` and `pip-audit` are

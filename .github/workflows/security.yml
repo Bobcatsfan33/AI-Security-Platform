@@ -1,47 +1,315 @@
-# .github/workflows/security.yml — supply-chain CI (A-3).
-#
-# Calls the org-level reusable workflow once per image. CodeQL languages are
-# split across the two calls so python, go, and javascript are each analysed
-# exactly once. On pull_request the images are built + Trivy-scanned only; on
-# push to main they are also pushed to GHCR, cosign-signed (keyless), SBOM-
-# attested, and SLSA-provenance is generated.
-#
-# Complementary to ci.yml's gitleaks/bandit/gosec/npm-audit — not redundant.
-name: security
+name: security and release assurance
 
 on:
-  push:
-    branches: [main]
   pull_request:
     branches: [main]
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+env:
+  TRIVY_VERSION: v0.72.0
 
 jobs:
-  backend:
+  codeql:
+    name: CodeQL (${{ matrix.language }})
+    if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+    runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: write
-      id-token: write
       security-events: write
-      attestations: write
-      actions: read
-    uses: Bobcatsfan33/.github/.github/workflows/security-reusable.yml@main
-    with:
-      image: ghcr.io/bobcatsfan33/ai-security-platform
-      languages: '["python","go"]'
-      dockerfile: backend/Dockerfile
-      context: backend
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [python, go, javascript-typescript]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: github/codeql-action/init@e4fba868fa4b1b91e1fdab776edc8cfbe6e9fb81
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.language == 'go' && 'autobuild' || 'none' }}
+          queries: security-extended
+      - uses: github/codeql-action/analyze@e4fba868fa4b1b91e1fdab776edc8cfbe6e9fb81
 
-  frontend:
+  verify-images:
+    name: ${{ matrix.name }} image policy, SBOM, and vulnerability gate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: backend
+            context: backend
+            dockerfile: backend/Dockerfile
+            local_image: aisp-backend:verification
+            base_arg: PYTHON_IMAGE
+            base_image: python:3.12-slim@sha256:423ed6ab25b1921a477529254bfeeabf5855151dc2c3141699a1bfc852199fbf
+            runtime_base: python:3.12-slim@sha256:423ed6ab25b1921a477529254bfeeabf5855151dc2c3141699a1bfc852199fbf
+            user: "10001:10001"
+            entrypoint: python
+            runtime_arg: --version
+          - name: frontend
+            context: frontend
+            dockerfile: frontend/Dockerfile
+            local_image: aisp-frontend:verification
+            base_arg: NODE_IMAGE
+            base_image: node:22-alpine@sha256:16e22a550f3863206a3f701448c45f7912c6896a62de43add43bb9c86130c3e2
+            runtime_base: node:22-alpine@sha256:16e22a550f3863206a3f701448c45f7912c6896a62de43add43bb9c86130c3e2
+            user: "10001:10001"
+            entrypoint: node
+            runtime_arg: --version
+          - name: runtime-agent
+            context: runtime-agent
+            dockerfile: runtime-agent/Dockerfile
+            local_image: aisp-agent:verification
+            base_arg: GO_IMAGE
+            base_image: golang:1.26-alpine@sha256:0178a641fbb4858c5f1b48e34bdaabe0350a330a1b1149aabd498d0699ff5fb2
+            runtime_base: scratch
+            user: "65532:65532"
+            entrypoint: /agent
+            runtime_arg: --version
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f
+
+      - name: build release-equivalent image
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          load: true
+          push: false
+          tags: ${{ matrix.local_image }}
+          build-args: |
+            ${{ matrix.base_arg }}=${{ matrix.base_image }}
+
+      - name: verify immutable base and unprivileged runtime
+        shell: bash
+        env:
+          EXPECTED_BASE: ${{ matrix.base_image }}
+          EXPECTED_RUNTIME_BASE: ${{ matrix.runtime_base }}
+          EXPECTED_USER: ${{ matrix.user }}
+          LOCAL_IMAGE: ${{ matrix.local_image }}
+        run: |
+          set -euo pipefail
+          DEFAULT_BASE="$(sed -n 's/^ARG ${{ matrix.base_arg }}=//p' '${{ matrix.dockerfile }}' | head -n 1)"
+          test "${DEFAULT_BASE}" = "${EXPECTED_BASE}"
+          test "$(docker image inspect "${LOCAL_IMAGE}" --format '{{ index .Config.Labels "org.opencontainers.image.base.name" }}')" = "${EXPECTED_RUNTIME_BASE}"
+          test "$(docker image inspect "${LOCAL_IMAGE}" --format '{{.Config.User}}')" = "${EXPECTED_USER}"
+
+      - name: smoke test locked-down runtime
+        run: >-
+          docker run --rm
+          --read-only
+          --network none
+          --cap-drop ALL
+          --security-opt no-new-privileges
+          --tmpfs /tmp:rw,noexec,nosuid,size=32m
+          --entrypoint ${{ matrix.entrypoint }}
+          ${{ matrix.local_image }}
+          ${{ matrix.runtime_arg }}
+
+      - name: generate SPDX SBOM
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610
+        with:
+          image: ${{ matrix.local_image }}
+          format: spdx-json
+          output-file: ${{ matrix.name }}.spdx.json
+          syft-version: v1.50.0
+          upload-artifact: false
+
+      - name: write machine-readable vulnerability evidence
+        uses: aquasecurity/trivy-action@b6643a29fecd7f34b3597bc6acb0a98b03d33ff8
+        with:
+          image-ref: ${{ matrix.local_image }}
+          version: ${{ env.TRIVY_VERSION }}
+          format: json
+          output: ${{ matrix.name }}.trivy.json
+          scanners: vuln
+          vuln-type: os,library
+          ignore-unfixed: true
+          severity: HIGH,CRITICAL
+          exit-code: 0
+
+      - name: retain assurance evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ${{ matrix.name }}-image-assurance-${{ github.run_id }}
+          path: |
+            ${{ matrix.name }}.spdx.json
+            ${{ matrix.name }}.trivy.json
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: block fixable high and critical vulnerabilities
+        uses: aquasecurity/trivy-action@b6643a29fecd7f34b3597bc6acb0a98b03d33ff8
+        with:
+          image-ref: ${{ matrix.local_image }}
+          version: ${{ env.TRIVY_VERSION }}
+          format: table
+          scanners: vuln
+          vuln-type: os,library
+          ignore-unfixed: true
+          severity: HIGH,CRITICAL
+          exit-code: 1
+
+  publish:
+    name: publish, sign, and attest ${{ matrix.name }}
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: verify-images
+    runs-on: ubuntu-latest
+    environment: production-release
     permissions:
       contents: read
       packages: write
       id-token: write
-      security-events: write
       attestations: write
-      actions: read
-    uses: Bobcatsfan33/.github/.github/workflows/security-reusable.yml@main
-    with:
-      image: ghcr.io/bobcatsfan33/asp-frontend
-      languages: '["javascript"]'
-      dockerfile: frontend/Dockerfile
-      context: frontend
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: backend
+            context: backend
+            dockerfile: backend/Dockerfile
+            image_name: ai-security-platform
+            base_arg: PYTHON_IMAGE
+            base_image: python:3.12-slim@sha256:423ed6ab25b1921a477529254bfeeabf5855151dc2c3141699a1bfc852199fbf
+          - name: frontend
+            context: frontend
+            dockerfile: frontend/Dockerfile
+            image_name: asp-frontend
+            base_arg: NODE_IMAGE
+            base_image: node:22-alpine@sha256:16e22a550f3863206a3f701448c45f7912c6896a62de43add43bb9c86130c3e2
+          - name: runtime-agent
+            context: runtime-agent
+            dockerfile: runtime-agent/Dockerfile
+            image_name: ai-security-platform-agent
+            base_arg: GO_IMAGE
+            base_image: golang:1.26-alpine@sha256:0178a641fbb4858c5f1b48e34bdaabe0350a330a1b1149aabd498d0699ff5fb2
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+
+      - name: validate tag and image identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! "${GITHUB_REF_NAME}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::release tag must be an explicit semantic version"
+            exit 1
+          fi
+          git fetch --no-tags origin main
+          if ! git merge-base --is-ancestor "${GITHUB_SHA}" origin/main; then
+            echo "::error::release tag must identify a commit already merged to main"
+            exit 1
+          fi
+          echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/${{ matrix.image_name }}" >> "${GITHUB_ENV}"
+
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: build
+        name: build and publish approved source
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:${{ github.ref_name }}
+            ${{ env.IMAGE }}:sha-${{ github.sha }}
+          build-args: |
+            ${{ matrix.base_arg }}=${{ matrix.base_image }}
+          provenance: mode=max
+
+      - uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac
+
+      - name: sign exact image digest
+        run: cosign sign --yes "${IMAGE}@${{ steps.build.outputs.digest }}"
+
+      - name: generate release SPDX SBOM
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610
+        with:
+          image: ${{ env.IMAGE }}@${{ steps.build.outputs.digest }}
+          registry-username: ${{ github.actor }}
+          registry-password: ${{ secrets.GITHUB_TOKEN }}
+          format: spdx-json
+          output-file: ${{ matrix.name }}.spdx.json
+          syft-version: v1.50.0
+          upload-artifact: false
+
+      - name: attest release SBOM
+        run: >-
+          cosign attest --yes
+          --predicate ${{ matrix.name }}.spdx.json
+          --type spdxjson
+          "${IMAGE}@${{ steps.build.outputs.digest }}"
+
+      - name: publish GitHub build provenance
+        uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+
+      - name: verify published identity and SBOM
+        shell: bash
+        run: |
+          set -euo pipefail
+          IDENTITY="https://github.com/${GITHUB_REPOSITORY}/.github/workflows/security.yml@${GITHUB_REF}"
+          cosign verify \
+            --certificate-identity "${IDENTITY}" \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+            "${IMAGE}@${{ steps.build.outputs.digest }}"
+          cosign verify-attestation \
+            --certificate-identity "${IDENTITY}" \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+            --type spdxjson \
+            "${IMAGE}@${{ steps.build.outputs.digest }}"
+
+      - name: write release receipt
+        env:
+          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+        shell: bash
+        run: |
+          jq -n \
+            --arg schema_version "1" \
+            --arg component "${{ matrix.name }}" \
+            --arg image "${IMAGE}" \
+            --arg image_digest "${IMAGE_DIGEST}" \
+            --arg build_base "${{ matrix.base_image }}" \
+            --arg source_repository "https://github.com/${GITHUB_REPOSITORY}" \
+            --arg source_revision "${GITHUB_SHA}" \
+            --arg release_tag "${GITHUB_REF_NAME}" \
+            '{
+              schema_version: ($schema_version | tonumber),
+              component: $component,
+              image: $image,
+              image_digest: $image_digest,
+              build_base: $build_base,
+              source_repository: $source_repository,
+              source_revision: $source_revision,
+              release_tag: $release_tag
+            }' > "${{ matrix.name }}-release-receipt.json"
+
+      - name: retain release evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ${{ matrix.name }}-release-evidence-${{ github.run_id }}
+          path: |
+            ${{ matrix.name }}.spdx.json
+            ${{ matrix.name }}-release-receipt.json
+          if-no-files-found: error
+          retention-days: 90

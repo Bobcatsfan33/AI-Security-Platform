@@ -3,19 +3,22 @@
 #
 # Build context is frontend/, e.g.:
 #   docker build -f frontend/Dockerfile frontend/
-FROM node:22-alpine AS deps
+ARG NODE_IMAGE=node:22-alpine@sha256:16e22a550f3863206a3f701448c45f7912c6896a62de43add43bb9c86130c3e2
+FROM ${NODE_IMAGE} AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 
-FROM node:22-alpine AS build
+FROM ${NODE_IMAGE} AS build
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 
-FROM node:22-alpine AS runtime
+FROM ${NODE_IMAGE} AS runtime
+ARG NODE_IMAGE
+LABEL org.opencontainers.image.base.name="${NODE_IMAGE}"
 # Pull the latest patched OS packages (the node:22-alpine base lags Alpine's
 # package fixes) and drop the global npm CLI — the runtime only runs
 # `node server.js`, so npm is unused and just drags in its bundled-dependency
