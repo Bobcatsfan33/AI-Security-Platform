@@ -58,11 +58,20 @@ agentApiKey:
   existingSecret: ""           # name of a Secret with key "api-key"
   apiKey: ""                   # literal value (creates a managed Secret)
 
+# Dedicated identity for cloud workload identity. Kubernetes API credentials
+# are not mounted by default because the agent does not call the API server.
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+  automountServiceAccountToken: false
+
 # Mutual TLS to the control plane (A-4). The agent authenticates with a
 # short-lived client certificate — cert-manager rotates the Secret, the agent
 # hot-reloads it — and pins the control-plane server to the platform CA, instead
 # of a long-lived bearer credential on a box the platform doesn't control.
-# Disabled by default for backward compatibility; enable in production.
+# Production rendering fails closed unless this is enabled and platformUrl is
+# HTTPS. Disable only with config.environment=development for a local stack.
 mtls:
   enabled: false
   # Secret (e.g. issued by cert-manager) with keys ca.crt, tls.crt, tls.key.
@@ -100,6 +109,25 @@ containerSecurityContext:
 nodeSelector: {}
 tolerations: []
 affinity: {}
+
+# Default-deny pod isolation. The default platform namespace matches the sample
+# URLs above; override it when the control plane or Redis live elsewhere.
+networkPolicy:
+  enabled: true
+  platformNamespaceSelector:
+    matchLabels:
+      kubernetes.io/metadata.name: platform
+  platformPorts: [6379, 8000]
+  allowExternalHttps: true
+  additionalIngress: []
+  # Use explicit ipBlock/namespaceSelector entries for private providers,
+  # alternate Redis ports, or an external control plane that is not on 443.
+  additionalEgress: []
+  dns:
+    namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: kube-system
+    podSelector: {}
 
 # Diagnostic endpoints (/healthz, /readyz, /metrics) live on the
 # diagnostic port and are bound to 127.0.0.1 by default. Enable to

@@ -7,6 +7,58 @@ on:
     branches: [main]
 
 jobs:
+  helm:
+    name: Helm chart validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4
+      - name: Lint and render control plane
+        run: |
+          helm lint deploy/helm/ai-security-platform --set secrets.existingSecret=ci-platform-secrets
+          helm template ci deploy/helm/ai-security-platform --set secrets.existingSecret=ci-platform-secrets > /tmp/control-plane.yaml
+          grep -q "kind: NetworkPolicy" /tmp/control-plane.yaml
+          grep -q "kind: ServiceAccount" /tmp/control-plane.yaml
+          grep -q "automountServiceAccountToken: false" /tmp/control-plane.yaml
+          grep -q "secretKeyRef:" /tmp/control-plane.yaml
+          if grep -q "postgresql+asyncpg://" /tmp/control-plane.yaml; then
+            echo "::error::production manifest leaked a database connection string"
+            exit 1
+          fi
+          if helm template unsafe deploy/helm/ai-security-platform --set secrets.jwtSecret=literal-is-not-production-safe > /dev/null 2>&1; then
+            echo "::error::production control plane accepted a literal JWT secret"
+            exit 1
+          fi
+          helm template csi deploy/helm/ai-security-platform \
+            --set secrets.existingSecret=ci-platform-secrets \
+            --set secrets.secretProviderClass.enabled=true \
+            --set secrets.secretProviderClass.provider=aws \
+            --set secrets.secretProviderClass.secretObjects[0].secretName=ci-platform-secrets \
+            --set secrets.secretProviderClass.secretObjects[0].type=Opaque \
+            --set secrets.secretProviderClass.secretObjects[0].data[0].objectName=jwt-secret \
+            --set secrets.secretProviderClass.secretObjects[0].data[0].key=jwt-secret \
+            > /tmp/control-plane-csi.yaml
+          grep -q "kind: SecretProviderClass" /tmp/control-plane-csi.yaml
+          grep -q "driver: secrets-store.csi.k8s.io" /tmp/control-plane-csi.yaml
+          if helm template unsafe-csi deploy/helm/ai-security-platform \
+            --set secrets.existingSecret=ci-platform-secrets \
+            --set secrets.secretProviderClass.enabled=true \
+            > /dev/null 2>&1; then
+            echo "::error::Secrets Store CSI accepted a missing provider and synchronization contract"
+            exit 1
+          fi
+      - name: Lint and render runtime agent
+        run: |
+          helm lint deploy/helm/ai-security-agent --set mtls.enabled=true --set config.platformUrl=https://api.platform.svc.cluster.local:8000
+          helm template ci deploy/helm/ai-security-agent --set mtls.enabled=true --set config.platformUrl=https://api.platform.svc.cluster.local:8000 > /tmp/runtime-agent.yaml
+          grep -q "kind: NetworkPolicy" /tmp/runtime-agent.yaml
+          grep -q "kind: ServiceAccount" /tmp/runtime-agent.yaml
+          grep -q "automountServiceAccountToken: false" /tmp/runtime-agent.yaml
+          if helm template unsafe deploy/helm/ai-security-agent > /dev/null 2>&1; then
+            echo "::error::production agent accepted plaintext control-plane transport"
+            exit 1
+          fi
+
   backend:
     name: Backend tests (unit + integration)
     runs-on: ubuntu-latest

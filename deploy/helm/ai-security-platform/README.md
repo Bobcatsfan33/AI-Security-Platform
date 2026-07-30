@@ -8,11 +8,7 @@ managed or external Secret.
 helm install aisp deploy/helm/ai-security-platform \
   --namespace ai-security --create-namespace \
   --set image.repository=ghcr.io/you/ai-security-platform \
-  --set secrets.existingSecret=aisp-secrets \
-  --set config.databaseUrl="postgresql+asyncpg://USER:PASS@pg-host:5432/platform" \
-  --set config.redisUrl="redis://redis-host:6379/0" \
-  --set config.clickhouseUrl="http://ch-host:8123" \
-  --set config.redpandaBrokers="redpanda-host:9092"
+  --set secrets.existingSecret=aisp-secrets
 ```
 
 ## What it creates
@@ -31,8 +27,16 @@ helm install aisp deploy/helm/ai-security-platform \
   Postgres+pgvector, ClickHouse (replicated), Redis (cluster/sentinel), and
   Redpanda (RF≥3). See `docs/HA-DR-RUNBOOK.md`.
 - **Secrets:** set `secrets.existingSecret` to a Secret backed by Vault / AWS
-  Secrets Manager / KMS (key `jwt-secret`); never ship the literal. The API
-  fails closed at startup if `JWT_SECRET` is unset (`security/secret_gate.py`).
+  Secrets Manager / Azure Key Vault / GCP Secret Manager; it must contain
+  `jwt-secret`, `database-url`, `redis-url`, `clickhouse-url`, and
+  `redpanda-brokers`. Never ship literals. The API fails closed at startup if
+  `JWT_SECRET` is unset (`security/secret_gate.py`).
+- **Secrets Store CSI:** optionally set
+  `secrets.secretProviderClass.enabled=true`, its provider-specific
+  `parameters`, and `secretObjects`. The chart creates and mounts a
+  `SecretProviderClass`; `secretObjects` must synchronize the Secret named by
+  `secrets.existingSecret`. The CSI driver/provider and secret-sync feature are
+  cluster prerequisites.
 - **TLS:** terminate at the Ingress (`api.ingress.tls`) and on the SDK ↔ agent
   ↔ control-plane path.
 - **Migrations:** run `alembic upgrade head` (one-off Job or `kubectl exec`)
@@ -43,6 +47,6 @@ helm install aisp deploy/helm/ai-security-platform \
 ## Validate before applying
 
 ```bash
-helm lint deploy/helm/ai-security-platform --set secrets.jwtSecret=dev-32-chars-xxxxxxxxxxxxxxxxxx
-helm template aisp deploy/helm/ai-security-platform --set secrets.jwtSecret=dev-32-chars-xxxxxxxxxxxxxxxxxx | kubectl apply --dry-run=server -f -
+helm lint deploy/helm/ai-security-platform --set secrets.existingSecret=aisp-secrets
+helm template aisp deploy/helm/ai-security-platform --set secrets.existingSecret=aisp-secrets | kubectl apply --dry-run=server -f -
 ```

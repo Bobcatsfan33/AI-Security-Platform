@@ -20,6 +20,8 @@ spec:
         {{- include "aisp.labels" . | nindent 8 }}
         app.kubernetes.io/component: epa-consumer
     spec:
+      serviceAccountName: {{ include "aisp.serviceAccountName" . }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}
       {{- with .Values.image.pullSecrets }}
       imagePullSecrets: {{ toYaml . | nindent 8 }}
       {{- end }}
@@ -39,7 +41,22 @@ spec:
           command: ["python", "-m", "scripts.epa_consumer"]
           env:
             {{- include "aisp.env" . | nindent 12 }}
+          {{- if .Values.secrets.secretProviderClass.enabled }}
+          volumeMounts:
+            - name: external-secrets
+              mountPath: {{ .Values.secrets.secretProviderClass.mountPath | quote }}
+              readOnly: true
+          {{- end }}
           resources: {{ toYaml .Values.epaConsumer.resources | nindent 12 }}
+      {{- if .Values.secrets.secretProviderClass.enabled }}
+      volumes:
+        - name: external-secrets
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: {{ include "aisp.secretProviderClassName" . | quote }}
+      {{- end }}
 {{- if .Values.epaConsumer.autoscaling.enabled }}
 ---
 apiVersion: autoscaling/v2
@@ -98,6 +115,8 @@ spec:
         {{- include "aisp.labels" . | nindent 8 }}
         app.kubernetes.io/component: worker
     spec:
+      serviceAccountName: {{ include "aisp.serviceAccountName" . }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}
       securityContext: {{ toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
         - name: worker
@@ -107,5 +126,20 @@ spec:
           command: {{ toYaml .Values.worker.command | nindent 12 }}
           env:
             {{- include "aisp.env" . | nindent 12 }}
+          {{- if .Values.secrets.secretProviderClass.enabled }}
+          volumeMounts:
+            - name: external-secrets
+              mountPath: {{ .Values.secrets.secretProviderClass.mountPath | quote }}
+              readOnly: true
+          {{- end }}
           resources: {{ toYaml .Values.worker.resources | nindent 12 }}
+      {{- if .Values.secrets.secretProviderClass.enabled }}
+      volumes:
+        - name: external-secrets
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: {{ include "aisp.secretProviderClassName" . | quote }}
+      {{- end }}
 {{- end }}

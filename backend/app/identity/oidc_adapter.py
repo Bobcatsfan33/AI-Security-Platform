@@ -15,6 +15,7 @@ from __future__ import annotations
 import secrets
 from typing import Any
 
+import httpx
 from authlib.integrations.httpx_client import AsyncOAuth2Client
 from joserfc import jwt
 from joserfc.errors import JoseError
@@ -23,6 +24,7 @@ from joserfc.jwk import KeySet
 from app.identity.adapter import IdentityAuthError
 from app.identity.secret_resolver import get_resolver
 from app.identity.types import IdentityClaims
+from app.security.outbound_url import OutboundURLPolicyError, pinned_async_transport
 
 
 class OidcAdapter:
@@ -46,9 +48,7 @@ class OidcAdapter:
                 oidc_config.get("scopes") or ["openid", "profile", "email"]
             )
             self.audience: str | None = oidc_config.get("audience")
-            self.claim_mappings: dict[str, str] = dict(
-                oidc_config.get("claim_mappings") or {}
-            )
+            self.claim_mappings: dict[str, str] = dict(oidc_config.get("claim_mappings") or {})
         except KeyError as e:
             raise ValueError(f"Invalid OIDC config: missing {e.args[0]}") from e
 
@@ -82,15 +82,18 @@ class OidcAdapter:
         if not redirect_uri:
             raise IdentityAuthError("missing_redirect_uri_in_callback_params")
 
-        async with self._client(redirect_uri=redirect_uri) as client:
-            try:
+        try:
+            transport = await pinned_async_transport(str(meta["token_endpoint"]))
+            async with self._client(redirect_uri=redirect_uri, transport=transport) as client:
                 token = await client.fetch_token(
                     meta["token_endpoint"],
                     code=callback_params["code"],
                     state=callback_params.get("state"),
                 )
-            except Exception as e:  # noqa: BLE001 - authlib wraps various errors
-                raise IdentityAuthError(f"oidc_token_exchange_failed: {e}") from e
+        except OutboundURLPolicyError as e:
+            raise IdentityAuthError(f"oidc_token_endpoint_blocked: {e}") from e
+        except Exception as e:
+            raise IdentityAuthError(f"oidc_token_exchange_failed: {e}") from e
 
         id_token = token.get("id_token")
         if not id_token:
@@ -110,7 +113,12 @@ class OidcAdapter:
             self._client_secret = get_resolver().resolve(self.client_secret_ref)
         return self._client_secret
 
-    def _client(self, *, redirect_uri: str) -> AsyncOAuth2Client:
+    def _client(
+        self,
+        *,
+        redirect_uri: str,
+        transport: httpx.AsyncBaseTransport | None = None,
+    ) -> AsyncOAuth2Client:
         """Build a new OAuth2 client. Caller must use `async with`."""
         # Secret is awaited lazily inside fetch_token via authlib's auth handler.
         # We instead resolve it synchronously up-front for HS auth — fine because
@@ -121,15 +129,27 @@ class OidcAdapter:
             redirect_uri=redirect_uri,
             scope=" ".join(self.scopes),
             code_challenge_method="S256",
+            transport=transport,
+            timeout=10.0,
+            follow_redirects=False,
+            trust_env=False,
         )
 
     async def _get_discovery(self) -> dict[str, Any]:
         if self._discovery is not None:
             return self._discovery
         url = self.issuer_url.rstrip("/") + "/.well-known/openid-configuration"
-        import httpx
 
-        async with httpx.AsyncClient(timeout=10.0) as http:
+        try:
+            transport = await pinned_async_transport(url)
+        except OutboundURLPolicyError as e:
+            raise IdentityAuthError(f"oidc_discovery_destination_blocked: {e}") from e
+        async with httpx.AsyncClient(
+            transport=transport,
+            timeout=10.0,
+            follow_redirects=False,
+            trust_env=False,
+        ) as http:
             resp = await http.get(url)
             resp.raise_for_status()
             self._discovery = resp.json()
@@ -139,10 +159,19 @@ class OidcAdapter:
         if self._jwks is not None:
             return self._jwks
         meta = await self._get_discovery()
-        import httpx
 
-        async with httpx.AsyncClient(timeout=10.0) as http:
-            resp = await http.get(meta["jwks_uri"])
+        jwks_uri = str(meta["jwks_uri"])
+        try:
+            transport = await pinned_async_transport(jwks_uri)
+        except OutboundURLPolicyError as e:
+            raise IdentityAuthError(f"oidc_jwks_destination_blocked: {e}") from e
+        async with httpx.AsyncClient(
+            transport=transport,
+            timeout=10.0,
+            follow_redirects=False,
+            trust_env=False,
+        ) as http:
+            resp = await http.get(jwks_uri)
             resp.raise_for_status()
             self._jwks = resp.json()
         return self._jwks
