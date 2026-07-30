@@ -186,17 +186,20 @@ with env-var refs:
   audit record, which is half an audit on a security surface. Both want a
   per-type required-config schema and an audit-on-denial pass.
 
-### GAP-006 — Detection efficacy is entirely unmeasured
-**What:** no efficacy suite for the attack graph or anomaly detector, no
-false-positive budget published, and no scoring of the Stage 1+2 pipeline
-against any public prompt-injection corpus. `/v1/benchmark` and `/v1/validation`
-exist but score nothing external.
+### GAP-006 — Detection efficacy lacks production-representative evidence — 🟡 external baseline
+**What:** the Stage 1+2 pipeline now has a reproducible in-repo scorecard and a
+digest-pinned, Apache-2.0 external prompt-injection test split with detection
+and false-positive ratchets. The attack graph and anomaly detector still lack
+an efficacy suite, and the public corpus does not cover multilingual traffic,
+indirect injection, tool-call abuse, or multi-turn attacks.
 **Why it matters:** "behavioural anomaly detection" and "three-stage policy
-pipeline" are the product. Right now their quality is an assertion. A design
-partner's first question is "what is your false-positive rate?" and there is no
-answer in the repo.
-**Unblocks:** license-compatible public corpora (needs review before pinning).
-Phases 1 and 3.
+pipeline" are the product. A synthetic or single-source benchmark is a
+regression floor, not a production efficacy claim. A design partner's first
+question is still how the system performs on traffic shaped like theirs.
+**Remaining:** add independently licensed multilingual and indirect-injection
+sets; measure attack-graph/anomaly precision, recall, and detection latency;
+publish confidence intervals; and replay labeled design-partner traffic under
+an approved privacy protocol. Phases 1 and 3.
 
 ### GAP-002 — Agent latency is a target, not a measurement — 🟡 pipeline latency MEASURED (Phase 2 inc 1)
 **Was:** `runtime-agent/README.md` presented "sub-15ms for `balanced` mode" as a

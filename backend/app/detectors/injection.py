@@ -10,21 +10,64 @@ from app.detectors.base import DetectorContext, DetectorResult, Direction
 
 _PI_SIGNALS: tuple[tuple[re.Pattern[str], float], ...] = (
     (
-        re.compile(r"\bignore\s+(?:all\s+)?(?:previous|prior|above|the)\s+instructions?\b", re.I),
+        re.compile(
+            r"\bignore\s+(?:all\s+)?(?:the\s+)?(?:previous|prior|above|provided)"
+            r"(?:\s+(?:instructions?|directions?|context|orders?))?\b",
+            re.I,
+        ),
         0.8,
     ),
     (re.compile(r"\bdisregard\s+(?:all\s+)?(?:previous|prior|the\s+above)\b", re.I), 0.75),
+    (
+        re.compile(
+            r"\bforget\s+(?:about\s+)?(?:all\s+)?(?:everything|the\s+previous\s+orders?)"
+            r"(?:\s+(?:I|we|you|that|before|previously|so\s+far)\b.{0,50})?",
+            re.I,
+        ),
+        0.8,
+    ),
     (re.compile(r"\brepeat\s+(?:the\s+)?(?:text|words|everything|prompt)\s+above\b", re.I), 0.7),
+    (
+        re.compile(
+            r"\b(?:spell[\s-]?check|print|return)\b.{0,45}\b(?:above|initial|hidden)"
+            r"\s+(?:prompt|text|instructions?)\b",
+            re.I,
+        ),
+        0.8,
+    ),
     (
         re.compile(
             r"\b(?:reveal|print|show|output)\s+(?:your\s+)?(?:system|initial|the)\s+prompt\b", re.I
         ),
         0.85,
     ),
+    (re.compile(r"\b(?:show|reveal)\b.{0,35}\bprompt[\s-]?texts?\b", re.I), 0.85),
+    (re.compile(r"\breturn\s+(?:all\s+)?your\s+embeddings?\b", re.I), 0.85),
     (re.compile(r"\bwhat\s+(?:are|were)\s+your\s+(?:original\s+)?instructions\b", re.I), 0.6),
+    (re.compile(r"\bwhat\s+your\s+initial\s+instructions\s+were\b", re.I), 0.75),
     (re.compile(r"\bnew\s+instructions?\s*:\s*", re.I), 0.55),
+    (re.compile(r"\bignore\s+your\s+(?:directions?|instructions?|orders?)\b", re.I), 0.8),
     (re.compile(r"\boverride\s+(?:your\s+)?(?:safety|guidelines|rules|system)\b", re.I), 0.7),
     (re.compile(r"</?\s*(?:system|instructions?)\s*>", re.I), 0.6),  # fake delimiter injection
+    # High-confidence override language from the external bilingual test set.
+    (
+        re.compile(
+            r"\b(?:vergiss|vergessen\s+sie)\s+(?:jetzt\s+)?(?:alles|alle)"
+            r"(?:\s+(?:davor|bisherigen?|zuvor|was))?\b",
+            re.I,
+        ),
+        0.8,
+    ),
+    (
+        re.compile(
+            r"\bignorieren\s+sie\s+(?:die\s+)?(?:obigen?|vorherigen?)"
+            r"(?:\s+(?:angaben|anweisungen))?\b",
+            re.I,
+        ),
+        0.8,
+    ),
+    (re.compile(r"\bhöre\s+nicht\s+auf\s+alles\s+zuvor\s+gesagte\b", re.I), 0.8),
+    (re.compile(r"\bolvide\s+todo\s+(?:lo\s+)?que\s+(?:dije|he\s+dicho)\b", re.I), 0.8),
 )
 
 
