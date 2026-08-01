@@ -1,28 +1,53 @@
-# HA / DR Runbook & Residency Notes (Phase G — SCAFFOLDING)
+# HA / DR Runbook & Residency Notes (Phase G)
 
-> **Status: SCAFFOLDING, not validated.** This document captures the intended
-> HA/DR architecture and the steps an operator must execute and *verify*. None
-> of the failover/restore procedures below have been exercised in a game-day.
-> Phase G is not complete until each "Verify" step has a recorded, passing run.
+> **Status: the topology is BUILT and partly EXERCISED; the game-day has NOT
+> been run.** P13 turned the table below from an intention into a chart that
+> renders, a checker that refuses it when it is wrong, and — for PostgreSQL,
+> Redis, and the control plane — transcripts from services that actually ran.
+> Phase G is still not complete: the restore, failover-under-load, RPO, and RTO
+> procedures in *Disaster recovery* below remain unexercised. That is P14.
+>
+> **[`HA-TOPOLOGY.md`](HA-TOPOLOGY.md) is the claim-by-claim record** of what
+> has live evidence and what is verified only as a rendered manifest. Read it
+> before citing anything here as done.
 
-## High availability (target topology)
+## High availability (topology)
+
+Defined in [`deploy/helm/aisp-data-tier`](../deploy/helm/aisp-data-tier) (data
+tier) and [`deploy/helm/ai-security-platform`](../deploy/helm/ai-security-platform)
+(control plane). `helm template` **fails** rather than rendering anything below
+these floors, and `scripts/verify_topology.py` re-checks the rendered output.
 
 | Tier | HA approach | Status |
 | --- | --- | --- |
-| PostgreSQL 16 + pgvector | Primary + ≥1 streaming replica; automated failover (Patroni / cloud-managed) | ☐ not configured |
-| Redis 7 | Sentinel or managed cluster; AOF persistence | ☐ not configured |
-| ClickHouse | ReplicatedMergeTree, ≥2 replicas per shard | ☐ not configured |
-| Redpanda | RF ≥ 3, `min.insync.replicas=2` | ☐ not configured |
-| Control plane (FastAPI) | ≥2 stateless replicas behind a load balancer (already stateless) | ☐ replicas not set |
-| EPA consumer fleet | Partitioned by `agent_instance_id`; rebalances on member loss (Sprint 6) | ☐ not deployed as a service |
+| PostgreSQL 16 + pgvector | Primary + streaming standby, replication slot, synchronous commit, WAL archive + scheduled base backup | ☑ defined & render-enforced; **replication, archiving and read-only standby exercised live** |
+| Redis 7 | AOF persistence; 3 Sentinels, quorum 2 | ☑ defined & render-enforced; **failover and demotion exercised live** |
+| ClickHouse | ReplicatedMergeTree ≥2 replicas, 3 Keeper nodes, scheduled `BACKUP` | ☑ defined & render-enforced; ☐ **not exercised** (no image/cluster available) |
+| Redpanda | RF ≥ 3, `min.insync.replicas=2` | ☑ defined & render-enforced; ☐ **not exercised** (no image/cluster available) |
+| Control plane (FastAPI) | ≥2 replicas (HPA floor 2), PDB, probes | ☑ defined; **rolling restart dropped 0 requests** |
+| EPA consumer fleet | ≥2 replicas, PDB, heartbeat liveness probe | ☑ defined (probe added in P13 — it had none) |
 
-Helm values to add (then verify a rolling restart keeps detection live):
-- `replicaCount: 2+` for the control plane and EPA consumer deployments
-- PodDisruptionBudget, readiness/liveness probes (ServiceMonitor already shipped)
-- Anti-affinity so replicas span nodes/zones
+Every workload carries a PodDisruptionBudget, liveness and readiness probes, and
+pod anti-affinity. The stateful tier uses **required** anti-affinity: a standby
+co-scheduled with its primary cannot survive the node it exists to survive, so
+it stays `Pending` — a visible failure instead of silent loss of redundancy.
+
+Images are digest-only. There is no tag fallback in the data-tier chart, so it
+cannot emit a mutable reference even if values are edited later.
 
 ## Migration discipline (A5 — DONE)
 
+- **Apply + rollback are now REHEARSED against a real database.**
+  `scripts/migration_rehearsal.sh` seeds data, walks the chain to base and back
+  to head, and compares a schema fingerprint on both sides (318 columns,
+  byte-identical). Transcript:
+  [`evidence/p13/migration-rehearsal.txt`](evidence/p13/migration-rehearsal.txt).
+  This found a real defect the unit tests could not: `0003_asset_graph_v2`'s
+  upgrade drops the v1 governance tables as a documented one-way pivot, so the
+  unconditional `op.drop_table` calls in `0001` and `0002` hit tables that were
+  already gone and raised `UndefinedTableError`. The chain could not reach base
+  on any real database. Fixed by scoping `IF EXISTS` to exactly the pivot's
+  table list.
 - **Apply + rollback are CI-verified.** `tests/unit/test_migrations.py` enforces
   a single linear revision chain (one base, one head, no dangling
   down_revisions), a real downgrade on every migration (forward+rollback

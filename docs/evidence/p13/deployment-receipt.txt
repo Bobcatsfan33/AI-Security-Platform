@@ -1,0 +1,65 @@
+==============================================================
+ DEPLOYMENT RECEIPT — one regional cell
+==============================================================
+generated : 2026-08-01T01:32:39Z
+commit    : 57abcf256157ccbd104f97a0c62107a455ee99b8
+branch    : codex/enterprise-readiness-p13-ha-topology
+region    : us-east-1
+helm      : v4.2.0+g0646808
+
+charts
+  data tier     : aisp-data-tier 0.1.0
+  control plane : ai-security-platform 0.2.0
+
+image digests (every workload; no tags anywhere)
+
+  PROVENANCE is checked, not assumed. 'verified-present' means the exact
+  digest resolves to an image on this machine, so the render names bytes
+  that demonstrably exist. 'not-resolvable-here' means it does not, and
+  THIS RECEIPT DOES NOT ATTEST TO THOSE BYTES — it attests only that the
+  manifests rendered and passed the checks below with that digest in
+  place. A receipt that quietly blurred the two would be the exact thing
+  digest pinning exists to prevent.
+
+  [not-resolvable-here]  clickhouse/clickhouse-keeper@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  [not-resolvable-here]  clickhouse/clickhouse-server@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  [not-resolvable-here]  ghcr.io/bobcatsfan33/ai-security-platform@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  [not-resolvable-here]  ghcr.io/bobcatsfan33/asp-frontend@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  [verified-present]     pgvector/pgvector@sha256:1d533553fefe4f12e5d80c7b80622ba0c382abb5758856f52983d8789179f0fb
+  [verified-present]     redis@sha256:6ab0b6e7381779332f97b8ca76193e45b0756f38d4c0dcda72dbb3c32061ab99
+  [not-resolvable-here]  redpandadata/redpanda@sha256:0000000000000000000000000000000000000000000000000000000000000000
+
+rendered objects
+  rendered-data-tier.yaml:
+       1 kind: ConfigMap
+       2 kind: CronJob
+       6 kind: PodDisruptionBudget
+       7 kind: Service
+       6 kind: StatefulSet
+  rendered-control-plane.yaml:
+       1 kind: ConfigMap
+       3 kind: Deployment
+       2 kind: HorizontalPodAutoscaler
+       1 kind: NetworkPolicy
+       3 kind: PodDisruptionBudget
+       2 kind: Service
+       1 kind: ServiceAccount
+
+==============================================================
+ VERIFICATION
+==============================================================
+-- data tier --
+ok    images are digest-pinned
+ok    no plaintext secrets
+ok    data-tier topology floors
+
+topology verification passed
+
+-- control plane --
+ok    images are digest-pinned
+ok    no plaintext secrets
+ok    control-plane topology floors
+
+topology verification passed
+
+RESULT: PASS

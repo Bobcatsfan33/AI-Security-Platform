@@ -114,6 +114,89 @@ jobs:
             echo "::error::Secrets Store CSI accepted a missing provider and synchronization contract"
             exit 1
           fi
+      # ── P13: the data tier (HA topology) ────────────────────────────────
+      # A values FILE, not a shell variable of --set flags. An unquoted
+      # "$COMMON" only works because of word splitting; the moment it is
+      # quoted (or the shell changes) helm sees one giant argument and dies
+      # with "unknown flag". That error looks exactly like a guard firing, so
+      # the negative tests below would report success while testing nothing.
+      - name: Lint and render data tier
+        run: |
+          set -euo pipefail
+          D=sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+          cat > /tmp/data-tier-values.yaml <<EOF
+          deploymentRegion: us-east-1
+          postgres:
+            image: { digest: "${D}" }
+            pitr: { archiveDestination: "s3://ci-wal/cell" }
+          redis:
+            image: { digest: "${D}" }
+          clickhouse:
+            image: { digest: "${D}" }
+            keeper: { image: { digest: "${D}" } }
+            backup: { destination: "s3://ci-ch/backup" }
+          redpanda:
+            image: { digest: "${D}" }
+          EOF
+          helm lint deploy/helm/aisp-data-tier -f /tmp/data-tier-values.yaml
+          helm template ci deploy/helm/aisp-data-tier -f /tmp/data-tier-values.yaml > /tmp/data-tier.yaml
+          # The topology the HA-DR runbook claims, asserted against what renders.
+          grep -q 'aisp.io/topic-replication-factor: "3"' /tmp/data-tier.yaml
+          grep -q 'aisp.io/min-insync-replicas: "2"' /tmp/data-tier.yaml
+          grep -q "archive_mode=on" /tmp/data-tier.yaml
+          grep -q "requiredDuringSchedulingIgnoredDuringExecution" /tmp/data-tier.yaml
+          test "$(grep -c 'kind: StatefulSet' /tmp/data-tier.yaml)" -eq 6
+          test "$(grep -c 'kind: PodDisruptionBudget' /tmp/data-tier.yaml)" -eq 6
+
+      - name: Data tier refuses mutable tags and sub-HA topologies
+        run: |
+          set -uo pipefail
+          # Each of these MUST fail to render. A guard that has quietly stopped
+          # guarding looks exactly like a guard that was never needed — so the
+          # helper also rejects an ARGUMENT error, which would otherwise let a
+          # typo masquerade as a passing negative test.
+          #
+          # The assignment lives in the `if` CONDITION on purpose. Actions runs
+          # steps as `bash -e`, and a bare `out=$(failing-command)` aborts the
+          # whole step under errexit — before `rc=$?` is ever read — so every
+          # negative test died on the first one. Inside an `if`, errexit is
+          # suspended and the non-zero exit is the thing being measured.
+          refuse() {
+            local why="$1"; shift
+            local out
+            if out=$(helm template ci deploy/helm/aisp-data-tier -f /tmp/data-tier-values.yaml "$@" 2>&1); then
+              echo "::error::data tier rendered despite: ${why}"
+              exit 1
+            fi
+            case "$out" in
+              *"unknown flag"*|*"unknown shorthand"*)
+                echo "::error::negative test for '${why}' failed on argument parsing, not the guard: ${out}"
+                exit 1 ;;
+            esac
+            echo "refused: ${why}"
+          }
+          refuse "a mutable tag in the digest field" --set redpanda.image.digest=v24.2.7
+          refuse "an empty digest"                   --set postgres.image.digest=
+          refuse "a truncated digest"                --set redis.image.digest=sha256:abc123
+          refuse "region=local"                      --set deploymentRegion=local
+          refuse "replication factor 1"              --set redpanda.topicReplicationFactor=1
+          refuse "RF above the broker count"         --set redpanda.replicaCount=2
+          refuse "min in-sync replicas 1"            --set redpanda.minInSyncReplicas=1
+          refuse "only 2 sentinels"                  --set redis.sentinel.replicaCount=2
+          refuse "an unreplicated ClickHouse"        --set clickhouse.replicaCount=1
+          refuse "only 2 keepers"                    --set clickhouse.keeper.replicaCount=2
+          refuse "a backup with no destination"      --set clickhouse.backup.destination=
+          refuse "a primary with no standby"         --set postgres.replicaCount=0
+          refuse "PITR with no archive destination"  --set postgres.pitr.archiveDestination=
+          refuse "AOF persistence disabled"          --set redis.persistence.appendonly=false
+
+      - name: Verify rendered topology (digests, secrets, HA floors)
+        run: |
+          set -euo pipefail
+          python3 -m pip install --quiet pyyaml
+          python3 scripts/verify_topology.py /tmp/data-tier.yaml --profile data-tier
+          python3 scripts/verify_topology.py /tmp/control-plane.yaml --profile control-plane
+
       - name: Lint and render runtime agent
         env:
           CI_IMAGE_DIGEST: sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb

@@ -1,0 +1,19 @@
+apiVersion: v2
+name: aisp-data-tier
+description: |
+  The stateful tier of one AI Security Platform regional cell: PostgreSQL
+  primary + streaming replica with WAL archiving for PITR, Redis with AOF
+  persistence and Sentinel failover, a replicated ClickHouse topology with a
+  backup destination, and a Redpanda cluster at RF >= 3 with min in-sync
+  replicas >= 2.
+
+  This chart exists so the HA/DR runbook stops being prose. Every claim the
+  runbook makes about the data tier is rendered here as a manifest a machine
+  can check, and scripts/verify_topology.py checks it.
+
+  NOT a production installer. Production runs managed data services; this is
+  the production-SHAPED staging cell that the P14 game-day needs as a venue.
+  It is deliberately unable to render without explicit image digests.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

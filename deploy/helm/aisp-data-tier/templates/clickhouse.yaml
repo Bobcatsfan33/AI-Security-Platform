@@ -1,0 +1,262 @@
+{{- $fullname := include "aisp-dt.fullname" . -}}
+{{- $name := printf "%s-clickhouse" $fullname -}}
+{{- $keeper := printf "%s-keeper" $name -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $keeper }}
+  labels:
+    {{- include "aisp-dt.labels" . | nindent 4 }}
+    app.kubernetes.io/component: clickhouse-keeper
+spec:
+  clusterIP: None
+  selector:
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: clickhouse-keeper
+  ports:
+    - name: keeper
+      port: {{ .Values.clickhouse.keeper.port }}
+      targetPort: keeper
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ $keeper }}
+  labels:
+    {{- include "aisp-dt.labels" . | nindent 4 }}
+    app.kubernetes.io/component: clickhouse-keeper
+spec:
+  # Same reasoning as the Sentinel PDB: a drain must not take coordination
+  # below quorum, or the replicated tables lose their ability to agree.
+  minAvailable: {{ div (int .Values.clickhouse.keeper.replicaCount) 2 | add1 }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: clickhouse-keeper
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $keeper }}
+  labels:
+    {{- include "aisp-dt.labels" . | nindent 4 }}
+    app.kubernetes.io/component: clickhouse-keeper
+spec:
+  serviceName: {{ $keeper }}
+  replicas: {{ .Values.clickhouse.keeper.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: clickhouse-keeper
+  template:
+    metadata:
+      labels:
+        {{- include "aisp-dt.labels" . | nindent 8 }}
+        app.kubernetes.io/component: clickhouse-keeper
+    spec:
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      affinity:
+        {{- include "aisp-dt.antiAffinity" (dict "instance" .Release.Name "component" "clickhouse-keeper") | nindent 8 }}
+      containers:
+        - name: keeper
+          image: {{ include "aisp-dt.image" .Values.clickhouse.keeper.image }}
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          ports:
+            - name: keeper
+              containerPort: {{ .Values.clickhouse.keeper.port }}
+          readinessProbe:
+            exec:
+              command: ["sh", "-c", "echo ruok | nc 127.0.0.1 {{ .Values.clickhouse.keeper.port }} | grep -q imok"]
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            tcpSocket:
+              port: keeper
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 6
+          resources:
+            requests: { cpu: "100m", memory: "256Mi" }
+            limits: { cpu: "1", memory: "1Gi" }
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/clickhouse-keeper
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels:
+          {{- include "aisp-dt.labels" . | nindent 10 }}
+          app.kubernetes.io/component: clickhouse-keeper
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        {{- include "aisp-dt.storageClass" . | nindent 8 }}
+        resources:
+          requests:
+            storage: {{ .Values.clickhouse.keeper.storage }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "aisp-dt.labels" . | nindent 4 }}
+    app.kubernetes.io/component: clickhouse
+spec:
+  clusterIP: None
+  selector:
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: clickhouse
+  ports:
+    - name: http
+      port: {{ .Values.clickhouse.port }}
+      targetPort: http
+    - name: native
+      port: {{ .Values.clickhouse.nativePort }}
+      targetPort: native
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "aisp-dt.labels" . | nindent 4 }}
+    app.kubernetes.io/component: clickhouse
+spec:
+  minAvailable: {{ .Values.clickhouse.pdb.minAvailable }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: clickhouse
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "aisp-dt.labels" . | nindent 4 }}
+    app.kubernetes.io/component: clickhouse
+spec:
+  serviceName: {{ $name }}
+  replicas: {{ .Values.clickhouse.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: clickhouse
+  template:
+    metadata:
+      labels:
+        {{- include "aisp-dt.labels" . | nindent 8 }}
+        app.kubernetes.io/component: clickhouse
+    spec:
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      affinity:
+        {{- include "aisp-dt.antiAffinity" (dict "instance" .Release.Name "component" "clickhouse") | nindent 8 }}
+      containers:
+        - name: clickhouse
+          image: {{ include "aisp-dt.image" .Values.clickhouse.image }}
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.clickhouse.port }}
+            - name: native
+              containerPort: {{ .Values.clickhouse.nativePort }}
+          env:
+            - name: CLICKHOUSE_KEEPER_HOSTS
+              value: {{ $keeper }}
+            # Distinct per pod: ReplicatedMergeTree identifies replicas by name,
+            # and two replicas claiming one name corrupt the replication log.
+            - name: REPLICA_NAME
+              valueFrom: { fieldRef: { fieldPath: metadata.name } }
+            - name: CLICKHOUSE_USER
+              valueFrom: { secretKeyRef: { name: {{ $name }}-credentials, key: username } }
+            - name: CLICKHOUSE_PASSWORD
+              valueFrom: { secretKeyRef: { name: {{ $name }}-credentials, key: password } }
+          readinessProbe:
+            httpGet:
+              path: /ping
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            tcpSocket:
+              port: native
+            initialDelaySeconds: 45
+            periodSeconds: 15
+            failureThreshold: 6
+          startupProbe:
+            httpGet:
+              path: /ping
+              port: http
+            periodSeconds: 10
+            failureThreshold: 60 # replica catch-up after a restart is not a fault
+          resources:
+            {{- toYaml .Values.clickhouse.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/clickhouse
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels:
+          {{- include "aisp-dt.labels" . | nindent 10 }}
+          app.kubernetes.io/component: clickhouse
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        {{- include "aisp-dt.storageClass" . | nindent 8 }}
+        resources:
+          requests:
+            storage: {{ .Values.clickhouse.storage }}
+{{- if .Values.clickhouse.backup.enabled }}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ $name }}-backup
+  labels:
+    {{- include "aisp-dt.labels" . | nindent 4 }}
+    app.kubernetes.io/component: clickhouse
+    aisp.io/role: backup
+spec:
+  schedule: {{ .Values.clickhouse.backup.schedule | quote }}
+  concurrencyPolicy: Forbid
+  failedJobsHistoryLimit: 7
+  successfulJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            {{- include "aisp-dt.labels" . | nindent 12 }}
+            app.kubernetes.io/component: clickhouse
+            aisp.io/role: backup
+        spec:
+          restartPolicy: OnFailure
+          securityContext:
+            {{- toYaml .Values.podSecurityContext | nindent 12 }}
+          containers:
+            - name: backup
+              image: {{ include "aisp-dt.image" .Values.clickhouse.image }}
+              securityContext:
+                {{- toYaml .Values.containerSecurityContext | nindent 16 }}
+              command: ["/usr/local/bin/clickhouse-backup.sh"]
+              env:
+                - name: BACKUP_DESTINATION
+                  value: {{ .Values.clickhouse.backup.destination | quote }}
+                - name: RETENTION_DAYS
+                  value: {{ .Values.clickhouse.backup.retentionDays | quote }}
+                - name: CLICKHOUSE_HOST
+                  value: {{ $name }}
+                - name: CLICKHOUSE_USER
+                  valueFrom: { secretKeyRef: { name: {{ $name }}-credentials, key: username } }
+                - name: CLICKHOUSE_PASSWORD
+                  valueFrom: { secretKeyRef: { name: {{ $name }}-credentials, key: password } }
+              resources:
+                requests: { cpu: "100m", memory: "256Mi" }
+                limits: { cpu: "1", memory: "1Gi" }
+{{- end }}

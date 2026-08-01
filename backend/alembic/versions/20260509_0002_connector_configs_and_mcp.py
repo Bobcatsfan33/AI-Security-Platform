@@ -128,7 +128,24 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_table("mcp_violations")
-    op.drop_table("mcp_calls")
-    op.drop_table("mcp_tool_profiles")
-    op.drop_table("connector_configs")
+    # IF EXISTS, not op.drop_table, for every table here.
+    #
+    # 0003_asset_graph_v2 is a one-way pivot: its UPGRADE drops all four of
+    # these ("DROP TABLE IF EXISTS ... CASCADE") and its downgrade does not
+    # bring them back, by design — the v1 data is not recoverable from the v2
+    # schema. So by the time this downgrade runs, in the only order it can run
+    # in, the tables it was written to drop are already gone and an
+    # unconditional drop_table raises UndefinedTableError.
+    #
+    # That made the revision chain unwalkable to base against a real database
+    # while every migration test still passed: the tests check that each
+    # migration HAS a downgrade and that its offline SQL is symmetric, neither
+    # of which executes the chain against data. Found by
+    # scripts/migration_rehearsal.sh, which does.
+    #
+    # Deliberately NOT applied to every drop in this repository's migrations —
+    # only to objects a later migration is known to remove. A blanket IF EXISTS
+    # would turn "this migration is out of sync with the schema" from a loud
+    # failure into a silent no-op.
+    for table_name in ("mcp_violations", "mcp_calls", "mcp_tool_profiles", "connector_configs"):
+        op.execute(f"DROP TABLE IF EXISTS {table_name} CASCADE")

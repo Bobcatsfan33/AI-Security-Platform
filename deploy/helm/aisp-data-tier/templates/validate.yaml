@@ -1,0 +1,83 @@
+{{/*
+Render-time admission. Every check here fails the TEMPLATE, not the deploy.
+
+The distinction matters: a manifest that reaches the cluster and is then
+rejected has already been reviewed, approved, and shipped by everyone in the
+chain. Failing at `helm template` puts the error in front of the person making
+the change, while it is still theirs to fix.
+
+Digest enforcement is unconditional here, unlike the control-plane chart which
+gates it on environment=production. A staging cell whose data tier floats on
+mutable tags cannot serve as game-day evidence: the thing you tested is not the
+thing you will restore, and "we ran the drill" would be a claim about an image
+that no longer exists.
+*/}}
+
+{{- define "aisp-dt.requireDigest" -}}
+{{- $image := index . 0 -}}
+{{- $field := index . 1 -}}
+{{- if not (regexMatch "^sha256:[a-f0-9]{64}$" (default "" $image.digest)) -}}
+{{- fail (printf "%s must be an exact sha256 digest (got %q). Mutable tags are refused: this chart's output is evidence, and evidence must name an artifact that cannot change underneath it." $field (default "" $image.digest)) -}}
+{{- end -}}
+{{- end -}}
+
+{{- include "aisp-dt.requireDigest" (list .Values.postgres.image "postgres.image.digest") }}
+{{- include "aisp-dt.requireDigest" (list .Values.redis.image "redis.image.digest") }}
+{{- include "aisp-dt.requireDigest" (list .Values.clickhouse.image "clickhouse.image.digest") }}
+{{- include "aisp-dt.requireDigest" (list .Values.clickhouse.keeper.image "clickhouse.keeper.image.digest") }}
+{{- include "aisp-dt.requireDigest" (list .Values.redpanda.image "redpanda.image.digest") }}
+
+{{/* One cell, one approved region. */}}
+{{- if or (eq .Values.deploymentRegion "") (eq .Values.deploymentRegion "local") (eq .Values.deploymentRegion "unassigned") (not (regexMatch "^[a-z][a-z0-9-]{1,31}$" .Values.deploymentRegion)) }}
+  {{- fail "deploymentRegion must be an explicit approved region identifier (not \"\", \"local\", or \"unassigned\")" }}
+{{- end }}
+
+{{/* ── HA floors. Each of these is a number the runbook already claims. ── */}}
+
+{{- if lt (int .Values.postgres.replicaCount) 1 }}
+  {{- fail "postgres.replicaCount must be >= 1: a primary with no standby has no failover target, and PITR alone is a restore, not high availability" }}
+{{- end }}
+{{- if and .Values.postgres.pitr.enabled (not .Values.postgres.pitr.archiveDestination) }}
+  {{- fail "postgres.pitr.enabled requires postgres.pitr.archiveDestination — 'restore base + replay WAL' needs somewhere the WAL actually went" }}
+{{- end }}
+
+{{- if lt (int .Values.redis.replicaCount) 1 }}
+  {{- fail "redis.replicaCount must be >= 1: Sentinel can only promote a replica that exists" }}
+{{- end }}
+{{- if .Values.redis.sentinel.enabled }}
+  {{- if lt (int .Values.redis.sentinel.replicaCount) 3 }}
+    {{- fail "redis.sentinel.replicaCount must be >= 3: with 2 sentinels, losing 1 leaves no quorum and the failover can never fire" }}
+  {{- end }}
+  {{- if gt (int .Values.redis.sentinel.quorum) (div (int .Values.redis.sentinel.replicaCount) 2 | add1) }}
+    {{- fail "redis.sentinel.quorum exceeds a majority of sentinels — the quorum could never be reached" }}
+  {{- end }}
+{{- end }}
+{{- if not .Values.redis.persistence.appendonly }}
+  {{- fail "redis.persistence.appendonly must be true: an RDB-only Redis loses the window between snapshots, and that window holds live detection state" }}
+{{- end }}
+
+{{- if lt (int .Values.clickhouse.replicaCount) 2 }}
+  {{- fail "clickhouse.replicaCount must be >= 2: ReplicatedMergeTree with one replica is a spelling of unreplicated" }}
+{{- end }}
+{{- if lt (int .Values.clickhouse.keeper.replicaCount) 3 }}
+  {{- fail "clickhouse.keeper.replicaCount must be >= 3 for a quorum that survives one loss" }}
+{{- end }}
+{{- if and .Values.clickhouse.backup.enabled (not .Values.clickhouse.backup.destination) }}
+  {{- fail "clickhouse.backup.enabled requires clickhouse.backup.destination — a backup with nowhere to go is not a backup" }}
+{{- end }}
+
+{{- if lt (int .Values.redpanda.replicaCount) 3 }}
+  {{- fail "redpanda.replicaCount must be >= 3 to host RF=3" }}
+{{- end }}
+{{- if lt (int .Values.redpanda.topicReplicationFactor) 3 }}
+  {{- fail "redpanda.topicReplicationFactor must be >= 3 (HA-DR-RUNBOOK target)" }}
+{{- end }}
+{{- if gt (int .Values.redpanda.topicReplicationFactor) (int .Values.redpanda.replicaCount) }}
+  {{- fail "redpanda.topicReplicationFactor exceeds redpanda.replicaCount — a topic cannot have more replicas than there are brokers" }}
+{{- end }}
+{{- if lt (int .Values.redpanda.minInSyncReplicas) 2 }}
+  {{- fail "redpanda.minInSyncReplicas must be >= 2: at 1 the cluster acknowledges writes it can still lose" }}
+{{- end }}
+{{- if ge (int .Values.redpanda.minInSyncReplicas) (add (int .Values.redpanda.topicReplicationFactor) 1) }}
+  {{- fail "redpanda.minInSyncReplicas cannot exceed the replication factor — every produce would block forever" }}
+{{- end }}

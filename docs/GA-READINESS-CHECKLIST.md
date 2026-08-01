@@ -11,6 +11,29 @@
 > game-day). Those cannot be completed autonomously and are NOT done — this
 > file tracks them.
 
+## HA topology (P13) — the venue for the game-day
+- ☑ Define the regional cell as a chart that **renders or fails**: PostgreSQL
+  primary + standby with PITR, Redis with AOF + 3 Sentinels, replicated
+  ClickHouse + Keeper with a backup destination, Redpanda RF 3 / min-ISR 2, ≥2
+  control-plane replicas, an EPA consumer fleet, PDBs, required anti-affinity,
+  and probes. Digest-only images: mutable tags fail rendering, with no tag
+  fallback to leak through. Thirteen negative renders are asserted in CI.
+- ☑ Verify the **rendered** manifests (`scripts/verify_topology.py`): digest
+  pinning, no plaintext secrets, replica floors, PDBs, anti-affinity strength,
+  probes, durability annotations. Unit-tested against fixtures violating each
+  rule so the checker cannot quietly stop checking.
+- ☑ Exercise, with retained transcripts under `docs/evidence/p13/`: PostgreSQL
+  streaming replication + WAL archiving + read-only standby; Redis Sentinel
+  failover and demotion of the old primary; migration downgrade-to-base and
+  re-upgrade (schema byte-identical); regional refusal of a foreign tenant
+  (421); a rolling API replacement dropping zero requests.
+- ☐ **Not exercised — needs a real cluster:** ClickHouse replication, Redpanda
+  replication-factor enforcement, scheduler-honoured anti-affinity. No cluster
+  was reachable and image pulls were unavailable in this environment; see
+  [HA-TOPOLOGY.md](HA-TOPOLOGY.md) for the claim-by-claim split.
+- ☐ Stand the cell up on a real staging cluster. **This is a prerequisite for
+  the game-day below, not an optional extra.**
+
 ## Third-party penetration test
 - ☐ Engage a third-party pen-test firm. **Book by the start of efficacy
   validation, not at the end** — findings reset the timeline.

@@ -1,0 +1,78 @@
+==============================================================
+ DATA-TIER REPLICATION & FAILOVER REHEARSAL
+==============================================================
+repository : 57abcf256157ccbd104f97a0c62107a455ee99b8
+branch     : codex/enterprise-readiness-p13-ha-topology
+started    : 2026-08-01T01:26:40Z
+scope      : PostgreSQL + Redis. ClickHouse and Redpanda are NOT
+             exercised here — see docs/HA-TOPOLOGY.md.
+
+images under test (digest-pinned):
+  image: pgvector/pgvector@sha256:1d533553fefe4f12e5d80c7b80622ba0c382abb5758856f52983d8789179f0fb
+  image: redis@sha256:6ab0b6e7381779332f97b8ca76193e45b0756f38d4c0dcda72dbb3c32061ab99
+
+   ... recreating the cell from scratch
+   all services healthy
+
+==============================================================
+ 1. PostgreSQL — streaming replication is live
+==============================================================
+   pg_stat_replication.state      = streaming
+   pg_stat_replication.sync_state = async
+   replication slot active        = t
+   ok:   the standby is streaming
+   ok:   replication slot is held
+
+==============================================================
+ 2. PostgreSQL — the standby is a REPLICA, not a second primary
+==============================================================
+   pg_is_in_recovery() on standby = t
+   ok:   standby is in recovery (following the primary)
+   ok:   standby refuses writes
+
+==============================================================
+ 3. PostgreSQL — a committed row actually arrives
+==============================================================
+   wrote mark 'rehearsal-1785547612' to the primary
+   ok:   the row is readable on the standby
+   write_lag (seconds)            = 0
+
+==============================================================
+ 4. PostgreSQL — WAL is archived (the PITR precondition)
+==============================================================
+   pg_stat_archiver.archived_count = 5
+   pg_stat_archiver.failed_count   = 0
+   files in the archive            = 5
+   ok:   WAL segments are reaching the archive
+   ok:   no archive failures
+
+==============================================================
+ 5. Redis — persistence and replication
+==============================================================
+   primary appendonly              = yes
+   replica master_link_status      = up
+   ok:   AOF persistence is on
+   ok:   replica link is up
+   ok:   the key replicated to the replica
+
+==============================================================
+ 6. Redis — Sentinel quorum, then a REAL failover
+==============================================================
+   ckquorum                        = OK 3 usable Sentinels. Quorum and failover authorization can be reached
+   sentinels known to sentinel-1   = 3
+   ok:   quorum can be reached
+   ok:   all 3 sentinels see each other
+   master before failover          = 172.21.0.2
+   ... stopping the primary to force an election
+   master after failover           = 172.21.0.7
+   ok:   Sentinel promoted a replica — the failover is real, not configured-only
+   surviving node role             = master
+   ok:   the promoted node is now a master and accepts writes
+   ... restoring the stopped primary
+   restarted node rejoined as      = slave (after 10s)
+   ok:   the old primary was demoted to a replica (no split brain)
+
+==============================================================
+ RESULT: PASS — every rehearsed claim held
+ finished: 2026-08-01T01:27:20Z
+==============================================================
