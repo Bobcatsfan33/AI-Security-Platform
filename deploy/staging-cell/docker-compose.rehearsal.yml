@@ -1,0 +1,207 @@
+# A runnable slice of the staging cell, for rehearsing the data-tier HA claims
+# on a single machine.
+#
+# This is NOT the topology. deploy/helm/aisp-data-tier is the topology; this
+# exists because a Helm chart cannot demonstrate that replication actually
+# streams or that a failover actually elects. It runs the two services whose
+# HA mechanisms can be exercised without a Kubernetes scheduler:
+#
+#   PostgreSQL  primary + streaming standby, WAL archived for PITR
+#   Redis       primary + replica + 3 Sentinels (real quorum, real election)
+#
+# ClickHouse and Redpanda are absent here ON PURPOSE and their claims are NOT
+# rehearsed by this file. They are verified only as rendered manifests. See
+# docs/HA-TOPOLOGY.md for exactly which claims have live evidence behind them
+# and which do not — the distinction is the point, and collapsing it would make
+# this file a way to overstate what was tested.
+#
+# Images are digest-pinned for the same reason the chart refuses tags: a
+# rehearsal that cannot say which bytes it ran is not evidence.
+
+name: aisp-staging-cell-rehearsal
+
+x-postgres-image: &postgres-image
+  image: pgvector/pgvector@sha256:1d533553fefe4f12e5d80c7b80622ba0c382abb5758856f52983d8789179f0fb
+
+x-redis-image: &redis-image
+  image: redis@sha256:6ab0b6e7381779332f97b8ca76193e45b0756f38d4c0dcda72dbb3c32061ab99
+
+services:
+  # Named volumes are created root-owned; postgres runs as uid 999 and the
+  # archive_command must be able to write. One root init step, then out of the
+  # way — the alternative is running the database as root.
+  archive-init:
+    <<: *postgres-image
+    user: root
+    entrypoint: ["bash", "-c", "mkdir -p /wal-archive && chown -R postgres:postgres /wal-archive"]
+    volumes:
+      - wal-archive:/wal-archive
+
+  # ── PostgreSQL primary ────────────────────────────────────────────────────
+  pg-primary:
+    <<: *postgres-image
+    depends_on:
+      archive-init:
+        condition: service_completed_successfully
+    environment:
+      POSTGRES_USER: platform
+      POSTGRES_PASSWORD: rehearsal-not-a-production-credential
+      POSTGRES_DB: platform
+      # Replication needs its own role; reusing the superuser would put a
+      # credential that can DROP DATABASE into every standby's config.
+      REPL_USER: replicator
+      REPL_PASSWORD: rehearsal-replication-credential
+    command:
+      - postgres
+      - -c
+      - wal_level=replica
+      - -c
+      - max_wal_senders=10
+      - -c
+      - max_replication_slots=10
+      - -c
+      - hot_standby=on
+      # Archive into a volume the base-backup job can also see. In the cell
+      # this is object storage; the mechanism under test is the same one.
+      - -c
+      - archive_mode=on
+      - -c
+      - archive_command=test ! -f /wal-archive/%f && cp %p /wal-archive/%f
+      - -c
+      - archive_timeout=30
+    volumes:
+      - pg-primary-data:/var/lib/postgresql/data
+      - wal-archive:/wal-archive
+      - ./init-primary.sh:/docker-entrypoint-initdb.d/10-replication.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U platform -d platform"]
+      interval: 3s
+      timeout: 5s
+      retries: 20
+    ports:
+      - "55432:5432"
+
+  # ── PostgreSQL streaming standby ──────────────────────────────────────────
+  pg-standby:
+    <<: *postgres-image
+    depends_on:
+      pg-primary:
+        condition: service_healthy
+    environment:
+      PGPASSWORD: rehearsal-replication-credential
+    # pg_basebackup clones the primary, then -R writes the standby signal and
+    # primary_conninfo so the server comes up following rather than as its own
+    # independent primary. Getting that wrong is a split brain that looks
+    # healthy from both sides.
+    entrypoint:
+      - bash
+      - -c
+      - |
+        set -e
+        if [ ! -s /var/lib/postgresql/data/PG_VERSION ]; then
+          rm -rf /var/lib/postgresql/data/*
+          until pg_basebackup -h pg-primary -U replicator -D /var/lib/postgresql/data -Fp -Xs -P -R -S standby1 -C; do
+            echo "waiting for the primary to accept a base backup..."
+            sleep 2
+          done
+        fi
+        chmod 0700 /var/lib/postgresql/data
+        exec postgres -c hot_standby=on
+    user: postgres
+    volumes:
+      - pg-standby-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U platform -d platform"]
+      interval: 3s
+      timeout: 5s
+      retries: 30
+    ports:
+      - "55433:5432"
+
+  # ── Redis primary ─────────────────────────────────────────────────────────
+  redis-primary:
+    <<: *redis-image
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --appendfsync
+      - everysec
+      - --dir
+      - /data
+    volumes:
+      - redis-primary-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    ports:
+      - "56379:6379"
+
+  redis-replica:
+    <<: *redis-image
+    depends_on:
+      redis-primary:
+        condition: service_healthy
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --replicaof
+      - redis-primary
+      - "6379"
+      - --dir
+      - /data
+    volumes:
+      - redis-replica-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    ports:
+      - "56380:6379"
+
+  # ── Sentinels ─────────────────────────────────────────────────────────────
+  # Three, so a quorum of 2 survives losing one. Two sentinels can never form a
+  # quorum after a failure, which is a failover that cannot fire — the exact
+  # floor deploy/helm/aisp-data-tier/templates/validate.yaml refuses to go below.
+  sentinel-1: &sentinel
+    <<: *redis-image
+    depends_on:
+      redis-primary:
+        condition: service_healthy
+    # sh, not bash: the redis alpine image has no bash. Caught by the
+    # rehearsal failing to start, which is the cheap way to find it.
+    entrypoint:
+      - sh
+      - -c
+      - |
+        cat > /tmp/sentinel.conf <<CONF
+        port 26379
+        sentinel resolve-hostnames yes
+        sentinel monitor mymaster redis-primary 6379 2
+        sentinel down-after-milliseconds mymaster 5000
+        sentinel failover-timeout mymaster 60000
+        sentinel parallel-syncs mymaster 1
+        CONF
+        exec redis-sentinel /tmp/sentinel.conf
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "26379", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  sentinel-2:
+    <<: *sentinel
+
+  sentinel-3:
+    <<: *sentinel
+
+volumes:
+  pg-primary-data:
+  pg-standby-data:
+  wal-archive:
+  redis-primary-data:
+  redis-replica-data:

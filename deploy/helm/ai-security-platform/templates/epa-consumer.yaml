@@ -41,22 +41,72 @@ spec:
           command: ["python", "-m", "scripts.epa_consumer"]
           env:
             {{- include "aisp.env" . | nindent 12 }}
-          {{- if .Values.secrets.secretProviderClass.enabled }}
+            - name: EPA_HEARTBEAT_PATH
+              value: {{ printf "%s/epa-consumer.heartbeat" .Values.epaConsumer.heartbeat.mountPath | quote }}
+          {{- if .Values.epaConsumer.heartbeat.enabled }}
+          # The consumer serves nothing, so there is no port to probe. What is
+          # observable is progress: the loop records a heartbeat each time
+          # round and this asks how long ago that was. Without it, the ways
+          # this process actually fails — a rebalance that never completes, a
+          # half-closed broker connection, an await that never returns — all
+          # leave the container Up while detection has silently stopped.
+          #
+          # Liveness only. There is no readiness probe because nothing routes
+          # traffic here; a readiness gate would report a state no one reads.
+          livenessProbe:
+            exec:
+              command:
+                - python
+                - -m
+                - app.epa.heartbeat
+                - {{ .Values.epaConsumer.heartbeat.maxAgeSeconds | quote }}
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 10
+            # 3 misses before a restart. One miss is a slow poll or a GC pause;
+            # restarting on that would churn the fleet and force a rebalance,
+            # which is the very thing that makes consumers wedge.
+            failureThreshold: 3
+          startupProbe:
+            exec:
+              command:
+                - python
+                - -m
+                - app.epa.heartbeat
+                - {{ .Values.epaConsumer.heartbeat.maxAgeSeconds | quote }}
+            periodSeconds: 10
+            failureThreshold: 30 # first broker connect + partition assignment
+          {{- end }}
           volumeMounts:
+            {{- if .Values.epaConsumer.heartbeat.enabled }}
+            # Root FS is read-only; the heartbeat needs somewhere to land.
+            # emptyDir is correct here (unlike the model cache): the file is
+            # per-pod liveness state and must NOT survive a restart, or a dead
+            # consumer would inherit a fresh-looking heartbeat from its
+            # predecessor and never be restarted again.
+            - name: heartbeat
+              mountPath: {{ .Values.epaConsumer.heartbeat.mountPath | quote }}
+            {{- end }}
+            {{- if .Values.secrets.secretProviderClass.enabled }}
             - name: external-secrets
               mountPath: {{ .Values.secrets.secretProviderClass.mountPath | quote }}
               readOnly: true
-          {{- end }}
+            {{- end }}
           resources: {{ toYaml .Values.epaConsumer.resources | nindent 12 }}
-      {{- if .Values.secrets.secretProviderClass.enabled }}
       volumes:
+        {{- if .Values.epaConsumer.heartbeat.enabled }}
+        - name: heartbeat
+          emptyDir:
+            sizeLimit: 1Mi # one timestamp; a limit stops a bug filling the node
+        {{- end }}
+        {{- if .Values.secrets.secretProviderClass.enabled }}
         - name: external-secrets
           csi:
             driver: secrets-store.csi.k8s.io
             readOnly: true
             volumeAttributes:
               secretProviderClass: {{ include "aisp.secretProviderClassName" . | quote }}
-      {{- end }}
+        {{- end }}
 {{- if .Values.epaConsumer.autoscaling.enabled }}
 ---
 apiVersion: autoscaling/v2

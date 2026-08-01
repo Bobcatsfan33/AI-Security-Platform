@@ -127,9 +127,10 @@
       "title": "Backup, recovery, failover, and resilience",
       "status": "partial",
       "frameworks": ["csa-ccm-caiq-4.1"],
-      "evidence": ["docs/HA-DR-RUNBOOK.md", ".github/workflows/ci.yml", "deploy/helm/ai-security-platform/values.yaml"],
+      "evidence": ["docs/HA-DR-RUNBOOK.md", "docs/HA-TOPOLOGY.md", ".github/workflows/ci.yml", "deploy/helm/ai-security-platform/values.yaml", "deploy/helm/aisp-data-tier/values.yaml", "deploy/helm/aisp-data-tier/templates/validate.yaml", "scripts/verify_topology.py", "docs/evidence/p13/deployment-receipt.txt", "docs/evidence/p13/replication-rehearsal.txt", "docs/evidence/p13/migration-rehearsal.txt", "docs/evidence/p13/cell-rehearsal.txt"],
       "gaps": [
-        "The production HA topology is not configured and backup, restore, failover, RPO, and RTO have not been exercised in a game-day."
+        "Backup restore, failover under load, RPO, and RTO have not been exercised in a game-day; EXT-DR remains open.",
+        "A production-shaped staging topology is defined and render-enforced: PostgreSQL primary plus standby with PITR, Redis with AOF persistence and Sentinel failover, replicated ClickHouse with a backup destination, Redpanda at replication factor 3 with min in-sync replicas 2, two or more control plane replicas, an EPA consumer fleet, PodDisruptionBudgets, required anti-affinity, and liveness and readiness probes. PostgreSQL streaming replication and WAL archiving, Redis Sentinel failover, migration downgrade and re-upgrade, regional tenant refusal, and rolling-restart continuity are exercised against running services with retained transcripts. ClickHouse replication, Redpanda replication-factor enforcement, and scheduler-honoured anti-affinity are verified only as rendered manifests because no Kubernetes cluster was reachable and container image pulls were unavailable in the build environment. See docs/HA-TOPOLOGY.md for the claim-by-claim split."
       ]
     },
     {

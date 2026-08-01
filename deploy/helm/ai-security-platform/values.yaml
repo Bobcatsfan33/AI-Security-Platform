@@ -208,6 +208,18 @@ epaConsumer:
   pdb:
     enabled: true
     minAvailable: 1
+  # The consumer serves no port, so liveness is measured by PROGRESS: the loop
+  # records a heartbeat each time round and an exec probe reads its age. See
+  # app/epa/heartbeat.py for why a file beats an endpoint here (the probe has
+  # to work when the process is too wedged to answer).
+  heartbeat:
+    enabled: true
+    mountPath: /var/run/aisp
+    # Must exceed the consumer's idle poll interval or a quiet stream restarts
+    # healthy pods. 90s against a 3-miss threshold = ~4.5 min to act on a
+    # genuinely wedged consumer, which is well inside the detection SLA and
+    # well outside normal jitter.
+    maxAgeSeconds: 90
 
 # ── Optional background worker ─────────────────────────────────────────────
 worker:

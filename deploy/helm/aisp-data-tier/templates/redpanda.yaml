@@ -1,0 +1,145 @@
+{{- $fullname := include "aisp-dt.fullname" . -}}
+{{- $component := "redpanda" -}}
+{{- $name := printf "%s-redpanda" $fullname -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "aisp-dt.labels" . | nindent 4 }}
+    app.kubernetes.io/component: {{ $component }}
+spec:
+  clusterIP: None
+  selector:
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: {{ $component }}
+  ports:
+    - name: kafka
+      port: {{ .Values.redpanda.kafkaPort }}
+      targetPort: kafka
+    - name: admin
+      port: {{ .Values.redpanda.adminPort }}
+      targetPort: admin
+    - name: rpc
+      port: {{ .Values.redpanda.rpcPort }}
+      targetPort: rpc
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "aisp-dt.labels" . | nindent 4 }}
+    app.kubernetes.io/component: {{ $component }}
+spec:
+  # With RF=3 and minInSyncReplicas=2, exactly one broker may be unavailable
+  # before produces with acks=all start failing. The PDB is what stops a node
+  # drain from cheerfully evicting a second one.
+  minAvailable: {{ .Values.redpanda.pdb.minAvailable }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: {{ $component }}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "aisp-dt.labels" . | nindent 4 }}
+    app.kubernetes.io/component: {{ $component }}
+  annotations:
+    # Recorded on the object so the cluster itself carries the durability
+    # contract, not just the values file that produced it. verify_topology.py
+    # reads these back; an operator reading `kubectl get sts -o yaml` sees the
+    # same numbers the runbook claims.
+    aisp.io/topic-replication-factor: {{ .Values.redpanda.topicReplicationFactor | quote }}
+    aisp.io/min-insync-replicas: {{ .Values.redpanda.minInSyncReplicas | quote }}
+    aisp.io/runtime-events-partitions: {{ .Values.redpanda.runtimeEventsPartitions | quote }}
+spec:
+  serviceName: {{ $name }}
+  replicas: {{ .Values.redpanda.replicaCount }}
+  podManagementPolicy: Parallel # brokers form a quorum; they need not start in order
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: {{ $component }}
+  template:
+    metadata:
+      labels:
+        {{- include "aisp-dt.labels" . | nindent 8 }}
+        app.kubernetes.io/component: {{ $component }}
+    spec:
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      affinity:
+        {{- include "aisp-dt.antiAffinity" (dict "instance" .Release.Name "component" $component) | nindent 8 }}
+      containers:
+        - name: redpanda
+          image: {{ include "aisp-dt.image" .Values.redpanda.image }}
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          args:
+            - redpanda
+            - start
+            - --smp=1
+            - --seeds={{ $name }}-0.{{ $name }}:{{ .Values.redpanda.rpcPort }}
+            # Cluster-wide durability defaults, set at start so a topic created
+            # without explicit settings still lands at RF=3 rather than RF=1.
+            - --set
+            - redpanda.default_topic_replications={{ .Values.redpanda.topicReplicationFactor }}
+            - --set
+            - redpanda.transaction_coordinator_replication={{ .Values.redpanda.topicReplicationFactor }}
+            - --set
+            - redpanda.id_allocator_replication={{ .Values.redpanda.topicReplicationFactor }}
+            - --set
+            - redpanda.minimum_topic_replications={{ .Values.redpanda.topicReplicationFactor }}
+            - --set
+            - redpanda.default_topic_partitions={{ .Values.redpanda.runtimeEventsPartitions }}
+          ports:
+            - name: kafka
+              containerPort: {{ .Values.redpanda.kafkaPort }}
+            - name: admin
+              containerPort: {{ .Values.redpanda.adminPort }}
+            - name: rpc
+              containerPort: {{ .Values.redpanda.rpcPort }}
+          # /v1/status/ready reports "this broker has joined and is serving".
+          # A TCP check on the Kafka port would go green while the broker is
+          # still catching up, and traffic would land on a broker that cannot
+          # yet satisfy acks=all.
+          readinessProbe:
+            httpGet:
+              path: /v1/status/ready
+              port: admin
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            tcpSocket:
+              port: rpc
+            initialDelaySeconds: 45
+            periodSeconds: 15
+            failureThreshold: 6
+          startupProbe:
+            httpGet:
+              path: /v1/status/ready
+              port: admin
+            periodSeconds: 10
+            failureThreshold: 60
+          resources:
+            {{- toYaml .Values.redpanda.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/redpanda/data
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels:
+          {{- include "aisp-dt.labels" . | nindent 10 }}
+          app.kubernetes.io/component: {{ $component }}
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        {{- include "aisp-dt.storageClass" . | nindent 8 }}
+        resources:
+          requests:
+            storage: {{ .Values.redpanda.storage }}

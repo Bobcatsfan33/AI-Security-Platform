@@ -26,6 +26,21 @@ from app.narratives.store import RedisNarrativeStore
 logger = logging.getLogger("platform.epa.service")
 
 
+def _beat(write: Any) -> None:
+    """Record progress, never at the cost of the run.
+
+    A heartbeat write failing (read-only mount, full disk, races on a shared
+    volume) must not take down a consumer that is otherwise processing events
+    correctly. The probe going stale is the right consequence — it is visible,
+    and it escalates on its own — whereas raising here would turn a monitoring
+    problem into the outage the monitoring exists to prevent.
+    """
+    try:
+        write()
+    except OSError as exc:
+        logger.warning("epa_heartbeat_write_failed", extra={"error": str(exc)})
+
+
 class EpaConsumerService:
     def __init__(self, *, consumer: Any, fleet: EpaFleet, pipeline: NarrativePipeline) -> None:
         self._consumer = consumer
@@ -56,13 +71,25 @@ class EpaConsumerService:
     async def run(self) -> None:
         """Drain the consumer until it stops. Each event flows through the fleet
         then the narrative pipeline."""
+        from app.epa.heartbeat import write_heartbeat
+
         await self._consumer.start()
+        # Beat once before the first event. A consumer that starts against an
+        # idle stream would otherwise look dead to the probe for as long as the
+        # stream stays quiet, and get restarted for being healthy.
+        _beat(write_heartbeat)
         try:
             async for event in self._consumer.consume():
                 try:
                     await self.process_one(event)
                 except Exception as exc:
                     logger.warning("epa_service_event_failed", extra={"error": str(exc)})
+                # Beat AFTER the event is handled, and beat even when handling
+                # raised: the claim is "the loop is turning", not "everything
+                # succeeded". Poison-message failures are already counted and
+                # logged above; restarting the pod would not fix them and would
+                # drop the rest of the batch.
+                _beat(write_heartbeat)
         finally:
             await self._consumer.stop()
 

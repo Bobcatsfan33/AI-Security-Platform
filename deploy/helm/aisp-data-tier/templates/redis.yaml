@@ -1,0 +1,249 @@
+{{- $fullname := include "aisp-dt.fullname" . -}}
+{{- $component := "redis" -}}
+{{- $name := printf "%s-redis" $fullname -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $name }}-config
+  labels:
+    {{- include "aisp-dt.labels" . | nindent 4 }}
+    app.kubernetes.io/component: {{ $component }}
+data:
+  redis.conf: |
+    port {{ .Values.redis.port }}
+    appendonly {{ ternary "yes" "no" .Values.redis.persistence.appendonly }}
+    appendfsync {{ .Values.redis.persistence.appendfsync }}
+    dir /data
+    # Sentinel rewrites this file on promotion, so it must stay writable.
+    replica-read-only yes
+{{- if .Values.redis.sentinel.enabled }}
+  sentinel.conf: |
+    port {{ .Values.redis.sentinel.port }}
+    sentinel monitor mymaster {{ $name }}-0.{{ $name }} {{ .Values.redis.port }} {{ .Values.redis.sentinel.quorum }}
+    sentinel down-after-milliseconds mymaster {{ .Values.redis.sentinel.downAfterMs }}
+    sentinel failover-timeout mymaster {{ .Values.redis.sentinel.failoverTimeoutMs }}
+    # 1: replicas re-sync from the new primary one at a time. Higher values
+    # make every replica unavailable at once during the resync, which turns a
+    # failover into a full read outage.
+    sentinel parallel-syncs mymaster 1
+    sentinel resolve-hostnames yes
+{{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "aisp-dt.labels" . | nindent 4 }}
+    app.kubernetes.io/component: {{ $component }}
+spec:
+  clusterIP: None
+  selector:
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: {{ $component }}
+  ports:
+    - name: redis
+      port: {{ .Values.redis.port }}
+      targetPort: redis
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "aisp-dt.labels" . | nindent 4 }}
+    app.kubernetes.io/component: {{ $component }}
+spec:
+  minAvailable: {{ .Values.redis.pdb.minAvailable }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: {{ $component }}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "aisp-dt.labels" . | nindent 4 }}
+    app.kubernetes.io/component: {{ $component }}
+spec:
+  serviceName: {{ $name }}
+  replicas: {{ add1 (int .Values.redis.replicaCount) }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: {{ $component }}
+  template:
+    metadata:
+      labels:
+        {{- include "aisp-dt.labels" . | nindent 8 }}
+        app.kubernetes.io/component: {{ $component }}
+    spec:
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      affinity:
+        {{- include "aisp-dt.antiAffinity" (dict "instance" .Release.Name "component" $component) | nindent 8 }}
+      containers:
+        - name: redis
+          image: {{ include "aisp-dt.image" .Values.redis.image }}
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          command: ["redis-server", "/etc/redis/redis.conf"]
+          ports:
+            - name: redis
+              containerPort: {{ .Values.redis.port }}
+          readinessProbe:
+            exec:
+              command: ["redis-cli", "-p", "{{ .Values.redis.port }}", "ping"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            tcpSocket:
+              port: redis
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            failureThreshold: 6
+          startupProbe:
+            exec:
+              command: ["redis-cli", "-p", "{{ .Values.redis.port }}", "ping"]
+            periodSeconds: 5
+            # An AOF rewrite on a large dataset blocks startup; killing it here
+            # would restart into the same rewrite forever.
+            failureThreshold: 60
+          resources:
+            {{- toYaml .Values.redis.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: config
+              mountPath: /etc/redis
+      volumes:
+        - name: config
+          configMap:
+            name: {{ $name }}-config
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels:
+          {{- include "aisp-dt.labels" . | nindent 10 }}
+          app.kubernetes.io/component: {{ $component }}
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        {{- include "aisp-dt.storageClass" . | nindent 8 }}
+        resources:
+          requests:
+            storage: {{ .Values.redis.storage }}
+{{- if .Values.redis.sentinel.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}-sentinel
+  labels:
+    {{- include "aisp-dt.labels" . | nindent 4 }}
+    app.kubernetes.io/component: redis-sentinel
+spec:
+  clusterIP: None
+  selector:
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: redis-sentinel
+  ports:
+    - name: sentinel
+      port: {{ .Values.redis.sentinel.port }}
+      targetPort: sentinel
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ $name }}-sentinel
+  labels:
+    {{- include "aisp-dt.labels" . | nindent 4 }}
+    app.kubernetes.io/component: redis-sentinel
+spec:
+  # Quorum must survive a voluntary disruption. Evicting down to below quorum
+  # would leave a cluster that cannot elect during the very window a node drain
+  # makes a failure most likely.
+  minAvailable: {{ .Values.redis.sentinel.quorum }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: redis-sentinel
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $name }}-sentinel
+  labels:
+    {{- include "aisp-dt.labels" . | nindent 4 }}
+    app.kubernetes.io/component: redis-sentinel
+spec:
+  serviceName: {{ $name }}-sentinel
+  replicas: {{ .Values.redis.sentinel.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: redis-sentinel
+  template:
+    metadata:
+      labels:
+        {{- include "aisp-dt.labels" . | nindent 8 }}
+        app.kubernetes.io/component: redis-sentinel
+    spec:
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      affinity:
+        {{- include "aisp-dt.antiAffinity" (dict "instance" .Release.Name "component" "redis-sentinel") | nindent 8 }}
+      containers:
+        - name: sentinel
+          image: {{ include "aisp-dt.image" .Values.redis.image }}
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          # Sentinel rewrites its config on failover, so it runs from a copy on
+          # a writable volume rather than the read-only ConfigMap mount.
+          command:
+            - sh
+            - -c
+            - cp /etc/redis-sentinel/sentinel.conf /data/sentinel.conf && exec redis-sentinel /data/sentinel.conf
+          ports:
+            - name: sentinel
+              containerPort: {{ .Values.redis.sentinel.port }}
+          readinessProbe:
+            exec:
+              command: ["redis-cli", "-p", "{{ .Values.redis.sentinel.port }}", "ping"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            tcpSocket:
+              port: sentinel
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            failureThreshold: 6
+          resources:
+            requests: { cpu: "50m", memory: "64Mi" }
+            limits: { cpu: "200m", memory: "128Mi" }
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: config
+              mountPath: /etc/redis-sentinel
+      volumes:
+        - name: config
+          configMap:
+            name: {{ $name }}-config
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels:
+          {{- include "aisp-dt.labels" . | nindent 10 }}
+          app.kubernetes.io/component: redis-sentinel
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        {{- include "aisp-dt.storageClass" . | nindent 8 }}
+        resources:
+          requests:
+            storage: 1Gi
+{{- end }}

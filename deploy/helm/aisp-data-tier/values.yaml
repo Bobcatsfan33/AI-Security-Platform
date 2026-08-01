@@ -1,0 +1,148 @@
+# The stateful tier of one regional cell.
+#
+# Every image below is intentionally EMPTY. There is no default tag to fall
+# back to, because a default tag is exactly the mutable reference this chart
+# exists to refuse: `helm template` fails until an operator supplies the
+# approved sha256 digest from the release receipt. See templates/validate.yaml.
+#
+# Supply them the way CI does:
+#   helm template cell deploy/helm/aisp-data-tier \
+#     --set postgres.image.digest=sha256:<64 hex> ... etc
+
+# One cell per approved region. Rendering rejects "", "local", "unassigned".
+deploymentRegion: ""
+
+# Storage class for every PVC. Empty uses the cluster default, which is fine
+# for staging and wrong for production (no IOPS or replication guarantee).
+storageClassName: ""
+
+podSecurityContext:
+  runAsNonRoot: true
+  fsGroup: 65532
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop: ["ALL"]
+  readOnlyRootFilesystem: false # data services own their data dirs
+
+# ── PostgreSQL: primary + streaming replica, WAL archived for PITR ─────────
+postgres:
+  image:
+    repository: pgvector/pgvector
+    digest: "" # required
+  # One primary. Replicas are ADDITIONAL — replicaCount: 1 means 2 pods total.
+  # Named this way because "how many standbys do I have" is the question an
+  # operator actually asks during a failover.
+  replicaCount: 1
+  port: 5432
+  storage: 20Gi
+  resources:
+    requests: { cpu: "250m", memory: "512Mi" }
+    limits: { cpu: "2", memory: "2Gi" }
+  # Streaming replication. synchronous_commit=on with a synchronous standby
+  # means a committed write is on two machines before the client is told it
+  # committed — this is what makes the RPO claim meaningful rather than
+  # aspirational.
+  replication:
+    synchronous: true
+    slotPrefix: cell_standby
+  # WAL archiving is the PITR mechanism. Without an archive destination the
+  # runbook's "restore base + replay WAL" step has nothing to replay.
+  pitr:
+    enabled: true
+    # s3://bucket/prefix — the region's own bucket, never shared across cells.
+    archiveDestination: ""
+    # A base backup older than this cannot satisfy the recovery window.
+    baseBackupSchedule: "0 2 * * *"
+    retentionDays: 14
+  pdb:
+    enabled: true
+    minAvailable: 1
+
+# ── Redis: AOF persistence + Sentinel failover ─────────────────────────────
+redis:
+  image:
+    repository: redis
+    digest: "" # required
+  replicaCount: 1 # standbys in addition to the primary
+  port: 6379
+  storage: 8Gi
+  resources:
+    requests: { cpu: "100m", memory: "256Mi" }
+    limits: { cpu: "1", memory: "1Gi" }
+  # appendonly yes — an RDB-only Redis silently loses the window between
+  # snapshots, and the envelopes/narratives in that window are detection state.
+  persistence:
+    appendonly: true
+    appendfsync: everysec
+  sentinel:
+    enabled: true
+    # Three sentinels so a quorum of 2 survives losing one. Two sentinels can
+    # never form a quorum after a failure, which is a failover that cannot fire.
+    replicaCount: 3
+    quorum: 2
+    port: 26379
+    downAfterMs: 5000
+    failoverTimeoutMs: 60000
+  pdb:
+    enabled: true
+    minAvailable: 1
+
+# ── ClickHouse: ReplicatedMergeTree across >= 2 replicas + backup ──────────
+clickhouse:
+  image:
+    repository: clickhouse/clickhouse-server
+    digest: "" # required
+  replicaCount: 2 # total pods; ReplicatedMergeTree needs >= 2 to be replicated
+  port: 8123
+  nativePort: 9000
+  storage: 50Gi
+  resources:
+    requests: { cpu: "500m", memory: "1Gi" }
+    limits: { cpu: "2", memory: "4Gi" }
+  # Keeper is the coordination layer ReplicatedMergeTree requires. Three nodes
+  # for the same quorum reason as Sentinel.
+  keeper:
+    image:
+      repository: clickhouse/clickhouse-keeper
+      digest: "" # required
+    replicaCount: 3
+    port: 9181
+    storage: 8Gi
+  backup:
+    enabled: true
+    # BACKUP TABLE ... TO Disk/S3. Empty destination fails rendering when
+    # backup.enabled — a backup with nowhere to go is not a backup.
+    destination: ""
+    schedule: "0 3 * * *"
+    retentionDays: 30
+  pdb:
+    enabled: true
+    minAvailable: 1
+
+# ── Redpanda: RF >= 3, min in-sync replicas >= 2 ───────────────────────────
+redpanda:
+  image:
+    repository: redpandadata/redpanda
+    digest: "" # required
+  # Three brokers is the floor for RF=3. Rendering refuses fewer, because a
+  # topic cannot have more replicas than there are brokers to put them on.
+  replicaCount: 3
+  kafkaPort: 9092
+  adminPort: 9644
+  rpcPort: 33145
+  storage: 50Gi
+  resources:
+    requests: { cpu: "500m", memory: "1Gi" }
+    limits: { cpu: "2", memory: "4Gi" }
+  # RF=3 survives losing one broker with a quorum intact. minInSyncReplicas=2
+  # means a produce with acks=all is on two brokers before it is acknowledged;
+  # at 1 the cluster would acknowledge writes it can still lose.
+  topicReplicationFactor: 3
+  minInSyncReplicas: 2
+  # Partition count bounds EPA consumer scale-out (see the control-plane
+  # chart's epaConsumer note).
+  runtimeEventsPartitions: 12
+  pdb:
+    enabled: true
+    minAvailable: 2 # RF=3 tolerates one broker down, not two

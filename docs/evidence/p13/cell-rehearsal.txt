@@ -1,0 +1,38 @@
+==============================================================
+ CONTROL-PLANE CELL REHEARSAL
+==============================================================
+repository : 57abcf256157ccbd104f97a0c62107a455ee99b8
+branch     : codex/enterprise-readiness-p13-ha-topology
+started    : 2026-08-01T01:31:17Z
+cell region: us-east-1
+
+==============================================================
+ 1. Two control-plane replicas come up
+==============================================================
+   ok:   both replicas are serving (pids 31692, 31694)
+
+==============================================================
+ 2. The cell refuses tenant traffic from another region
+==============================================================
+   {"resident": {"status": 200, "detail": null}, "foreign": {"status": 421, "detail": "tenant_region_unavailable"}}
+   ok:   a resident tenant is served (200)
+   ok:   a foreign-region tenant is refused (421)
+   ok:   refusal names the reason (tenant_region_unavailable)
+
+==============================================================
+ 3. A rolling restart preserves service
+==============================================================
+traffic running against both replicas
+   baseline: 146 0 (ok fail)
+   ok:   traffic flows across both replicas (146 responses)
+   ... replacing replica a (the other keeps serving)
+      during the replacement: 25 served, 0 unanswered by the survivor
+   ok:   no request went unanswered while replica a was replaced
+   ... replacing replica b (the other keeps serving)
+      during the replacement: 25 served, 0 unanswered by the survivor
+   ok:   no request went unanswered while replica b was replaced
+
+==============================================================
+ RESULT: PASS — every rehearsed claim held
+ finished: 2026-08-01T01:31:31Z
+==============================================================

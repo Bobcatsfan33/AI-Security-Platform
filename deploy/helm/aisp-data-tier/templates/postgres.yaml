@@ -1,0 +1,226 @@
+{{- $fullname := include "aisp-dt.fullname" . -}}
+{{- $component := "postgres" -}}
+{{- $name := printf "%s-postgres" $fullname -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "aisp-dt.labels" . | nindent 4 }}
+    app.kubernetes.io/component: {{ $component }}
+spec:
+  clusterIP: None # headless: stable per-pod DNS is what the standby follows
+  selector:
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: {{ $component }}
+  ports:
+    - name: postgres
+      port: {{ .Values.postgres.port }}
+      targetPort: postgres
+---
+{{/*
+The primary is addressed separately from the pod set. A client that talks to
+"whichever postgres pod answers" will happily send writes to a read-only
+standby and get errors it cannot act on; worse, after a failover it would keep
+talking to the demoted node. Routing writes through a name that means "the
+primary" is what lets a failover be invisible to the application.
+*/}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}-primary
+  labels:
+    {{- include "aisp-dt.labels" . | nindent 4 }}
+    app.kubernetes.io/component: {{ $component }}
+    aisp.io/role: primary
+spec:
+  selector:
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: {{ $component }}
+    aisp.io/role: primary
+  ports:
+    - name: postgres
+      port: {{ .Values.postgres.port }}
+      targetPort: postgres
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "aisp-dt.labels" . | nindent 4 }}
+    app.kubernetes.io/component: {{ $component }}
+spec:
+  minAvailable: {{ .Values.postgres.pdb.minAvailable }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: {{ $component }}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "aisp-dt.labels" . | nindent 4 }}
+    app.kubernetes.io/component: {{ $component }}
+spec:
+  serviceName: {{ $name }}
+  # 1 primary + N standbys.
+  replicas: {{ add1 (int .Values.postgres.replicaCount) }}
+  podManagementPolicy: OrderedReady # a standby must not start before its primary
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: {{ $component }}
+  template:
+    metadata:
+      labels:
+        {{- include "aisp-dt.labels" . | nindent 8 }}
+        app.kubernetes.io/component: {{ $component }}
+        aisp.io/role: primary
+    spec:
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      affinity:
+        {{- include "aisp-dt.antiAffinity" (dict "instance" .Release.Name "component" $component) | nindent 8 }}
+      containers:
+        - name: postgres
+          image: {{ include "aisp-dt.image" .Values.postgres.image }}
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          ports:
+            - name: postgres
+              containerPort: {{ .Values.postgres.port }}
+          env:
+            - name: POSTGRES_USER
+              valueFrom: { secretKeyRef: { name: {{ $name }}-credentials, key: username } }
+            - name: POSTGRES_PASSWORD
+              valueFrom: { secretKeyRef: { name: {{ $name }}-credentials, key: password } }
+            - name: POSTGRES_DB
+              value: platform
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+            {{- if .Values.postgres.pitr.enabled }}
+            - name: ARCHIVE_DESTINATION
+              value: {{ .Values.postgres.pitr.archiveDestination | quote }}
+            {{- end }}
+          args:
+            - -c
+            - wal_level=replica
+            - -c
+            - max_wal_senders=10
+            - -c
+            - max_replication_slots=10
+            - -c
+            - hot_standby=on
+            {{- if .Values.postgres.replication.synchronous }}
+            # A commit is not acknowledged until a standby has it. This is the
+            # difference between "we have a replica" and a bounded RPO.
+            - -c
+            - synchronous_commit=on
+            - -c
+            - synchronous_standby_names=ANY 1 (*)
+            {{- end }}
+            {{- if .Values.postgres.pitr.enabled }}
+            - -c
+            - archive_mode=on
+            - -c
+            - archive_command=/usr/local/bin/archive-wal.sh %p %f
+            - -c
+            - archive_timeout=60
+            {{- end }}
+          # readiness gates traffic; liveness restarts a wedged process. They
+          # are deliberately different probes: pg_isready answers "can I serve",
+          # a TCP connect answers "is the process alive". Using the former for
+          # liveness would restart a healthy primary during a long recovery.
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "platform", "-d", "platform"]
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            tcpSocket:
+              port: postgres
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          startupProbe:
+            exec:
+              command: ["pg_isready", "-U", "platform", "-d", "platform"]
+            periodSeconds: 5
+            failureThreshold: 60 # a large restore may take minutes; do not shoot it
+          resources:
+            {{- toYaml .Values.postgres.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+      volumes: []
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels:
+          {{- include "aisp-dt.labels" . | nindent 10 }}
+          app.kubernetes.io/component: {{ $component }}
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        {{- include "aisp-dt.storageClass" . | nindent 8 }}
+        resources:
+          requests:
+            storage: {{ .Values.postgres.storage }}
+{{- if .Values.postgres.pitr.enabled }}
+---
+{{/*
+Base backup on a schedule. WAL archiving alone cannot restore anything — replay
+has to start from a base, and a base older than the retention window is a base
+you are not allowed to still have. Both halves or neither.
+*/}}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ $name }}-basebackup
+  labels:
+    {{- include "aisp-dt.labels" . | nindent 4 }}
+    app.kubernetes.io/component: {{ $component }}
+    aisp.io/role: basebackup
+spec:
+  schedule: {{ .Values.postgres.pitr.baseBackupSchedule | quote }}
+  concurrencyPolicy: Forbid
+  failedJobsHistoryLimit: 7
+  successfulJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            {{- include "aisp-dt.labels" . | nindent 12 }}
+            app.kubernetes.io/component: {{ $component }}
+            aisp.io/role: basebackup
+        spec:
+          restartPolicy: OnFailure
+          securityContext:
+            {{- toYaml .Values.podSecurityContext | nindent 12 }}
+          containers:
+            - name: basebackup
+              image: {{ include "aisp-dt.image" .Values.postgres.image }}
+              securityContext:
+                {{- toYaml .Values.containerSecurityContext | nindent 16 }}
+              command: ["/usr/local/bin/base-backup.sh"]
+              env:
+                - name: PGUSER
+                  valueFrom: { secretKeyRef: { name: {{ $name }}-credentials, key: username } }
+                - name: PGPASSWORD
+                  valueFrom: { secretKeyRef: { name: {{ $name }}-credentials, key: password } }
+                - name: PGHOST
+                  value: {{ $name }}-primary
+                - name: ARCHIVE_DESTINATION
+                  value: {{ .Values.postgres.pitr.archiveDestination | quote }}
+                - name: RETENTION_DAYS
+                  value: {{ .Values.postgres.pitr.retentionDays | quote }}
+              resources:
+                requests: { cpu: "100m", memory: "256Mi" }
+                limits: { cpu: "1", memory: "1Gi" }
+{{- end }}

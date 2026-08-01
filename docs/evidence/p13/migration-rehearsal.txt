@@ -1,0 +1,74 @@
+==============================================================
+ MIGRATION REHEARSAL — upgrade / downgrade / upgrade
+==============================================================
+repository : 57abcf256157ccbd104f97a0c62107a455ee99b8
+branch     : codex/enterprise-readiness-p13-ha-topology
+database   : postgresql+asyncpg://<redacted>@localhost:5432/platform
+started    : 2026-08-01T01:22:07Z
+
+--------------------------------------------------------------
+>>> 1. upgrade head (establish the baseline)
+--------------------------------------------------------------
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+0012_tenant_data_region (head)
+--------------------------------------------------------------
+>>> 2. capture the schema fingerprint at head
+--------------------------------------------------------------
+columns at head:      318
+--------------------------------------------------------------
+>>> 3. seed a row so the downgrade runs against data, not an empty schema
+--------------------------------------------------------------
+seeded organization d4606d3c-2d62-4e07-b10f-0ebb606ed743
+--------------------------------------------------------------
+>>> 4. downgrade base (the step nobody runs until the night they must)
+--------------------------------------------------------------
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+INFO  [alembic.runtime.migration] Running downgrade 0012_tenant_data_region -> 0011_active_scim_integrity, Pin every organization to one data-residency region.
+INFO  [alembic.runtime.migration] Running downgrade 0011_active_scim_integrity -> 0010_mcp_attribution_integrity, Enforce one active SCIM provider per organization.
+INFO  [alembic.runtime.migration] Running downgrade 0010_mcp_attribution_integrity -> 0009_revive_mcp, MCP attribution integrity — NOT NULL creator, RESTRICT deletes, state-tied resolver
+INFO  [alembic.runtime.migration] Running downgrade 0009_revive_mcp -> 0008_revive_governance, Revive MCP schema — mcp_tool_profiles, mcp_calls, mcp_violations
+INFO  [alembic.runtime.migration] Running downgrade 0008_revive_governance -> 0007_revive_policies, Revive governance schema — evaluations, findings, test_cases, connector_configs
+INFO  [alembic.runtime.migration] Running downgrade 0007_revive_policies -> 0006_enable_rls, Revive policies table — runtime agent policy distribution (v2)
+INFO  [alembic.runtime.migration] Running downgrade 0006_enable_rls -> 0005_org_scoping, Enable Row-Level Security on all tenant-scoped tables (Wall 2)
+INFO  [alembic.runtime.migration] Running downgrade 0005_org_scoping -> 0004_red_team_v2, Multi-tenant org scoping for the asset graph
+INFO  [alembic.runtime.migration] Running downgrade 0004_red_team_v2 -> 0003_asset_graph_v2, Red Team v2 — campaign-of-record + per-attack findings
+INFO  [alembic.runtime.migration] Running downgrade 0003_asset_graph_v2 -> 0002_connector_mcp, v2 pivot — drop governance schema, introduce asset graph
+INFO  [alembic.runtime.migration] Running downgrade 0002_connector_mcp -> 0001_initial, connector_configs + MCP tables
+INFO  [alembic.runtime.migration] Running downgrade 0001_initial -> , initial schema — Sprint 1 (organizations, users, idp_configs, api_keys,
+ai_assets, test_cases, evaluations, findings, policies)
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+--------------------------------------------------------------
+>>> 5. upgrade head again
+--------------------------------------------------------------
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+INFO  [alembic.runtime.migration] Running upgrade  -> 0001_initial, initial schema — Sprint 1 (organizations, users, idp_configs, api_keys,
+ai_assets, test_cases, evaluations, findings, policies)
+INFO  [alembic.runtime.migration] Running upgrade 0001_initial -> 0002_connector_mcp, connector_configs + MCP tables
+INFO  [alembic.runtime.migration] Running upgrade 0002_connector_mcp -> 0003_asset_graph_v2, v2 pivot — drop governance schema, introduce asset graph
+INFO  [alembic.runtime.migration] Running upgrade 0003_asset_graph_v2 -> 0004_red_team_v2, Red Team v2 — campaign-of-record + per-attack findings
+INFO  [alembic.runtime.migration] Running upgrade 0004_red_team_v2 -> 0005_org_scoping, Multi-tenant org scoping for the asset graph
+INFO  [alembic.runtime.migration] Running upgrade 0005_org_scoping -> 0006_enable_rls, Enable Row-Level Security on all tenant-scoped tables (Wall 2)
+INFO  [alembic.runtime.migration] Running upgrade 0006_enable_rls -> 0007_revive_policies, Revive policies table — runtime agent policy distribution (v2)
+INFO  [alembic.runtime.migration] Running upgrade 0007_revive_policies -> 0008_revive_governance, Revive governance schema — evaluations, findings, test_cases, connector_configs
+INFO  [alembic.runtime.migration] Running upgrade 0008_revive_governance -> 0009_revive_mcp, Revive MCP schema — mcp_tool_profiles, mcp_calls, mcp_violations
+INFO  [alembic.runtime.migration] Running upgrade 0009_revive_mcp -> 0010_mcp_attribution_integrity, MCP attribution integrity — NOT NULL creator, RESTRICT deletes, state-tied resolver
+INFO  [alembic.runtime.migration] Running upgrade 0010_mcp_attribution_integrity -> 0011_active_scim_integrity, Enforce one active SCIM provider per organization.
+INFO  [alembic.runtime.migration] Running upgrade 0011_active_scim_integrity -> 0012_tenant_data_region, Pin every organization to one data-residency region.
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+0012_tenant_data_region (head)
+--------------------------------------------------------------
+>>> 6. compare the schema fingerprint
+--------------------------------------------------------------
+IDENTICAL:      318 columns, byte-for-byte
+
+==============================================================
+ RESULT: PASS
+ finished: 2026-08-01T01:22:13Z
+==============================================================

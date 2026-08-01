@@ -349,11 +349,15 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_table("policies")
-    op.drop_table("findings")
-    op.drop_table("evaluations")
-    op.drop_table("test_cases")
-    op.drop_table("ai_assets")
+    # These five are dropped by 0003_asset_graph_v2's UPGRADE (the one-way v2
+    # pivot) and never restored by its downgrade, so they are already gone by
+    # the time this runs. IF EXISTS keeps the chain walkable to base; see the
+    # longer note in 0002_connector_configs_and_mcp for why this is scoped to
+    # exactly the pivot's table list rather than applied everywhere.
+    for table_name in ("policies", "findings", "evaluations", "test_cases", "ai_assets"):
+        op.execute(f"DROP TABLE IF EXISTS {table_name} CASCADE")
+    # Below here the strict form stays: nothing later removes these, so a
+    # missing table means the schema really has drifted and should fail loudly.
     op.drop_table("api_keys")
     op.drop_constraint("fk_idp_configs_created_by_users", "idp_configs", type_="foreignkey")
     op.drop_table("users")
