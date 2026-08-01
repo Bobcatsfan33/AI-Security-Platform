@@ -1,0 +1,26 @@
+{
+  "authorization": "",
+  "description": "HELD-OUT synthetic benign-hard-negative corpus. Authored in a separate pass and hash-pinned BEFORE any detector change in the P15b hard-negative work, so the fix could not be tuned against it. Covers the injection-ADJACENT constructions that a real deployment sees constantly: 'ignore the previous <not-instructions>', the attack phrase quoted as the object of a translate/explain/test request, security documentation about prompt injection, ordinary developer traffic, and business text that mentions rules or instructions innocuously. It ALSO carries six genuine attacks \u2014 a benign-only corpus would be satisfied by switching the detector off, so recall has to survive the false-positive fix. SYNTHETIC: a generalisation check on hand-authored data, NOT evidence of real-world false-positive rates. EXT-EFFICACY remains open.",
+  "id": "synthetic-hard-negative-heldout",
+  "labeling_protocol": {
+    "adjudication": "none \u2014 single author, no second opinion",
+    "inter_annotator_agreement": "not applicable (single labeler)",
+    "labelers": "1 (the author)",
+    "method": "authored-with-intent, held out: written to be examples of their declared labels and hash-pinned before the detector change, so labels could not drift to match an outcome. Ground truth is the author's intent, not an observation."
+  },
+  "path": "synthetic-hard-negative-heldout.jsonl",
+  "provenance": {
+    "authorization": "none required \u2014 contains no customer, tenant, or personal data",
+    "collected_at": "2026-08-01",
+    "collected_by": "AISP engineering (P15b sprint)",
+    "license": "BUSL-1.1 (same as the repository); no third-party data included",
+    "source": "hand-authored held-out set for the P15b hard-negative work"
+  },
+  "representative": false,
+  "sha256": "94745cc77a469b290036001f09e1f0923e0f1b105531bfac285d2901869b9e3e",
+  "slice_axes": [
+    "benign_hard_negative",
+    "multilingual"
+  ],
+  "split": "test"
+}

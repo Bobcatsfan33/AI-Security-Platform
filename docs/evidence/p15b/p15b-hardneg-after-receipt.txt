@@ -1,0 +1,76 @@
+========================================================================
+ DETECTION EFFICACY REPORT
+========================================================================
+!!  EVIDENCE CLASS: SYNTHETIC-DEMONSTRATION  !!
+
+These numbers describe SYNTHETIC corpora written to exercise the harness. They
+are NOT a measurement of detection efficacy on real or representative traffic
+and MUST NOT be quoted as one, internally or externally.
+
+What would make them evidence, none of which has happened:
+  * an authorized corpus sampled from real deployments
+    (a manifest with representative=true and a named authorization), and
+  * an evaluation run by an independent party.
+
+EXT-EFFICACY remains OPEN and blocking.
+
+generated    : 2026-08-01T17:43:36Z
+git revision : a550222393c6d7a945e5e874cd3c47f0a86c412a
+resumed      : 0 case verdicts replayed
+
+CORPORA (hash-pinned)
+  synthetic-events-test  split=test  cases=8  [SYNTHETIC]
+    sha256     : 54f6021e8ac3fe9d903a1ba4c71995f8a5b15acdce232386f64f090dd796aba9
+    source     : hand-authored by the AISP engineering team for harness development
+    labeled by : authored-with-intent: each case was written to be an example of its declared label, so ground truth is the author's intent rather than an observation. This is the weakest labeling protocol there is and is acceptable ONLY because these corpora are explicitly synthetic.
+  synthetic-text-test  split=test  cases=26  [SYNTHETIC]
+    sha256     : fa11f1b899cf7a7cb014a5d9e769147d934fcba05f9e80f89ed294f116a452d3
+    source     : hand-authored by the AISP engineering team for harness development
+    labeled by : authored-with-intent: each case was written to be an example of its declared label, so ground truth is the author's intent rather than an observation. This is the weakest labeling protocol there is and is acceptable ONLY because these corpora are explicitly synthetic.
+
+EVALUATED CONFIGURATION (bound to these results)
+  prompt_injection: detector_config_sha256=c3195faa07590ca43d4dcda3a402d6ef3aff5e496551caaacfae2cf486304263  detector_set_sha256=a5e1e696fd873a3f5bd09833d52f4a43132ea686760bb5512cb8684aa49b4aff  stage2_mode=stage2_heuristic
+  behavioural: maturity_min=50  signal_kinds_sha256=6bd3595f2372ac44115b9e1ce4e14635415fa691b1794fdf750afdc4905ed3e0
+
+------------------------------------------------------------------------
+ SURFACE: behavioural
+------------------------------------------------------------------------
+  slice                                  prec   recall      FPR      n
+  overall                              1.0000   0.4000   0.0000      8
+  benign_hard_negative                    n/a      n/a   0.0000      2
+  indirect_injection                   1.0000   1.0000      n/a      1
+  multi_turn                              n/a   0.0000      n/a      1
+  tool_call_abuse                         n/a   0.0000   0.0000      2
+
+  recall 95% CI    : [0.1176, 0.7693]
+  precision 95% CI : [0.3424, 1.0000]
+  FPR 95% CI       : [0.0000, 0.5615]
+  CI method        : wilson-score-95
+  latency ms       : p50=0.2209 p95=0.6777 p99=0.6777
+
+------------------------------------------------------------------------
+ SURFACE: prompt_injection
+------------------------------------------------------------------------
+  slice                                  prec   recall      FPR      n
+  overall                              1.0000   0.8750   0.0000     26
+  benign_hard_negative                    n/a      n/a   0.0000      5
+  encoded_obfuscated                   1.0000   1.0000      n/a      3
+  indirect_injection                   1.0000   1.0000      n/a      3
+  multi_turn                           1.0000   0.3333      n/a      3
+  multilingual                         1.0000   1.0000   0.0000      6
+
+  recall 95% CI    : [0.6398, 0.9650]
+  precision 95% CI : [0.7847, 1.0000]
+  FPR 95% CI       : [0.0000, 0.2775]
+  CI method        : wilson-score-95
+  latency ms       : p50=0.2146 p95=0.4565 p99=13.9335
+
+------------------------------------------------------------------------
+ SLICES DELIBERATELY NOT EVALUATED
+------------------------------------------------------------------------
+  customer_distribution:
+    no authorized corpus: this slice cannot be satisfied by synthetic data, and no manifest declares representative=true with an authorization. EXT-EFFICACY remains open.
+
+========================================================================
+ EXT-EFFICACY: OPEN — this run does not discharge it.
+========================================================================

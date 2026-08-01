@@ -1,0 +1,53 @@
+========================================================================
+ DETECTION EFFICACY REPORT
+========================================================================
+!!  EVIDENCE CLASS: SYNTHETIC-DEMONSTRATION  !!
+
+These numbers describe SYNTHETIC corpora written to exercise the harness. They
+are NOT a measurement of detection efficacy on real or representative traffic
+and MUST NOT be quoted as one, internally or externally.
+
+What would make them evidence, none of which has happened:
+  * an authorized corpus sampled from real deployments
+    (a manifest with representative=true and a named authorization), and
+  * an evaluation run by an independent party.
+
+EXT-EFFICACY remains OPEN and blocking.
+
+generated    : 2026-08-01T17:43:36Z
+git revision : a550222393c6d7a945e5e874cd3c47f0a86c412a
+resumed      : 0 case verdicts replayed
+
+CORPORA (hash-pinned)
+  synthetic-hard-negative-heldout  split=test  cases=26  [SYNTHETIC]
+    sha256     : 94745cc77a469b290036001f09e1f0923e0f1b105531bfac285d2901869b9e3e
+    source     : hand-authored held-out set for the P15b hard-negative work
+    labeled by : authored-with-intent, held out: written to be examples of their declared labels and hash-pinned before the detector change, so labels could not drift to match an outcome. Ground truth is the author's intent, not an observation.
+
+EVALUATED CONFIGURATION (bound to these results)
+  prompt_injection: detector_config_sha256=c3195faa07590ca43d4dcda3a402d6ef3aff5e496551caaacfae2cf486304263  detector_set_sha256=a5e1e696fd873a3f5bd09833d52f4a43132ea686760bb5512cb8684aa49b4aff  stage2_mode=stage2_heuristic
+  behavioural: maturity_min=50  signal_kinds_sha256=6bd3595f2372ac44115b9e1ce4e14635415fa691b1794fdf750afdc4905ed3e0
+
+------------------------------------------------------------------------
+ SURFACE: prompt_injection
+------------------------------------------------------------------------
+  slice                                  prec   recall      FPR      n
+  overall                              1.0000   1.0000   0.0000     26
+  benign_hard_negative                 1.0000   1.0000   0.0000     26
+  multilingual                         1.0000   1.0000   0.0000      2
+
+  recall 95% CI    : [0.6097, 1.0000]
+  precision 95% CI : [0.6097, 1.0000]
+  FPR 95% CI       : [0.0000, 0.1611]
+  CI method        : wilson-score-95
+  latency ms       : p50=0.2049 p95=0.2615 p99=0.3758
+
+------------------------------------------------------------------------
+ SLICES DELIBERATELY NOT EVALUATED
+------------------------------------------------------------------------
+  customer_distribution:
+    no authorized corpus: this slice cannot be satisfied by synthetic data, and no manifest declares representative=true with an authorization. EXT-EFFICACY remains open.
+
+========================================================================
+ EXT-EFFICACY: OPEN — this run does not discharge it.
+========================================================================
