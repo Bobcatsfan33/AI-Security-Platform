@@ -4,6 +4,7 @@ off-topic."""
 from __future__ import annotations
 
 import re
+import unicodedata
 
 from app.detectors import util
 from app.detectors.base import DetectorContext, DetectorResult, Direction
@@ -70,6 +71,22 @@ class ToxicityDetector:
 # ─────────────────────────────────────────────── Gibberish
 
 
+def _is_predominantly_latin(text: str, *, threshold: float = 0.5) -> bool:
+    """Whether the letters in ``text`` are mostly Latin script.
+
+    Counts LETTERS only. Digits, punctuation, and whitespace are script-neutral
+    and shared across writing systems, so including them would let a
+    number-heavy Chinese sentence look Latin. Text with no letters at all
+    (pure symbols) counts as Latin so the existing "no word chars" path keeps
+    handling it — that check is genuinely script-independent.
+    """
+    letters = [ch for ch in text if ch.isalpha()]
+    if not letters:
+        return True
+    latin = sum(1 for ch in letters if "LATIN" in unicodedata.name(ch, ""))
+    return latin / len(letters) >= threshold
+
+
 class GibberishDetector:
     name = "gibberish"
     category = "gibberish"
@@ -81,6 +98,31 @@ class GibberishDetector:
         stripped = text.strip()
         if len(stripped) < 8:
             return DetectorResult(self.name, self.category, 0.0, "info", {"reason": "too short"})
+
+        # ABSTAIN outside Latin script.
+        #
+        # Every feature below is an English-quality heuristic: Latin vowel
+        # ratio, English word ratio, Latin consonant runs. Applied to Chinese,
+        # Japanese, Korean, Cyrillic, Arabic, Hebrew, Thai, Devanagari or Greek
+        # they all read as "no vowels, no English words" and score 0.75 —
+        # comfortably over the 0.6 threshold. Every sentence in those scripts
+        # was therefore flagged as gibberish, which the P15b diagnostic caught
+        # from both directions at once: benign non-Latin traffic was a false
+        # positive, and a Japanese prompt injection appeared "detected" while
+        # the prompt-injection detector had scored it zero.
+        #
+        # Returning 0.0 rather than guessing is the honest answer: this
+        # detector has no model for these scripts, and a quality signal that
+        # cannot assess a script must not vote on it.
+        if not _is_predominantly_latin(stripped):
+            return DetectorResult(
+                self.name,
+                self.category,
+                0.0,
+                "info",
+                {"reason": "non-latin script — this detector cannot assess it"},
+            )
+
         ws = util.words(stripped)
         if not ws:
             # all symbols/digits — likely gibberish for a natural-language channel
