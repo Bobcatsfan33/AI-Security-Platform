@@ -45,10 +45,20 @@
 - ☐ Support runbooks, SLA definition, on-call, status page
 
 ## Coverage-ratchet exit (carried from Phase 0)
-- ☐ Raise the backend coverage floor (currently 70%, with 75.29% measured by
-  the full Postgres + Redis suite on 2026-07-30) to the 80% standard. The
-  remaining concentration is in connector generation paths, API routes,
-  policy cache, reports, and SCIM services; CI prevents regression below 70%.
+- ☑ Raise the backend coverage floor to the 80% standard. Measured coverage of
+  `app` is **84.05%** under the full Postgres + Redis suite (2026-07-31, 1392
+  passed / 1 skipped), up from 75.29%, and `fail_under` is raised 70 → 80 so CI
+  prevents regression below the target itself. The concentrations this item
+  named are closed: connector `generate()` and error paths, API routes,
+  policy-cache invalidation and failure modes, report generation, and SCIM
+  lifecycle and malformed-input handling. No `# pragma: no cover`, `omit`
+  entry, or exclusion was added to reach the number — the floor sits below
+  measured coverage only to absorb ordinary variance, not to hide untested code.
+  Two latent defects the new tests surfaced were fixed rather than asserted
+  around: a malformed policy-invalidation message killed the Redis subscriber
+  for an entire org (leaving a retired policy enforceable behind a silently
+  dead cache), and an out-of-taxonomy finding severity raised `KeyError`
+  through report generation.
 - ☑ Enforce the repository-wide Ruff baseline in CI. The full `app` and
   `tests` trees are clean; narrowly documented exceptions preserve FastAPI,
   SCIM, and public plugin naming contracts rather than disabling rule families.

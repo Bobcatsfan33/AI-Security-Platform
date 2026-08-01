@@ -39,7 +39,18 @@ pytestmark = pytest.mark.unit
 _TESTS_ROOT = pathlib.Path(__file__).resolve().parent.parent
 
 # Test files that specifically assert cross-org isolation.
-_TENANT_ISOLATION_FILES = ("test_tenant_isolation.py", "test_tenant_guard.py")
+#
+# A file earns a place here by asserting that a sibling org sees nothing —
+# not merely by making a request with two different org ids. Adding a file
+# that does not carry that assertion silently credits every prefix it
+# touches, which converts this ratchet into a rubber stamp.
+_TENANT_ISOLATION_FILES = (
+    "test_tenant_isolation.py",
+    "test_tenant_guard.py",
+    # P12: the CrossTenantIsolation class asserts a foreign policy is 404 on
+    # read, cannot be updated or deleted, and never appears in a list.
+    "test_api_authorization.py",
+)
 
 
 def _api_prefix() -> str:
@@ -78,7 +89,6 @@ NEEDS_HTTP_TESTS: dict[str, str] = {
     "/dashboards": "Phase 4 — operability phase covers the runtime views.",
     "/runtime": "Phase 2 — covered by the agent failure-mode matrix.",
     "/narratives": "Phase 4 — service tests only (test_narratives, test_narrative_store).",
-    "/policies": "Phase 2 — policy cache behaviour is tested from the agent side first.",
     "/suppressions": "Phase 4 — no tests at any layer.",
     "/validation": "Phase 3 — detection efficacy phase covers the scorecard surface.",
     "/remediation": "Phase 4 — no tests at any layer.",
@@ -94,17 +104,20 @@ NEEDS_HTTP_TESTS: dict[str, str] = {
     # /mcp retired here: test_mcp_api.py drives all 8 endpoints over HTTP. Its
     # tenant-isolation row below stays until the cross-org test lands (the two
     # ratchets shrink separately, by design — see this module's header).
+    #
+    # /policies retired in P12: test_api_authorization.py drives the router over
+    # HTTP for authn, role authorization, malformed input, and cross-org access.
+    # Its tenant-isolation row went at the same time — unusually, both ratchets
+    # shrank in one commit because the same file carries both classes of test.
 }
 
 # Guardrail 2: every tenant-scoped surface proves a sibling org cannot read it.
 # A stricter claim than "an HTTP test exists", and tracked separately.
 NEEDS_TENANT_ISOLATION_TESTS: dict[str, str] = {
-    "/auth": "Phase 4 — org-scoping is asserted at the service layer only.",
     "/anomalies": "Phase 1 — lands with the attack graph HTTP tests.",
     "/dashboards": "Phase 4 — operability phase.",
     "/runtime": "Phase 2 — telemetry ingest is org-scoped by agent credential.",
     "/narratives": "Phase 4 — no cross-org test at any layer.",
-    "/policies": "Phase 2 — a policy leak across orgs is a Tier A concern; tested with the mounts.",
     "/suppressions": "Phase 4 — no tests at any layer.",
     "/validation": "Phase 3 — detection efficacy phase.",
     "/aiguard": "Phase 1 — HTTP contract covered; cross-org behavior still needs an isolation test.",

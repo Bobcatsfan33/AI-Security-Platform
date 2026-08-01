@@ -142,9 +142,19 @@ def _executive_summary(
     out = io.StringIO()
     out.write(_header("Executive Summary", asset, evaluation, org_name))
 
+    # `findings.severity` is an unconstrained VARCHAR, so a detection source
+    # that emits a severity outside this table is a data condition, not an
+    # impossibility. Indexing directly would raise KeyError and 500 the whole
+    # report; silently dropping the row would under-report risk in a document
+    # an auditor reads. Count it, then declare it.
     sev_counts: dict[str, int] = {"critical": 0, "high": 0, "medium": 0, "low": 0, "info": 0}
+    unrecognized: dict[str, int] = {}
     for f in findings:
-        sev_counts[f.get("severity", "medium")] += 1
+        severity = f.get("severity") or "medium"
+        if severity in sev_counts:
+            sev_counts[severity] += 1
+        else:
+            unrecognized[str(severity)] = unrecognized.get(str(severity), 0) + 1
 
     out.write("## Risk Posture\n\n")
     out.write(
@@ -153,8 +163,11 @@ def _executive_summary(
         f"| High | {sev_counts['high']} |\n"
         f"| Medium | {sev_counts['medium']} |\n"
         f"| Low | {sev_counts['low']} |\n"
-        f"| Info | {sev_counts['info']} |\n\n"
+        f"| Info | {sev_counts['info']} |\n"
     )
+    for label, count in sorted(unrecognized.items()):
+        out.write(f"| Unrecognized ({label}) | {count} |\n")
+    out.write("\n")
 
     out.write("## Asset Context\n\n")
     out.write(
@@ -290,6 +303,23 @@ def _owasp_top10(
                 f"- **{f.get('title')}** ({f.get('severity')}) "
                 f"— risk {f.get('risk_score', 0):.0f}\n"
             )
+        out.write("\n")
+
+    # The matrix above is keyed to the pinned taxonomy. A finding mapped to
+    # an OWASP-LLM id outside it (a newer revision, a custom pack) got a
+    # bucket from setdefault but no heading, so it appeared in neither the
+    # matrix nor UNMAPPED — it vanished from an auditor-facing document
+    # while still counting as "mapped". Declare those buckets explicitly.
+    extra_ids = sorted(
+        cid
+        for cid, bucket in by_owasp.items()
+        if bucket and cid != "UNMAPPED" and cid not in OWASP_LLM_TOP_10
+    )
+    if extra_ids:
+        out.write("### Findings mapped outside this OWASP revision\n\n")
+        for cid in extra_ids:
+            for f in by_owasp[cid]:
+                out.write(f"- {cid}: **{f.get('title')}** ({f.get('severity')})\n")
         out.write("\n")
 
     if by_owasp["UNMAPPED"]:

@@ -69,10 +69,10 @@
       "title": "Technical security verification",
       "status": "partial",
       "frameworks": ["owasp-asvs-5.0.0", "csa-ccm-caiq-4.1"],
-      "evidence": [".github/workflows/security.yml", "docs/SECURITY-AUDIT-CHECKLIST.md", "docs/GA-READINESS-CHECKLIST.md"],
+      "evidence": [".github/workflows/security.yml", "docs/SECURITY-AUDIT-CHECKLIST.md", "docs/GA-READINESS-CHECKLIST.md", "backend/pyproject.toml", "backend/tests/integration/test_api_authorization.py", "backend/tests/unit/test_router_coverage_ratchet.py"],
       "gaps": [
         "No commissioned independent penetration test exists.",
-        "The backend suite measures 75.29 percent coverage and retains a 70 percent ratchet, below the 80 percent target; the security audit checklist is not externally attested."
+        "The security audit checklist is not externally attested. Test coverage no longer contributes to this gap: the backend suite measures 84.05 percent coverage of app under the full Postgres and Redis suite and the enforced ratchet is raised to the 80 percent target."
       ]
     },
     {

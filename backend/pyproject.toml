@@ -142,19 +142,24 @@ source = ["app"]
 omit = ["app/**/migrations/*", "app/main.py"]
 
 [tool.coverage.report]
-# Coverage RATCHET, not the target. The standard target is 80% (see
-# ~/.claude/rules and docs/ROADMAP-RAPIDE.md testing workstream). The suite
-# today covers 75.06% of app/ under the full Postgres + Redis suite.
-# Enforcing 80% against that reality would keep CI permanently red, which
-# hides real regressions.
+# Coverage RATCHET. The 80% target is REACHED: the suite measures 84.05% of
+# app/ under the full Postgres + Redis suite (P12), up from 75.06% at P11.
+# The rungs 24 → 40 → 60 → 70 → 80 are climbed; 80 is the last of them.
 #
-# So this floor is pinned just below current actual coverage and is meant
-# to be RATCHETED UP as the testing workstream adds tests — never lowered.
-# Raise it whenever a sprint pushes measured coverage past the next rung.
-# Ratchet rungs toward the 80% target: 24 → 40 → 60 → 70 → 80.
-# Contract, integration, tenant-isolation, detector, and release-assurance
-# coverage now clears 70. The final 80% rung needs the remaining connector
-# generate() paths, API routes, policy cache, reports, and SCIM services.
-fail_under = 70
+# The floor stays a floor, not a ceiling, and may only be RATCHETED UP —
+# never lowered. It is pinned at the 80% target rather than at the measured
+# 84.05% deliberately: the ~4 points of headroom absorb ordinary variance
+# (a skipped live-credential test, a branch that only runs under a service
+# that is briefly unavailable) without turning CI red for a reason that has
+# nothing to do with a regression. A floor that flaps gets ignored, and an
+# ignored floor protects nothing.
+#
+# Do not buy headroom with `# pragma: no cover`, new `omit` entries, or
+# exclusions. The number is only worth what it measures.
+#
+# P12 closed the areas the P11 note named as outstanding: connector
+# generate() and error paths, API routes, policy-cache invalidation and
+# failure modes, report generation, and SCIM lifecycle and malformed input.
+fail_under = 80
 show_missing = true
 skip_covered = false
