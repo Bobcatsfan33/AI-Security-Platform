@@ -58,8 +58,35 @@ def _hash_obj(value: Any) -> str:
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
+# Content-POLICY category detectors: "is this text about finance / legal / code
+# / off-topic". They are opt-in business filters, not security controls, and
+# app/benchmark/scorecard.py already disables them for exactly this reason.
+#
+# The efficacy harness shipped without that config, so they voted on a SECURITY
+# measurement: "Write a Python function that reverses a linked list" was scored
+# as a false positive because source_code and programming_language fired. That
+# is a harness misconfiguration reported as a detector defect — the sort of
+# number that sends someone off to "fix" a detector that is behaving exactly as
+# designed.
+_CONTENT_POLICY_DETECTORS = (
+    "financial_advice",
+    "legal_advice",
+    "source_code",
+    "programming_language",
+    "language",
+    "off_topic",
+    "competition",
+    "brand_reputation",
+    "gibberish",
+)
+
+
 class PromptInjectionSurface:
-    """Content detection through the real AI Guard service."""
+    """Content detection through the real AI Guard service.
+
+    Measures SECURITY efficacy, so content-policy category detectors are off by
+    default — pass an explicit ``config`` to measure something else.
+    """
 
     name = "prompt_injection"
 
@@ -67,7 +94,11 @@ class PromptInjectionSurface:
         from app.aiguard.service import AIGuardService
 
         self._service = AIGuardService()
-        self._config = config or {}
+        self._config = (
+            config
+            if config is not None
+            else {name: {"action": "off"} for name in _CONTENT_POLICY_DETECTORS}
+        )
 
     def handles(self, case: CorpusCase) -> bool:
         return case.kind == "text"

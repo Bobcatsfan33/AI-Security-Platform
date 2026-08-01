@@ -1,0 +1,165 @@
+{
+  "bindings": {
+    "corpora": [
+      {
+        "cases": 26,
+        "id": "synthetic-hard-negative-heldout",
+        "labeling_protocol": {
+          "adjudication": "none \u2014 single author, no second opinion",
+          "inter_annotator_agreement": "not applicable (single labeler)",
+          "labelers": "1 (the author)",
+          "method": "authored-with-intent, held out: written to be examples of their declared labels and hash-pinned before the detector change, so labels could not drift to match an outcome. Ground truth is the author's intent, not an observation."
+        },
+        "provenance": {
+          "authorization": "none required \u2014 contains no customer, tenant, or personal data",
+          "collected_at": "2026-08-01",
+          "collected_by": "AISP engineering (P15b sprint)",
+          "license": "BUSL-1.1 (same as the repository); no third-party data included",
+          "source": "hand-authored held-out set for the P15b hard-negative work"
+        },
+        "representative": false,
+        "sha256": "94745cc77a469b290036001f09e1f0923e0f1b105531bfac285d2901869b9e3e",
+        "split": "test"
+      }
+    ],
+    "git_revision": "a550222393c6d7a945e5e874cd3c47f0a86c412a",
+    "surfaces": [
+      {
+        "detector_config_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+        "detector_set_sha256": "a5e1e696fd873a3f5bd09833d52f4a43132ea686760bb5512cb8684aa49b4aff",
+        "stage2_mode": "stage2_heuristic",
+        "surface": "prompt_injection"
+      },
+      {
+        "maturity_min": "50",
+        "signal_kinds_sha256": "6bd3595f2372ac44115b9e1ce4e14635415fa691b1794fdf750afdc4905ed3e0",
+        "surface": "behavioural"
+      }
+    ]
+  },
+  "evidence_class": "synthetic-demonstration",
+  "external_gate": {
+    "id": "EXT-EFFICACY",
+    "note": "This harness is engineering. The gate needs authorized representative corpora and an independent evaluator, neither of which this run provides.",
+    "status": "open"
+  },
+  "generated_at": "2026-08-01T17:36:34Z",
+  "independent_evaluation": false,
+  "representative": false,
+  "resumed_case_verdicts": 0,
+  "schema": "aisp.efficacy.report/1",
+  "surfaces": {
+    "prompt_injection": {
+      "overall": {
+        "counts": {
+          "false_negative": 0,
+          "false_positive": 9,
+          "true_negative": 11,
+          "true_positive": 6
+        },
+        "false_positive_rate": 0.45,
+        "false_positive_rate_ci": {
+          "high": 0.657915,
+          "low": 0.258198,
+          "method": "wilson-score-95"
+        },
+        "latency_ms": {
+          "count": 26,
+          "max": 1.229541994689498,
+          "p50": 0.3367079989402555,
+          "p95": 0.6559579996974207,
+          "p99": 1.229541994689498
+        },
+        "precision": 0.4,
+        "precision_ci": {
+          "high": 0.642532,
+          "low": 0.198245,
+          "method": "wilson-score-95"
+        },
+        "recall": 1.0,
+        "recall_ci": {
+          "high": 1.0,
+          "low": 0.609666,
+          "method": "wilson-score-95"
+        },
+        "slice": "prompt_injection:overall"
+      },
+      "slices": [
+        {
+          "counts": {
+            "false_negative": 0,
+            "false_positive": 9,
+            "true_negative": 11,
+            "true_positive": 6
+          },
+          "false_positive_rate": 0.45,
+          "false_positive_rate_ci": {
+            "high": 0.657915,
+            "low": 0.258198,
+            "method": "wilson-score-95"
+          },
+          "latency_ms": {
+            "count": 26,
+            "max": 1.229541994689498,
+            "p50": 0.3367079989402555,
+            "p95": 0.6559579996974207,
+            "p99": 1.229541994689498
+          },
+          "precision": 0.4,
+          "precision_ci": {
+            "high": 0.642532,
+            "low": 0.198245,
+            "method": "wilson-score-95"
+          },
+          "recall": 1.0,
+          "recall_ci": {
+            "high": 1.0,
+            "low": 0.609666,
+            "method": "wilson-score-95"
+          },
+          "slice": "prompt_injection:benign_hard_negative"
+        },
+        {
+          "counts": {
+            "false_negative": 0,
+            "false_positive": 0,
+            "true_negative": 1,
+            "true_positive": 1
+          },
+          "false_positive_rate": 0.0,
+          "false_positive_rate_ci": {
+            "high": 0.793451,
+            "low": 0.0,
+            "method": "wilson-score-95"
+          },
+          "latency_ms": {
+            "count": 2,
+            "max": 0.5669160018442199,
+            "p50": 0.32870799623196945,
+            "p95": 0.5669160018442199,
+            "p99": 0.5669160018442199
+          },
+          "precision": 1.0,
+          "precision_ci": {
+            "high": 1.0,
+            "low": 0.206549,
+            "method": "wilson-score-95"
+          },
+          "recall": 1.0,
+          "recall_ci": {
+            "high": 1.0,
+            "low": 0.206549,
+            "method": "wilson-score-95"
+          },
+          "slice": "prompt_injection:multilingual"
+        }
+      ]
+    }
+  },
+  "unevaluated_slices": [
+    {
+      "reason": "no authorized corpus: this slice cannot be satisfied by synthetic data, and no manifest declares representative=true with an authorization. EXT-EFFICACY remains open.",
+      "slice": "customer_distribution"
+    }
+  ]
+}

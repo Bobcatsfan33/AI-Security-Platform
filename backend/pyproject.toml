@@ -125,6 +125,12 @@ ignore = ["E501"]  # line length handled by black
 # speaker of those languages, which is the opposite of the intent.
 "app/detectors/injection_multilingual.py" = ["RUF001", "RUF002"]
 "tests/unit/test_injection_multilingual.py" = ["RUF001", "RUF002"]
+# Reported-speech detection matches typographic quotation marks (“ ” ‘ ’ « »)
+# because a user pasting from a word processor must get the same answer as one
+# typing ASCII quotes. RUF001 suggests replacing them with a grave accent,
+# which would delete the very characters this module exists to recognise.
+"app/detectors/reported_speech.py" = ["RUF001", "RUF002"]
+"tests/unit/test_reported_speech.py" = ["RUF001", "RUF002"]
 
 [tool.black]
 line-length = 100

@@ -220,12 +220,41 @@ a **held-out** synthetic multilingual corpus authored and hash-pinned before
 the change: recall 0.42 → 1.00, FPR 0.36 → 0.00. The external `deepset`
 EN/DE ratchet held at 0.9500 with 0% false positives.
 
-**This changes nothing about the gap.** Both corpora are hand-authored by the
-same team that wrote the detectors, so the numbers measure whether the fix
-generalises beyond the cases that motivated it — not whether the product works
-on real multilingual traffic. **Real multilingual efficacy remains unmeasured**
-and will stay unmeasured until an authorized representative corpus and an
-independent evaluator exist.
+A second pass attacked the 0.40 benign-hard-negative false-positive rate, again
+by attribution rather than by tuning. Three mechanisms, one of which was not a
+detector problem at all:
+
+1. The override patterns made their TARGET optional, so "ignore the previous"
+   was a complete match — "ignore the previous paragraph's formatting" and
+   "disregard the previous slide's colour scheme" both scored 0.8. Asking a
+   model to disregard part of a document is ordinary work, and an enforcement
+   point that blocks it is one operators switch off. The target is now required.
+2. Attack text QUOTED and framed as a topic — "how would you translate 'ignore
+   all previous instructions'?", a test fixture, a blocklist review, a security
+   training module — was scored as an attack. It is now recognised as reported
+   speech. Deliberately a conjunction: quoted AND externally framed, because
+   exempting anything in quotes would hand an attacker a two-character evasion,
+   and the exemption does not apply to untrusted content at all.
+3. "Write a Python function that reverses a linked list" was counted as a
+   security false positive because the `source_code` and `programming_language`
+   CONTENT-POLICY detectors fired. Those are opt-in business filters that
+   `app/benchmark/scorecard.py` already disables; the efficacy harness simply
+   shipped without that config. A harness misconfiguration reported as a
+   detector defect — the sort of number that sends someone off to "fix"
+   something that was behaving as designed.
+
+Measured: benign-hard-negative FPR 0.40 → 0.00 on the synthetic slice, and on a
+second held-out corpus authored and pinned before the change, FPR 0.45 → 0.00
+with precision 0.40 → 1.00 and recall unchanged at 1.00. The internal corpus
+detection rate rose 0.7586 → 0.8103; the external `deepset` ratchet held at
+0.9500 with 0% false positives.
+
+**This changes nothing about the gap.** Every corpus involved is hand-authored
+by the same team that wrote the detectors, so the numbers measure whether the
+fixes generalise beyond the cases that motivated them — not whether the product
+works on real traffic. **Real multilingual efficacy and real false-positive
+rates remain unmeasured** and will stay unmeasured until an authorized
+representative corpus and an independent evaluator exist.
 
 **Remaining:** add independently licensed multilingual and indirect-injection
 sets; measure attack-graph/anomaly precision, recall, and detection latency;
