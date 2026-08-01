@@ -155,12 +155,16 @@ jobs:
           # guarding looks exactly like a guard that was never needed — so the
           # helper also rejects an ARGUMENT error, which would otherwise let a
           # typo masquerade as a passing negative test.
+          #
+          # The assignment lives in the `if` CONDITION on purpose. Actions runs
+          # steps as `bash -e`, and a bare `out=$(failing-command)` aborts the
+          # whole step under errexit — before `rc=$?` is ever read — so every
+          # negative test died on the first one. Inside an `if`, errexit is
+          # suspended and the non-zero exit is the thing being measured.
           refuse() {
             local why="$1"; shift
-            local out rc
-            out=$(helm template ci deploy/helm/aisp-data-tier -f /tmp/data-tier-values.yaml "$@" 2>&1)
-            rc=$?
-            if [ $rc -eq 0 ]; then
+            local out
+            if out=$(helm template ci deploy/helm/aisp-data-tier -f /tmp/data-tier-values.yaml "$@" 2>&1); then
               echo "::error::data tier rendered despite: ${why}"
               exit 1
             fi
