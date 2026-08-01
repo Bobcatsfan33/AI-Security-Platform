@@ -164,9 +164,17 @@ class CompiledPolicyCache:
         Payload shape (matches :func:`app.services.policy_pubsub.publish_policy_change`):
             {"policy_id": "<uuid>", "version": <int>, "event": "create|update|delete"}
         """
+        # The channel is untrusted input: a buggy publisher — or anything
+        # else that can reach Redis — can put a non-string policy_id on it.
+        # uuid.UUID() answers that with TypeError (None) or AttributeError
+        # (int, list), neither of which is a ValueError. Letting either
+        # escape kills _subscribe_loop for the whole org, and a dead
+        # subscriber is silent: the cache keeps serving the snapshot it
+        # already had, so a retired policy stays enforceable and a tightened
+        # one never lands. Drop the message instead.
         try:
             policy_id = uuid.UUID(payload["policy_id"])
-        except (KeyError, ValueError):
+        except (KeyError, ValueError, TypeError, AttributeError):
             logger.warning("policy_cache_invalid_payload", extra={"payload": payload})
             return
 
