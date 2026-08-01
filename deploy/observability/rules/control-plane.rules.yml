@@ -1,0 +1,217 @@
+# Control-plane alert rules (P16a).
+#
+# Plain Prometheus rule groups rather than a PrometheusRule CRD, so promtool
+# can unit-test them directly and the same file can be loaded by a bare
+# Prometheus, a rule-file ConfigMap, or wrapped in the CRD. A rule that only
+# exists inside a Kubernetes object is a rule nobody tests.
+#
+# Every rule here is exercised by control-plane.rules_test.yml, which feeds the
+# triggering series and asserts the alert fires — and, where it matters,
+# asserts it does NOT fire on the healthy series. An alert nobody has seen fire
+# is a hypothesis.
+#
+# `for:` durations are deliberate. 0m is for conditions where a single
+# occurrence is already the incident (a fail-open served real traffic without
+# controls; the audit chain does not break transiently). Longer windows are for
+# conditions that are only meaningful when sustained, so a scrape blip or a
+# rolling restart does not page anyone.
+
+groups:
+  - name: aisp.control-plane.security
+    rules:
+      # A request was served without the controls that were supposed to apply.
+      # One is enough: it already happened, and there is no threshold below
+      # which "we enforced nothing" is acceptable.
+      - alert: AispFailOpen
+        expr: increase(aisp_fail_open_total[5m]) > 0
+        for: 0m
+        labels:
+          severity: critical
+          category: security
+        annotations:
+          summary: "Control plane served traffic without full controls (stage {{ $labels.stage }})"
+          description: >-
+            aisp_fail_open_total increased, meaning at least one request was
+            allowed while a policy stage was unavailable. Traffic was NOT
+            inspected as intended.
+          runbook_url: https://github.com/Bobcatsfan33/AI-Security-Platform/blob/main/docs/OPERATOR-RUNBOOK.md#fail-open
+
+      # No policy found at an enforcement point. Alerts on BOTH decisions, at
+      # different severities: failing open is an active exposure, failing
+      # closed is an outage. Only alerting on the first would leave a
+      # self-inflicted denial of service invisible.
+      - alert: AispPolicyAbsentFailedOpen
+        expr: increase(aisp_policy_absent_total{decision="failed_open"}[5m]) > 0
+        for: 0m
+        labels:
+          severity: critical
+          category: security
+        annotations:
+          summary: "Enforcement point found no policy and allowed the request"
+          runbook_url: https://github.com/Bobcatsfan33/AI-Security-Platform/blob/main/docs/OPERATOR-RUNBOOK.md#policy-absence
+
+      - alert: AispPolicyAbsentFailedClosed
+        expr: increase(aisp_policy_absent_total{decision="failed_closed"}[5m]) > 5
+        for: 5m
+        labels:
+          severity: warning
+          category: availability
+        annotations:
+          summary: "Sustained policy absence is denying traffic"
+          description: >-
+            Failing closed is correct, but a sustained rate means policy
+            distribution is broken and tenants are being denied.
+          runbook_url: https://github.com/Bobcatsfan33/AI-Security-Platform/blob/main/docs/OPERATOR-RUNBOOK.md#policy-absence
+
+      # Residency routing refusals. A trickle is normal (a stale client, a
+      # misrouted probe); a spike means traffic is being sent to the wrong cell
+      # systematically, which is a routing failure rather than a client bug.
+      - alert: AispRegionalMismatchSpike
+        expr: sum(rate(aisp_tenant_region_rejections_total[5m])) > 0.2
+        for: 10m
+        labels:
+          severity: warning
+          category: security
+        annotations:
+          summary: "Sustained tenant-region rejections — traffic is reaching the wrong cell"
+          runbook_url: https://github.com/Bobcatsfan33/AI-Security-Platform/blob/main/docs/OPERATOR-RUNBOOK.md#regional-mismatch
+
+      # Authentication anomalies. Threshold-based rather than any-occurrence:
+      # a handful of expired tokens per minute is ordinary client behaviour,
+      # and paging on it trains everyone to ignore the alert.
+      - alert: AispAuthAnomalySpike
+        expr: sum(rate(aisp_auth_anomalies_total[5m])) > 1
+        for: 5m
+        labels:
+          severity: warning
+          category: security
+        annotations:
+          summary: "Elevated authentication failures"
+          runbook_url: https://github.com/Bobcatsfan33/AI-Security-Platform/blob/main/docs/OPERATOR-RUNBOOK.md#auth-anomalies
+
+      # Signature and revocation failures are treated separately and harshly:
+      # unlike an expired token these do not happen by accident.
+      - alert: AispAuthForgerySuspected
+        expr: increase(aisp_auth_anomalies_total{reason=~"invalid_signature|unknown_key_id|replayed_refresh"}[5m]) > 0
+        for: 0m
+        labels:
+          severity: critical
+          category: security
+        annotations:
+          summary: "Token forgery or replay indicator ({{ $labels.reason }})"
+          runbook_url: https://github.com/Bobcatsfan33/AI-Security-Platform/blob/main/docs/OPERATOR-RUNBOOK.md#auth-anomalies
+
+      # The audit chain is hash-linked. A break is a tamper indication, so
+      # there is no threshold and no `for` window.
+      - alert: AispAuditChainVerificationFailed
+        expr: increase(aisp_audit_chain_verification_failures_total[15m]) > 0
+        for: 0m
+        labels:
+          severity: critical
+          category: integrity
+        annotations:
+          summary: "Audit-chain verification failed ({{ $labels.check }})"
+          description: >-
+            The hash-chained audit log did not verify. Treat as potential
+            tampering until proven otherwise; preserve the chain before
+            restarting anything.
+          runbook_url: https://github.com/Bobcatsfan33/AI-Security-Platform/blob/main/docs/OPERATOR-RUNBOOK.md#audit-chain
+
+  - name: aisp.control-plane.continuity
+    rules:
+      # Detection continuity. The consumer is the component that turns ingested
+      # events into detections, so a stalled heartbeat means detection has
+      # stopped even though every HTTP probe is green.
+      - alert: AispEpaHeartbeatStale
+        expr: aisp_epa_heartbeat_age_seconds > 300
+        for: 5m
+        labels:
+          severity: critical
+          category: detection-continuity
+        annotations:
+          summary: "EPA consumer heartbeat is stale — detection may have stopped"
+          description: >-
+            No EPA consumer has recorded progress for over 5 minutes. The pods
+            may still be Running: this is the condition that is invisible to a
+            liveness probe on the fleet as a whole.
+          runbook_url: https://github.com/Bobcatsfan33/AI-Security-Platform/blob/main/docs/OPERATOR-RUNBOOK.md#epa-heartbeat
+
+      - alert: AispPipelineBacklogGrowing
+        expr: aisp_pipeline_backlog_events > 10000
+        for: 10m
+        labels:
+          severity: warning
+          category: detection-continuity
+        annotations:
+          summary: "Pipeline backlog above threshold at stage {{ $labels.stage }}"
+          description: >-
+            Detections are being produced late. Latency of detection is a
+            security property, not only a performance one.
+          runbook_url: https://github.com/Bobcatsfan33/AI-Security-Platform/blob/main/docs/OPERATOR-RUNBOOK.md#pipeline-backlog
+
+      # Ingest stopping entirely. Deliberately NOT folded into the backlog
+      # alert: a backlog of zero and an ingest rate of zero look identical on a
+      # queue-depth graph, and one of them is the pipeline being dead.
+      - alert: AispIngestStopped
+        expr: sum(rate(aisp_runtime_events_ingested_total[10m])) == 0
+        for: 15m
+        labels:
+          severity: critical
+          category: detection-continuity
+        annotations:
+          summary: "No runtime events ingested for 15 minutes"
+          runbook_url: https://github.com/Bobcatsfan33/AI-Security-Platform/blob/main/docs/OPERATOR-RUNBOOK.md#ingest-stopped
+
+      # The synthetic canary. This is the end-to-end statement: not "the
+      # process is up" but "an attack we injected was actually detected".
+      - alert: AispCanaryFailing
+        expr: aisp_canary_result == 0
+        for: 10m
+        labels:
+          severity: critical
+          category: detection-continuity
+        annotations:
+          summary: "Synthetic canary {{ $labels.scenario }} is failing"
+          description: >-
+            The canary injects a known attack and asserts it is detected. A
+            failure means the detection path is broken end to end, regardless
+            of what the component-level health checks say.
+          runbook_url: https://github.com/Bobcatsfan33/AI-Security-Platform/blob/main/docs/OPERATOR-RUNBOOK.md#canary
+
+      # A canary that stops REPORTING is as bad as one that fails, and looks
+      # like nothing at all on a dashboard.
+      - alert: AispCanaryNotReporting
+        expr: absent(aisp_canary_result)
+        for: 15m
+        labels:
+          severity: warning
+          category: detection-continuity
+        annotations:
+          summary: "Synthetic canary has stopped reporting"
+          runbook_url: https://github.com/Bobcatsfan33/AI-Security-Platform/blob/main/docs/OPERATOR-RUNBOOK.md#canary
+
+  - name: aisp.control-plane.availability
+    rules:
+      - alert: AispHighErrorRate
+        expr: >-
+          sum(rate(aisp_http_requests_total{status="5xx"}[5m]))
+          / clamp_min(sum(rate(aisp_http_requests_total[5m])), 0.001) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+          category: availability
+        annotations:
+          summary: "Control-plane 5xx rate above 5%"
+          runbook_url: https://github.com/Bobcatsfan33/AI-Security-Platform/blob/main/docs/OPERATOR-RUNBOOK.md#availability
+
+      - alert: AispHighLatencyP95
+        expr: >-
+          histogram_quantile(0.95,
+            sum(rate(aisp_http_request_duration_seconds_bucket[5m])) by (le)) > 1
+        for: 10m
+        labels:
+          severity: warning
+          category: latency
+        annotations:
+          summary: "Control-plane p95 latency above 1s"
+          runbook_url: https://github.com/Bobcatsfan33/AI-Security-Platform/blob/main/docs/OPERATOR-RUNBOOK.md#latency

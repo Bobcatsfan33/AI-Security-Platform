@@ -138,9 +138,10 @@
       "title": "Operational observability and SLO evidence",
       "status": "partial",
       "frameworks": ["csa-ccm-caiq-4.1", "csa-ai-caiq-1.0.2"],
-      "evidence": ["backend/app/observability/metrics.py", "backend/app/observability/tracing.py", "runtime-agent/management/diagnostic.go", "runtime-agent/management/diagnostic_test.go", "deploy/helm/ai-security-agent/templates/prometheusrule.yaml", "docs/BENCHMARKS.md", "docs/OPERATOR-RUNBOOK.md"],
+      "evidence": ["backend/app/observability/metrics.py", "backend/app/observability/tracing.py", "runtime-agent/management/diagnostic.go", "runtime-agent/management/diagnostic_test.go", "deploy/helm/ai-security-agent/templates/prometheusrule.yaml", "docs/BENCHMARKS.md", "docs/OPERATOR-RUNBOOK.md", "docs/OBSERVABILITY.md", "deploy/observability/rules/control-plane.rules.yml", "deploy/observability/rules/control-plane.rules_test.yml", "deploy/observability/dashboards/control-plane.json", "deploy/observability/canary/canary-cronjob.yaml", "backend/app/observability/canary.py", "backend/tests/unit/test_observability_instrumentation.py"],
       "gaps": [
-        "Approved production SLOs, alert validation, and sustained customer-topology evidence remain open."
+        "Production SLOs are PROPOSED only and are not approved by the business, no error-budget policy exists, no on-call rotation is staffed, and no incident has been exercised. EXT-OPERATIONS remains open.",
+        "Instrumentation now ships as code with tests: fourteen alert rules covering fail-open attempts, policy absence, regional mismatch rejections, authentication anomalies, audit-chain verification failures, pipeline backlog, EPA heartbeat staleness, ingest stoppage, canary failure, error rate, and latency, each exercised by a promtool unit test that feeds the triggering series and asserts the alert fires, with negative cases proving the rule stays quiet on healthy traffic. A dashboard-as-code covers availability, latency, detection continuity, ingestion lag, and heartbeat age, and its queries are parsed in CI. A synthetic canary exercises detection end to end in both directions, attack blocked and benign allowed, and publishes a fixed-cardinality result metric. Label cardinality is bounded by a closed value set per label and asserted by a test that refuses tenant-identifying or unbounded label names. Rule-level tests prove an expression fires; they do not prove anyone is paged."
       ]
     },
     {

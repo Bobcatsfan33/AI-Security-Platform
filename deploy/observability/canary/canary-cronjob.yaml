@@ -1,0 +1,80 @@
+# Synthetic detection canary, as a deployable CronJob.
+#
+# Runs the same code as `python -m app.observability.canary` locally, so what
+# is exercised in a cluster is what an engineer can reproduce on a laptop.
+#
+# Image digest is intentionally a placeholder that WILL NOT deploy: it is
+# supplied at apply time from the signed release, matching the digest-only rule
+# the charts enforce. A committed manifest carrying a real digest goes stale the
+# day after it is written and then quietly deploys an old build.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: aisp-detection-canary
+  labels:
+    app.kubernetes.io/name: aisp-detection-canary
+    app.kubernetes.io/part-of: ai-security-platform
+    app.kubernetes.io/component: canary
+spec:
+  # Every 5 minutes. Matched to the alert's `for: 10m` so two consecutive
+  # failures are needed before anyone is paged — one failed run during a
+  # rolling restart is not an incident.
+  schedule: "*/5 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 7
+  # A canary that hangs is a canary that stops reporting, which the
+  # AispCanaryNotReporting rule catches — but bounding it here means the gauge
+  # goes stale in minutes rather than whenever someone notices.
+  startingDeadlineSeconds: 120
+  jobTemplate:
+    spec:
+      backoffLimit: 0 # a retry would mask exactly the flakiness worth knowing about
+      activeDeadlineSeconds: 120
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: aisp-detection-canary
+            app.kubernetes.io/component: canary
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            fsGroup: 65532
+          containers:
+            - name: canary
+              # REQUIRED at apply time: --set or kustomize the digest in.
+              image: ghcr.io/bobcatsfan33/ai-security-platform@sha256:REPLACE_WITH_APPROVED_DIGEST
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]
+              command: ["python", "-m", "app.observability.canary"]
+              env:
+                - name: ENVIRONMENT
+                  value: production
+                - name: DEPLOYMENT_REGION
+                  valueFrom:
+                    configMapKeyRef:
+                      name: ai-security-platform-config
+                      key: deployment-region
+                # The canary talks to the detection path in-process, so it needs
+                # the same secret material as the API. It never reads tenant
+                # data: the probes are hard-coded strings.
+                - name: JWT_SECRET
+                  valueFrom:
+                    secretKeyRef:
+                      name: ai-security-platform-secrets
+                      key: jwt-secret
+                # Push to a Pushgateway, because a CronJob pod exits before any
+                # scrape could reach it. The gauge is fixed-cardinality, so the
+                # gateway accumulates a bounded set of series rather than one
+                # per run.
+                - name: PROMETHEUS_PUSHGATEWAY
+                  value: http://pushgateway.monitoring.svc.cluster.local:9091
+              resources:
+                requests: { cpu: "100m", memory: "512Mi" }
+                limits: { cpu: "1", memory: "2Gi" }
