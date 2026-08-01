@@ -166,10 +166,10 @@
       "title": "Detection efficacy, model integrity, and AI governance",
       "status": "partial",
       "frameworks": ["nist-ai-rmf-1.0", "csa-ai-caiq-1.0.2"],
-      "evidence": ["docs/AI-GUARD.md", "docs/efficacy/EXTERNAL-CORPUS.md", "backend/app/benchmark/scorecard.py", "docs/GAPS.md"],
+      "evidence": ["docs/AI-GUARD.md", "docs/efficacy/EXTERNAL-CORPUS.md", "backend/app/benchmark/scorecard.py", "docs/GAPS.md", "docs/EFFICACY-HARNESS.md", "backend/app/efficacy/manifest.py", "backend/app/efficacy/slices.py", "backend/tests/unit/test_efficacy_harness.py", "docs/evidence/p15/efficacy-report.json"],
       "gaps": [
-        "The single-source prompt-injection benchmark does not establish production efficacy across multilingual, multi-turn, indirect-injection, tool-call, or customer distribution shift.",
-        "Attack-graph and anomaly detection still lack independent efficacy evidence."
+        "No authorized representative corpus exists and no independent party has evaluated detection efficacy; every shipped corpus is synthetic and every report is labelled synthetic-demonstration. EXT-EFFICACY remains open.",
+        "An evaluation harness now covers both promoted detection surfaces, the content path and the attack-graph and anomaly path, and reports precision, recall, false-positive rate, detection latency, and Wilson score intervals per slice across multilingual, multi-turn, indirect-injection, tool-call, encoded-obfuscated, and benign-hard-negative axes. Corpora are hash-pinned with required provenance and labeling-protocol fields, train, calibration, and test overlap is refused before any metric is computed, and the customer-distribution slice refuses synthetic substitution rather than reporting a number. Only the harness is engineering; the representative data and the independent evaluation are external."
       ]
     }
   ],

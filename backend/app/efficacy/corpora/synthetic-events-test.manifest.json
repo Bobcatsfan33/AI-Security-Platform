@@ -1,0 +1,28 @@
+{
+  "authorization": "",
+  "description": "SYNTHETIC starter corpus for the behavioural (attack-graph / anomaly) surface. Event sequences, so the run covers more than the injection models.",
+  "id": "synthetic-events-test",
+  "labeling_protocol": {
+    "adjudication": "none \u2014 single author, no second opinion",
+    "inter_annotator_agreement": "not applicable (single labeler)",
+    "labelers": "1 (the author)",
+    "method": "authored-with-intent: each case was written to be an example of its declared label, so ground truth is the author's intent rather than an observation. This is the weakest labeling protocol there is and is acceptable ONLY because these corpora are explicitly synthetic."
+  },
+  "path": "synthetic_events_test.jsonl",
+  "provenance": {
+    "authorization": "none required \u2014 contains no customer, tenant, or personal data",
+    "collected_at": "2026-08-01",
+    "collected_by": "AISP engineering (P15a sprint)",
+    "license": "BUSL-1.1 (same as the repository); no third-party data included",
+    "source": "hand-authored by the AISP engineering team for harness development"
+  },
+  "representative": false,
+  "sha256": "54f6021e8ac3fe9d903a1ba4c71995f8a5b15acdce232386f64f090dd796aba9",
+  "slice_axes": [
+    "multi_turn",
+    "indirect_injection",
+    "tool_call_abuse",
+    "benign_hard_negative"
+  ],
+  "split": "test"
+}
