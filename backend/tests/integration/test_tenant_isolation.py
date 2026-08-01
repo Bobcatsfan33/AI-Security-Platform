@@ -68,6 +68,7 @@ async def two_orgs():
         await db.commit()
 
 
+@pytest.mark.tenant_isolation
 async def test_cross_tenant_isolation(app_client, two_orgs) -> None:
     org_a, org_b = two_orgs
     a = {"Authorization": f"Bearer {_token(org_a)}"}
@@ -112,6 +113,7 @@ async def test_cross_tenant_isolation(app_client, two_orgs) -> None:
         assert (await client.get("/v1/dashboard/summary", headers=a)).json()["total_assets"] >= 10
 
 
+@pytest.mark.tenant_isolation
 async def test_siem_exporter_config_is_org_scoped(app_client, two_orgs, monkeypatch) -> None:
     """SIEM exporter config lives in Organization.settings, addressed by name
     within the caller's org — so isolation is structural: org B's token can only
@@ -149,6 +151,7 @@ async def test_siem_exporter_config_is_org_scoped(app_client, two_orgs, monkeypa
         assert [e["name"] for e in a_list] == ["a-splunk"]
 
 
+@pytest.mark.tenant_isolation
 async def test_enterprise_identity_provisioning_is_org_scoped(
     app_client,
     two_orgs,
@@ -430,6 +433,7 @@ async def test_enterprise_identity_provisioning_is_org_scoped(
     }.issubset(audit_events)
 
 
+@pytest.mark.tenant_isolation
 async def test_aibom_is_org_scoped(app_client, two_orgs) -> None:
     """aibom endpoints load the asset by (id, org_id), so org B cannot inspect
     org A's asset through any of them — 404, not 403 (GAP-001 part 2, Tier A)."""
@@ -478,6 +482,7 @@ async def test_aibom_is_org_scoped(app_client, two_orgs) -> None:
             assert (await client.get(f"/v1/aibom/{asset_id}{suffix}", headers=b)).status_code == 404
 
 
+@pytest.mark.tenant_isolation
 async def test_mcp_is_org_scoped(app_client, two_orgs) -> None:
     """MCP surface (Tier A) is org-scoped across all three tables: a custom tool
     profile, an inspected call, and its violation, all created in org A, are
