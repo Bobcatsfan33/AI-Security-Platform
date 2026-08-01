@@ -553,6 +553,63 @@ class TestUnauthenticatedAuthSurfaces:
         assert after.status_code == 401, "a revoked jti must stop working immediately"
 
 
+class TestAuthIsOrgScopedAcrossTenants:
+    """``/auth`` is the surface that *mints* the org claim every other router
+    trusts, so a leak here is not one router's leak — it is every router's.
+
+    The properties below are about the identity boundary itself: a credential
+    minted for one org must never come back describing another, and revoking
+    one org's session must not touch the other's.
+    """
+
+    async def test_me_never_reports_a_foreign_org(self, app_client, org, other_org):
+        async with app_client as client:
+            mine = await client.get("/v1/auth/me", headers=_headers(org, "admin"))
+            theirs = await client.get("/v1/auth/me", headers=_headers(other_org, "admin"))
+
+        assert mine.json()["org_id"] == str(org)
+        assert theirs.json()["org_id"] == str(other_org)
+        assert mine.json()["org_id"] != theirs.json()["org_id"]
+
+    async def test_a_refresh_token_returns_an_access_token_for_its_own_org(
+        self, app_client, org, other_org
+    ):
+        """The redeemed token must carry the org the refresh token was issued
+        to. Reading the org from anywhere else — a header, the request body, a
+        cached last-seen value — would hand the caller a cross-tenant token."""
+        from app.auth.jwt_service import issue_token_pair
+
+        pair = await issue_token_pair(
+            org_id=other_org, user_id=uuid.uuid4(), role="analyst", auth_method="test"
+        )
+
+        async with app_client as client:
+            refreshed = await client.post(
+                "/v1/auth/refresh", json={"refresh_token": pair.refresh_token}
+            )
+            access = refreshed.json()["access_token"]
+            me = await client.get("/v1/auth/me", headers={"Authorization": f"Bearer {access}"})
+
+        assert me.json()["org_id"] == str(other_org)
+        assert me.json()["org_id"] != str(org)
+
+    async def test_logging_out_of_one_org_does_not_revoke_the_other(
+        self, app_client, org, other_org
+    ):
+        """Revocation is keyed on the token's jti. If it were keyed on
+        something coarser — the org, the subject, a shared prefix — one
+        tenant's logout would sign the other tenant out."""
+        mine = _headers(org, "admin")
+        theirs = _headers(other_org, "admin")
+
+        async with app_client as client:
+            assert (await client.post("/v1/auth/logout", headers=mine)).status_code == 204
+            still_valid = await client.get("/v1/auth/me", headers=theirs)
+
+        assert still_valid.status_code == 200
+        assert still_valid.json()["org_id"] == str(other_org)
+
+
 class TestRefreshFlow:
     async def test_an_unknown_refresh_token_is_401(self, app_client):
         async with app_client as client:
