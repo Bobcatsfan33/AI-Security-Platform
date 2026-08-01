@@ -199,10 +199,38 @@ multi-turn attacks, tool-call abuse, or realistic customer distribution shift.
 pipeline" are the product. A synthetic or single-source benchmark is a
 regression floor, not a production efficacy claim. A design partner's first
 question is still how the system performs on traffic shaped like theirs.
+**P15b update — synthetic-guided detector work, NOT new efficacy evidence.**
+The P15a harness measured 0.25 multilingual recall on its own synthetic slice,
+and a stage-by-stage diagnostic attributed every miss to two mechanisms rather
+than to model quality:
+
+1. The prompt-injection pattern table was English-only. French, Spanish, and
+   German override instructions produced **no detector hit at all**.
+2. The gibberish detector applied Latin-script quality heuristics (vowel ratio,
+   English word ratio) to every writing system, scoring 0.75 against a 0.6
+   threshold on any CJK, Cyrillic, or Arabic text. That flagged benign
+   non-English traffic *and* made one Japanese injection appear detected while
+   the prompt-injection detector had scored it zero — a pass that an aggregate
+   recall number could not distinguish from a real one.
+
+Both are fixed structurally (a slot-based multilingual signal table across 13
+languages generating both word orders; script-aware abstention in the gibberish
+detector). Measured on the synthetic slice: multilingual recall 0.25 → 1.00. On
+a **held-out** synthetic multilingual corpus authored and hash-pinned before
+the change: recall 0.42 → 1.00, FPR 0.36 → 0.00. The external `deepset`
+EN/DE ratchet held at 0.9500 with 0% false positives.
+
+**This changes nothing about the gap.** Both corpora are hand-authored by the
+same team that wrote the detectors, so the numbers measure whether the fix
+generalises beyond the cases that motivated it — not whether the product works
+on real multilingual traffic. **Real multilingual efficacy remains unmeasured**
+and will stay unmeasured until an authorized representative corpus and an
+independent evaluator exist.
+
 **Remaining:** add independently licensed multilingual and indirect-injection
 sets; measure attack-graph/anomaly precision, recall, and detection latency;
 publish confidence intervals; and replay labeled design-partner traffic under
-an approved privacy protocol. Phases 1 and 3.
+an approved privacy protocol. Phases 1 and 3. EXT-EFFICACY remains open.
 
 ### GAP-002 — Agent latency is a target, not a measurement — 🟡 pipeline latency MEASURED (Phase 2 inc 1)
 **Was:** `runtime-agent/README.md` presented "sub-15ms for `balanced` mode" as a

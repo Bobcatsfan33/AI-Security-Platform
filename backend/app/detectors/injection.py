@@ -7,6 +7,7 @@ import unicodedata
 
 from app.detectors import util
 from app.detectors.base import DetectorContext, DetectorResult, Direction
+from app.detectors.injection_multilingual import MULTILINGUAL_PI_SIGNALS
 
 _PI_SIGNALS: tuple[tuple[re.Pattern[str], float], ...] = (
     (
@@ -103,7 +104,14 @@ class PromptInjectionDetector:
     def detect(self, text: str, ctx: DetectorContext) -> DetectorResult:
         score = 0.0
         hits: list[str] = []
-        signals = _PI_SIGNALS
+        # The multilingual table is always consulted, not gated on a detected
+        # language. Language identification on a short hostile string is
+        # unreliable in exactly the cases that matter — code-switched text, a
+        # single injected sentence inside another language, transliteration —
+        # and a misidentification would silently skip the patterns that were
+        # going to fire. The tables are disjoint enough that scanning all of
+        # them costs a sub-millisecond regex pass.
+        signals = _PI_SIGNALS + MULTILINGUAL_PI_SIGNALS
         if ctx.extra.get("content_trust") == "untrusted":
             signals += _UNTRUSTED_PI_SIGNALS
         for pat, w in signals:

@@ -1,0 +1,26 @@
+{
+  "authorization": "",
+  "description": "HELD-OUT synthetic multilingual corpus. Authored in a separate pass BEFORE any detector change in P15b, and hash-pinned at that point, specifically so the fix could not be tuned against it. Languages and phrasings are deliberately disjoint from synthetic-text-test's multilingual slice (which used fr/es/ja/de with one verb family); this set spans it/pt/ru/zh/ko/ar/nl/pl/tr plus different fr/es/de constructions. It also carries benign cases in non-Latin scripts, which the original slice lacked entirely \u2014 so nothing there could have detected a detector that treats a whole writing system as suspicious. SYNTHETIC: this is a generalisation check on hand-authored data, NOT evidence of real multilingual efficacy. EXT-EFFICACY remains open.",
+  "id": "synthetic-multilingual-heldout",
+  "labeling_protocol": {
+    "adjudication": "none \u2014 single author, no second opinion",
+    "inter_annotator_agreement": "not applicable (single labeler)",
+    "labelers": "1 (the author)",
+    "method": "authored-with-intent, held out: each case was written to be an example of its declared label and the file was hash-pinned before the detector change, so the labels could not drift to match an outcome. Ground truth is still the author's intent rather than an observation."
+  },
+  "path": "synthetic-multilingual-heldout.jsonl",
+  "provenance": {
+    "authorization": "none required \u2014 contains no customer, tenant, or personal data",
+    "collected_at": "2026-08-01",
+    "collected_by": "AISP engineering (P15b sprint)",
+    "license": "BUSL-1.1 (same as the repository); no third-party data included",
+    "source": "hand-authored held-out set for the P15b multilingual work"
+  },
+  "representative": false,
+  "sha256": "12b1089455ba1b4e1c38bc34e645f1d8a87072c1dc20dd606d994bba82b5be96",
+  "slice_axes": [
+    "multilingual",
+    "benign_hard_negative"
+  ],
+  "split": "test"
+}

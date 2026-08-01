@@ -1,0 +1,461 @@
+{
+  "bindings": {
+    "corpora": [
+      {
+        "cases": 8,
+        "id": "synthetic-events-test",
+        "labeling_protocol": {
+          "adjudication": "none \u2014 single author, no second opinion",
+          "inter_annotator_agreement": "not applicable (single labeler)",
+          "labelers": "1 (the author)",
+          "method": "authored-with-intent: each case was written to be an example of its declared label, so ground truth is the author's intent rather than an observation. This is the weakest labeling protocol there is and is acceptable ONLY because these corpora are explicitly synthetic."
+        },
+        "provenance": {
+          "authorization": "none required \u2014 contains no customer, tenant, or personal data",
+          "collected_at": "2026-08-01",
+          "collected_by": "AISP engineering (P15a sprint)",
+          "license": "BUSL-1.1 (same as the repository); no third-party data included",
+          "source": "hand-authored by the AISP engineering team for harness development"
+        },
+        "representative": false,
+        "sha256": "54f6021e8ac3fe9d903a1ba4c71995f8a5b15acdce232386f64f090dd796aba9",
+        "split": "test"
+      },
+      {
+        "cases": 26,
+        "id": "synthetic-text-test",
+        "labeling_protocol": {
+          "adjudication": "none \u2014 single author, no second opinion",
+          "inter_annotator_agreement": "not applicable (single labeler)",
+          "labelers": "1 (the author)",
+          "method": "authored-with-intent: each case was written to be an example of its declared label, so ground truth is the author's intent rather than an observation. This is the weakest labeling protocol there is and is acceptable ONLY because these corpora are explicitly synthetic."
+        },
+        "provenance": {
+          "authorization": "none required \u2014 contains no customer, tenant, or personal data",
+          "collected_at": "2026-08-01",
+          "collected_by": "AISP engineering (P15a sprint)",
+          "license": "BUSL-1.1 (same as the repository); no third-party data included",
+          "source": "hand-authored by the AISP engineering team for harness development"
+        },
+        "representative": false,
+        "sha256": "fa11f1b899cf7a7cb014a5d9e769147d934fcba05f9e80f89ed294f116a452d3",
+        "split": "test"
+      }
+    ],
+    "git_revision": "c6ef0698c98746b0d5c2314826757538151d58b2",
+    "surfaces": [
+      {
+        "detector_config_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+        "detector_set_sha256": "a5e1e696fd873a3f5bd09833d52f4a43132ea686760bb5512cb8684aa49b4aff",
+        "stage2_mode": "stage2_heuristic",
+        "surface": "prompt_injection"
+      },
+      {
+        "maturity_min": "50",
+        "signal_kinds_sha256": "6bd3595f2372ac44115b9e1ce4e14635415fa691b1794fdf750afdc4905ed3e0",
+        "surface": "behavioural"
+      }
+    ]
+  },
+  "evidence_class": "synthetic-demonstration",
+  "external_gate": {
+    "id": "EXT-EFFICACY",
+    "note": "This harness is engineering. The gate needs authorized representative corpora and an independent evaluator, neither of which this run provides.",
+    "status": "open"
+  },
+  "generated_at": "2026-08-01T17:12:49Z",
+  "independent_evaluation": false,
+  "representative": false,
+  "resumed_case_verdicts": 0,
+  "schema": "aisp.efficacy.report/1",
+  "surfaces": {
+    "behavioural": {
+      "overall": {
+        "counts": {
+          "false_negative": 3,
+          "false_positive": 0,
+          "true_negative": 3,
+          "true_positive": 2
+        },
+        "false_positive_rate": 0.0,
+        "false_positive_rate_ci": {
+          "high": 0.561497,
+          "low": 0.0,
+          "method": "wilson-score-95"
+        },
+        "latency_ms": {
+          "count": 8,
+          "max": 0.6772920023649931,
+          "p50": 0.2269160031573847,
+          "p95": 0.6772920023649931,
+          "p99": 0.6772920023649931
+        },
+        "precision": 1.0,
+        "precision_ci": {
+          "high": 1.0,
+          "low": 0.34238,
+          "method": "wilson-score-95"
+        },
+        "recall": 0.4,
+        "recall_ci": {
+          "high": 0.769276,
+          "low": 0.117621,
+          "method": "wilson-score-95"
+        },
+        "slice": "behavioural:overall"
+      },
+      "slices": [
+        {
+          "counts": {
+            "false_negative": 0,
+            "false_positive": 0,
+            "true_negative": 2,
+            "true_positive": 0
+          },
+          "false_positive_rate": 0.0,
+          "false_positive_rate_ci": {
+            "high": 0.65762,
+            "low": 0.0,
+            "method": "wilson-score-95"
+          },
+          "latency_ms": {
+            "count": 2,
+            "max": 0.3151659984723665,
+            "p50": 0.21737499628216028,
+            "p95": 0.3151659984723665,
+            "p99": 0.3151659984723665
+          },
+          "precision": null,
+          "precision_ci": {
+            "high": 1.0,
+            "low": 0.0,
+            "method": "wilson-score-95 (no trials)"
+          },
+          "recall": null,
+          "recall_ci": {
+            "high": 1.0,
+            "low": 0.0,
+            "method": "wilson-score-95 (no trials)"
+          },
+          "slice": "behavioural:benign_hard_negative"
+        },
+        {
+          "counts": {
+            "false_negative": 0,
+            "false_positive": 0,
+            "true_negative": 0,
+            "true_positive": 1
+          },
+          "false_positive_rate": null,
+          "false_positive_rate_ci": {
+            "high": 1.0,
+            "low": 0.0,
+            "method": "wilson-score-95 (no trials)"
+          },
+          "latency_ms": {
+            "count": 1,
+            "max": 0.2269160031573847,
+            "p50": 0.2269160031573847,
+            "p95": 0.2269160031573847,
+            "p99": 0.2269160031573847
+          },
+          "precision": 1.0,
+          "precision_ci": {
+            "high": 1.0,
+            "low": 0.206549,
+            "method": "wilson-score-95"
+          },
+          "recall": 1.0,
+          "recall_ci": {
+            "high": 1.0,
+            "low": 0.206549,
+            "method": "wilson-score-95"
+          },
+          "slice": "behavioural:indirect_injection"
+        },
+        {
+          "counts": {
+            "false_negative": 1,
+            "false_positive": 0,
+            "true_negative": 0,
+            "true_positive": 0
+          },
+          "false_positive_rate": null,
+          "false_positive_rate_ci": {
+            "high": 1.0,
+            "low": 0.0,
+            "method": "wilson-score-95 (no trials)"
+          },
+          "latency_ms": {
+            "count": 1,
+            "max": 0.3574579968699254,
+            "p50": 0.3574579968699254,
+            "p95": 0.3574579968699254,
+            "p99": 0.3574579968699254
+          },
+          "precision": null,
+          "precision_ci": {
+            "high": 1.0,
+            "low": 0.0,
+            "method": "wilson-score-95 (no trials)"
+          },
+          "recall": 0.0,
+          "recall_ci": {
+            "high": 0.793451,
+            "low": 0.0,
+            "method": "wilson-score-95"
+          },
+          "slice": "behavioural:multi_turn"
+        },
+        {
+          "counts": {
+            "false_negative": 1,
+            "false_positive": 0,
+            "true_negative": 1,
+            "true_positive": 0
+          },
+          "false_positive_rate": 0.0,
+          "false_positive_rate_ci": {
+            "high": 0.793451,
+            "low": 0.0,
+            "method": "wilson-score-95"
+          },
+          "latency_ms": {
+            "count": 2,
+            "max": 0.3151659984723665,
+            "p50": 0.1896250032586977,
+            "p95": 0.3151659984723665,
+            "p99": 0.3151659984723665
+          },
+          "precision": null,
+          "precision_ci": {
+            "high": 1.0,
+            "low": 0.0,
+            "method": "wilson-score-95 (no trials)"
+          },
+          "recall": 0.0,
+          "recall_ci": {
+            "high": 0.793451,
+            "low": 0.0,
+            "method": "wilson-score-95"
+          },
+          "slice": "behavioural:tool_call_abuse"
+        }
+      ]
+    },
+    "prompt_injection": {
+      "overall": {
+        "counts": {
+          "false_negative": 5,
+          "false_positive": 3,
+          "true_negative": 7,
+          "true_positive": 11
+        },
+        "false_positive_rate": 0.3,
+        "false_positive_rate_ci": {
+          "high": 0.603222,
+          "low": 0.107791,
+          "method": "wilson-score-95"
+        },
+        "latency_ms": {
+          "count": 26,
+          "max": 13.724541997362394,
+          "p50": 0.27370899624656886,
+          "p95": 1.0400419996585697,
+          "p99": 13.724541997362394
+        },
+        "precision": 0.7857142857142857,
+        "precision_ci": {
+          "high": 0.924286,
+          "low": 0.524108,
+          "method": "wilson-score-95"
+        },
+        "recall": 0.6875,
+        "recall_ci": {
+          "high": 0.858354,
+          "low": 0.444044,
+          "method": "wilson-score-95"
+        },
+        "slice": "prompt_injection:overall"
+      },
+      "slices": [
+        {
+          "counts": {
+            "false_negative": 0,
+            "false_positive": 2,
+            "true_negative": 3,
+            "true_positive": 0
+          },
+          "false_positive_rate": 0.4,
+          "false_positive_rate_ci": {
+            "high": 0.769276,
+            "low": 0.117621,
+            "method": "wilson-score-95"
+          },
+          "latency_ms": {
+            "count": 5,
+            "max": 0.30516600236296654,
+            "p50": 0.2757909969659522,
+            "p95": 0.30516600236296654,
+            "p99": 0.30516600236296654
+          },
+          "precision": 0.0,
+          "precision_ci": {
+            "high": 0.65762,
+            "low": 0.0,
+            "method": "wilson-score-95"
+          },
+          "recall": null,
+          "recall_ci": {
+            "high": 1.0,
+            "low": 0.0,
+            "method": "wilson-score-95 (no trials)"
+          },
+          "slice": "prompt_injection:benign_hard_negative"
+        },
+        {
+          "counts": {
+            "false_negative": 0,
+            "false_positive": 0,
+            "true_negative": 0,
+            "true_positive": 3
+          },
+          "false_positive_rate": null,
+          "false_positive_rate_ci": {
+            "high": 1.0,
+            "low": 0.0,
+            "method": "wilson-score-95 (no trials)"
+          },
+          "latency_ms": {
+            "count": 3,
+            "max": 1.0400419996585697,
+            "p50": 0.43845899926964194,
+            "p95": 1.0400419996585697,
+            "p99": 1.0400419996585697
+          },
+          "precision": 1.0,
+          "precision_ci": {
+            "high": 1.0,
+            "low": 0.438503,
+            "method": "wilson-score-95"
+          },
+          "recall": 1.0,
+          "recall_ci": {
+            "high": 1.0,
+            "low": 0.438503,
+            "method": "wilson-score-95"
+          },
+          "slice": "prompt_injection:encoded_obfuscated"
+        },
+        {
+          "counts": {
+            "false_negative": 0,
+            "false_positive": 0,
+            "true_negative": 0,
+            "true_positive": 3
+          },
+          "false_positive_rate": null,
+          "false_positive_rate_ci": {
+            "high": 1.0,
+            "low": 0.0,
+            "method": "wilson-score-95 (no trials)"
+          },
+          "latency_ms": {
+            "count": 3,
+            "max": 13.724541997362394,
+            "p50": 0.4592910045175813,
+            "p95": 13.724541997362394,
+            "p99": 13.724541997362394
+          },
+          "precision": 1.0,
+          "precision_ci": {
+            "high": 1.0,
+            "low": 0.438503,
+            "method": "wilson-score-95"
+          },
+          "recall": 1.0,
+          "recall_ci": {
+            "high": 1.0,
+            "low": 0.438503,
+            "method": "wilson-score-95"
+          },
+          "slice": "prompt_injection:indirect_injection"
+        },
+        {
+          "counts": {
+            "false_negative": 2,
+            "false_positive": 0,
+            "true_negative": 0,
+            "true_positive": 1
+          },
+          "false_positive_rate": null,
+          "false_positive_rate_ci": {
+            "high": 1.0,
+            "low": 0.0,
+            "method": "wilson-score-95 (no trials)"
+          },
+          "latency_ms": {
+            "count": 3,
+            "max": 0.2667079970706254,
+            "p50": 0.23133399372454733,
+            "p95": 0.2667079970706254,
+            "p99": 0.2667079970706254
+          },
+          "precision": 1.0,
+          "precision_ci": {
+            "high": 1.0,
+            "low": 0.206549,
+            "method": "wilson-score-95"
+          },
+          "recall": 0.3333333333333333,
+          "recall_ci": {
+            "high": 0.79234,
+            "low": 0.061492,
+            "method": "wilson-score-95"
+          },
+          "slice": "prompt_injection:multi_turn"
+        },
+        {
+          "counts": {
+            "false_negative": 3,
+            "false_positive": 1,
+            "true_negative": 1,
+            "true_positive": 1
+          },
+          "false_positive_rate": 0.5,
+          "false_positive_rate_ci": {
+            "high": 0.905469,
+            "low": 0.094531,
+            "method": "wilson-score-95"
+          },
+          "latency_ms": {
+            "count": 6,
+            "max": 0.4099999932805076,
+            "p50": 0.27370899624656886,
+            "p95": 0.4099999932805076,
+            "p99": 0.4099999932805076
+          },
+          "precision": 0.5,
+          "precision_ci": {
+            "high": 0.905469,
+            "low": 0.094531,
+            "method": "wilson-score-95"
+          },
+          "recall": 0.25,
+          "recall_ci": {
+            "high": 0.699358,
+            "low": 0.045587,
+            "method": "wilson-score-95"
+          },
+          "slice": "prompt_injection:multilingual"
+        }
+      ]
+    }
+  },
+  "unevaluated_slices": [
+    {
+      "reason": "no authorized corpus: this slice cannot be satisfied by synthetic data, and no manifest declares representative=true with an authorization. EXT-EFFICACY remains open.",
+      "slice": "customer_distribution"
+    }
+  ]
+}

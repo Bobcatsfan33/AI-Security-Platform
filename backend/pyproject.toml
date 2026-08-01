@@ -118,6 +118,13 @@ ignore = ["E501"]  # line length handled by black
 # full-width homoglyphs) — detecting and normalizing them is the whole point.
 "app/detectors/normalize.py" = ["RUF001", "RUF002", "RUF003"]
 "tests/unit/test_normalize_prepass.py" = ["RUF001", "RUF002", "RUF003"]
+# Multilingual detection content. RUF001/2 flag characters that merely RESEMBLE
+# Latin ones — Cyrillic а/е/о, Turkish dotless ı — but here they are the real
+# letters of the languages being matched, not homoglyph tricks. Substituting
+# the Latin lookalikes the rule suggests would break the patterns for every
+# speaker of those languages, which is the opposite of the intent.
+"app/detectors/injection_multilingual.py" = ["RUF001", "RUF002"]
+"tests/unit/test_injection_multilingual.py" = ["RUF001", "RUF002"]
 
 [tool.black]
 line-length = 100
