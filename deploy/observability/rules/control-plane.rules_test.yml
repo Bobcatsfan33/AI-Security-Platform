@@ -1,0 +1,394 @@
+# promtool unit tests for control-plane.rules.yml.
+#
+#   promtool test rules deploy/observability/rules/control-plane.rules_test.yml
+#
+# Each alert gets series that should trigger it, and — where the distinction
+# matters — series that should NOT. The negative cases are the ones that keep
+# a rule usable: an alert that also fires on healthy traffic gets silenced
+# within a week, and a silenced alert is worse than none because the dashboard
+# still shows it as configured.
+#
+# These are RULE-level tests. They prove the expression fires on the condition;
+# they do not prove anyone is paged, which needs an Alertmanager route and a
+# staffed rotation. Both are external (EXT-OPERATIONS).
+
+rule_files:
+  - control-plane.rules.yml
+
+evaluation_interval: 1m
+
+tests:
+  # ── fail-open ───────────────────────────────────────────────────────────
+  - interval: 1m
+    name: a single fail-open fires immediately
+    input_series:
+      - series: 'aisp_fail_open_total{stage="stage2_classifier"}'
+        values: "0 0 1 1 1 1 1"
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: AispFailOpen
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              category: security
+              stage: stage2_classifier
+            exp_annotations:
+              summary: "Control plane served traffic without full controls (stage stage2_classifier)"
+              description: "aisp_fail_open_total increased, meaning at least one request was allowed while a policy stage was unavailable. Traffic was NOT inspected as intended."
+              runbook_url: https://github.com/Bobcatsfan33/AI-Security-Platform/blob/main/docs/OPERATOR-RUNBOOK.md#fail-open
+
+  - interval: 1m
+    name: a steady zero fail-open counter does not fire
+    input_series:
+      - series: 'aisp_fail_open_total{stage="stage2_classifier"}'
+        values: "0 0 0 0 0 0 0"
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: AispFailOpen
+        exp_alerts: []
+
+  # ── policy absence ──────────────────────────────────────────────────────
+  - interval: 1m
+    name: policy absent and failed OPEN fires immediately
+    input_series:
+      - series: 'aisp_policy_absent_total{decision="failed_open"}'
+        values: "0 0 1 1 1 1 1"
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: AispPolicyAbsentFailedOpen
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              category: security
+              decision: failed_open
+            exp_annotations:
+              summary: "Enforcement point found no policy and allowed the request"
+              runbook_url: https://github.com/Bobcatsfan33/AI-Security-Platform/blob/main/docs/OPERATOR-RUNBOOK.md#policy-absence
+
+  - interval: 1m
+    name: a few fail-closed denials do not page, a sustained rate does
+    input_series:
+      - series: 'aisp_policy_absent_total{decision="failed_closed"}'
+        values: "0+3x20"
+    alert_rule_test:
+      # Not yet sustained for the required window.
+      - eval_time: 4m
+        alertname: AispPolicyAbsentFailedClosed
+        exp_alerts: []
+      - eval_time: 12m
+        alertname: AispPolicyAbsentFailedClosed
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              category: availability
+              decision: failed_closed
+            exp_annotations:
+              summary: "Sustained policy absence is denying traffic"
+              description: "Failing closed is correct, but a sustained rate means policy distribution is broken and tenants are being denied."
+              runbook_url: https://github.com/Bobcatsfan33/AI-Security-Platform/blob/main/docs/OPERATOR-RUNBOOK.md#policy-absence
+
+  # ── regional mismatch ───────────────────────────────────────────────────
+  - interval: 1m
+    name: sustained region rejections fire
+    input_series:
+      - series: 'aisp_tenant_region_rejections_total{entry_point="jwt"}'
+        values: "0+30x30"
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: AispRegionalMismatchSpike
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              category: security
+            exp_annotations:
+              summary: "Sustained tenant-region rejections — traffic is reaching the wrong cell"
+              runbook_url: https://github.com/Bobcatsfan33/AI-Security-Platform/blob/main/docs/OPERATOR-RUNBOOK.md#regional-mismatch
+
+  - interval: 1m
+    name: an occasional stale client does not fire
+    input_series:
+      - series: 'aisp_tenant_region_rejections_total{entry_point="jwt"}'
+        values: "0 0 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: AispRegionalMismatchSpike
+        exp_alerts: []
+
+  # ── auth anomalies ──────────────────────────────────────────────────────
+  - interval: 1m
+    name: an expired-token trickle does not page
+    input_series:
+      - series: 'aisp_auth_anomalies_total{reason="expired"}'
+        values: "0+2x20"
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: AispAuthAnomalySpike
+        exp_alerts: []
+
+  - interval: 1m
+    name: an auth failure spike fires
+    input_series:
+      - series: 'aisp_auth_anomalies_total{reason="expired"}'
+        values: "0+120x20"
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: AispAuthAnomalySpike
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              category: security
+            exp_annotations:
+              summary: "Elevated authentication failures"
+              runbook_url: https://github.com/Bobcatsfan33/AI-Security-Platform/blob/main/docs/OPERATOR-RUNBOOK.md#auth-anomalies
+
+  - interval: 1m
+    name: a single invalid signature is treated as forgery and fires at once
+    input_series:
+      - series: 'aisp_auth_anomalies_total{reason="invalid_signature"}'
+        values: "0 0 1 1 1 1 1"
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: AispAuthForgerySuspected
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              category: security
+              reason: invalid_signature
+            exp_annotations:
+              summary: "Token forgery or replay indicator (invalid_signature)"
+              runbook_url: https://github.com/Bobcatsfan33/AI-Security-Platform/blob/main/docs/OPERATOR-RUNBOOK.md#auth-anomalies
+
+  - interval: 1m
+    name: an expired token is not treated as forgery
+    input_series:
+      - series: 'aisp_auth_anomalies_total{reason="expired"}'
+        values: "0+5x10"
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: AispAuthForgerySuspected
+        exp_alerts: []
+
+  # ── audit chain ─────────────────────────────────────────────────────────
+  - interval: 1m
+    name: one audit-chain failure fires immediately
+    input_series:
+      - series: 'aisp_audit_chain_verification_failures_total{check="hash_mismatch"}'
+        values: "0 0 1 1 1 1 1"
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: AispAuditChainVerificationFailed
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              category: integrity
+              check: hash_mismatch
+            exp_annotations:
+              summary: "Audit-chain verification failed (hash_mismatch)"
+              description: "The hash-chained audit log did not verify. Treat as potential tampering until proven otherwise; preserve the chain before restarting anything."
+              runbook_url: https://github.com/Bobcatsfan33/AI-Security-Platform/blob/main/docs/OPERATOR-RUNBOOK.md#audit-chain
+
+  # ── EPA heartbeat staleness ─────────────────────────────────────────────
+  - interval: 1m
+    name: a stale EPA heartbeat fires
+    input_series:
+      - series: "aisp_epa_heartbeat_age_seconds"
+        values: "10 60 200 400 500 600 700 800 900 1000"
+    alert_rule_test:
+      - eval_time: 9m
+        alertname: AispEpaHeartbeatStale
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              category: detection-continuity
+            exp_annotations:
+              summary: "EPA consumer heartbeat is stale — detection may have stopped"
+              description: "No EPA consumer has recorded progress for over 5 minutes. The pods may still be Running: this is the condition that is invisible to a liveness probe on the fleet as a whole."
+              runbook_url: https://github.com/Bobcatsfan33/AI-Security-Platform/blob/main/docs/OPERATOR-RUNBOOK.md#epa-heartbeat
+
+  - interval: 1m
+    name: a healthy heartbeat does not fire
+    input_series:
+      - series: "aisp_epa_heartbeat_age_seconds"
+        values: "5 12 8 30 15 20 9 11 14 7"
+    alert_rule_test:
+      - eval_time: 9m
+        alertname: AispEpaHeartbeatStale
+        exp_alerts: []
+
+  # ── pipeline backlog ────────────────────────────────────────────────────
+  - interval: 1m
+    name: a growing backlog fires
+    input_series:
+      - series: 'aisp_pipeline_backlog_events{stage="epa_consumer"}'
+        values: "0+2000x20"
+    alert_rule_test:
+      - eval_time: 18m
+        alertname: AispPipelineBacklogGrowing
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              category: detection-continuity
+              stage: epa_consumer
+            exp_annotations:
+              summary: "Pipeline backlog above threshold at stage epa_consumer"
+              description: "Detections are being produced late. Latency of detection is a security property, not only a performance one."
+              runbook_url: https://github.com/Bobcatsfan33/AI-Security-Platform/blob/main/docs/OPERATOR-RUNBOOK.md#pipeline-backlog
+
+  - interval: 1m
+    name: a small steady backlog does not fire
+    input_series:
+      - series: 'aisp_pipeline_backlog_events{stage="epa_consumer"}'
+        values: "120 90 200 150 80 110 95 130 100 90 85 120 140 95 100 110 90 105 100 95"
+    alert_rule_test:
+      - eval_time: 18m
+        alertname: AispPipelineBacklogGrowing
+        exp_alerts: []
+
+  # ── ingest stopped ──────────────────────────────────────────────────────
+  - interval: 1m
+    name: a flat ingest counter fires after the window
+    input_series:
+      - series: "aisp_runtime_events_ingested_total"
+        values: "1000x25"
+    alert_rule_test:
+      - eval_time: 24m
+        alertname: AispIngestStopped
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              category: detection-continuity
+            exp_annotations:
+              summary: "No runtime events ingested for 15 minutes"
+              runbook_url: https://github.com/Bobcatsfan33/AI-Security-Platform/blob/main/docs/OPERATOR-RUNBOOK.md#ingest-stopped
+
+  - interval: 1m
+    name: ongoing ingest does not fire
+    input_series:
+      - series: "aisp_runtime_events_ingested_total"
+        values: "0+50x25"
+    alert_rule_test:
+      - eval_time: 24m
+        alertname: AispIngestStopped
+        exp_alerts: []
+
+  # ── canary ──────────────────────────────────────────────────────────────
+  - interval: 1m
+    name: a failing canary fires
+    input_series:
+      - series: 'aisp_canary_result{scenario="prompt_injection_detected"}'
+        values: "1 1 0 0 0 0 0 0 0 0 0 0 0 0 0"
+    alert_rule_test:
+      - eval_time: 14m
+        alertname: AispCanaryFailing
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              category: detection-continuity
+              scenario: prompt_injection_detected
+            exp_annotations:
+              summary: "Synthetic canary prompt_injection_detected is failing"
+              description: "The canary injects a known attack and asserts it is detected. A failure means the detection path is broken end to end, regardless of what the component-level health checks say."
+              runbook_url: https://github.com/Bobcatsfan33/AI-Security-Platform/blob/main/docs/OPERATOR-RUNBOOK.md#canary
+
+  - interval: 1m
+    name: a passing canary does not fire
+    input_series:
+      - series: 'aisp_canary_result{scenario="prompt_injection_detected"}'
+        values: "1x15"
+    alert_rule_test:
+      - eval_time: 14m
+        alertname: AispCanaryFailing
+        exp_alerts: []
+
+  - interval: 1m
+    name: a canary that stops reporting is noticed
+    # No series at all: absent() is the only thing that can see this, which is
+    # why the rule exists separately from AispCanaryFailing.
+    input_series:
+      - series: "aisp_runtime_events_ingested_total"
+        values: "0+10x25"
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: AispCanaryNotReporting
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              category: detection-continuity
+            exp_annotations:
+              summary: "Synthetic canary has stopped reporting"
+              runbook_url: https://github.com/Bobcatsfan33/AI-Security-Platform/blob/main/docs/OPERATOR-RUNBOOK.md#canary
+
+  # ── availability + latency ──────────────────────────────────────────────
+  - interval: 1m
+    name: a 5xx rate above the budget fires
+    input_series:
+      - series: 'aisp_http_requests_total{status="5xx",method="GET",route="/v1/policies"}'
+        values: "0+10x15"
+      - series: 'aisp_http_requests_total{status="2xx",method="GET",route="/v1/policies"}'
+        values: "0+50x15"
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: AispHighErrorRate
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              category: availability
+            exp_annotations:
+              summary: "Control-plane 5xx rate above 5%"
+              runbook_url: https://github.com/Bobcatsfan33/AI-Security-Platform/blob/main/docs/OPERATOR-RUNBOOK.md#availability
+
+  - interval: 1m
+    name: a healthy error rate does not fire
+    input_series:
+      - series: 'aisp_http_requests_total{status="5xx",method="GET",route="/v1/policies"}'
+        values: "0+1x15"
+      - series: 'aisp_http_requests_total{status="2xx",method="GET",route="/v1/policies"}'
+        values: "0+500x15"
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: AispHighErrorRate
+        exp_alerts: []
+
+  - interval: 1m
+    name: a slow p95 fires
+    # Histogram buckets are CUMULATIVE: everything lands in +Inf and in the 2.5s
+    # bucket but not below, so the 95th percentile sits above the 1s threshold.
+    input_series:
+      - series: 'aisp_http_request_duration_seconds_bucket{le="0.1"}'
+        values: "0+0x15"
+      - series: 'aisp_http_request_duration_seconds_bucket{le="0.5"}'
+        values: "0+0x15"
+      - series: 'aisp_http_request_duration_seconds_bucket{le="1.0"}'
+        values: "0+1x15"
+      - series: 'aisp_http_request_duration_seconds_bucket{le="2.5"}'
+        values: "0+100x15"
+      - series: 'aisp_http_request_duration_seconds_bucket{le="+Inf"}'
+        values: "0+100x15"
+    alert_rule_test:
+      - eval_time: 14m
+        alertname: AispHighLatencyP95
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              category: latency
+            exp_annotations:
+              summary: "Control-plane p95 latency above 1s"
+              runbook_url: https://github.com/Bobcatsfan33/AI-Security-Platform/blob/main/docs/OPERATOR-RUNBOOK.md#latency
+
+  - interval: 1m
+    name: a fast p95 does not fire
+    input_series:
+      - series: 'aisp_http_request_duration_seconds_bucket{le="0.1"}'
+        values: "0+95x15"
+      - series: 'aisp_http_request_duration_seconds_bucket{le="0.5"}'
+        values: "0+100x15"
+      - series: 'aisp_http_request_duration_seconds_bucket{le="1.0"}'
+        values: "0+100x15"
+      - series: 'aisp_http_request_duration_seconds_bucket{le="2.5"}'
+        values: "0+100x15"
+      - series: 'aisp_http_request_duration_seconds_bucket{le="+Inf"}'
+        values: "0+100x15"
+    alert_rule_test:
+      - eval_time: 14m
+        alertname: AispHighLatencyP95
+        exp_alerts: []

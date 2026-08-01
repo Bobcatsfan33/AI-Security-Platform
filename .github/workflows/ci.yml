@@ -37,6 +37,74 @@ jobs:
             exit 1
           fi
 
+  # ── P16a: alert rules and dashboards are code, so CI runs them ──────────
+  # A rule with no test is a hypothesis, and a rule file that only ever gets
+  # loaded by a running Prometheus is one that breaks in production.
+  observability:
+    name: Observability rules and dashboards
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Install promtool
+        run: |
+          set -euo pipefail
+          VERSION=3.13.2
+          curl -fsSL -o /tmp/prom.tgz \
+            "https://github.com/prometheus/prometheus/releases/download/v${VERSION}/prometheus-${VERSION}.linux-amd64.tar.gz"
+          tar -xzf /tmp/prom.tgz -C /tmp
+          sudo install "/tmp/prometheus-${VERSION}.linux-amd64/promtool" /usr/local/bin/promtool
+          promtool --version
+
+      - name: Alert rules parse
+        run: promtool check rules deploy/observability/rules/control-plane.rules.yml
+
+      - name: Every alert rule fires on its condition
+        working-directory: deploy/observability/rules
+        run: promtool test rules control-plane.rules_test.yml
+
+      - name: Dashboard PromQL parses
+        # Grafana will happily save a panel whose query is nonsense; the graph
+        # just renders empty, which is indistinguishable from "no data because
+        # nothing is wrong". Extracting the exprs into a throwaway rule file
+        # makes promtool parse them for real.
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, pathlib
+          panels = json.loads(
+              pathlib.Path("deploy/observability/dashboards/control-plane.json").read_text()
+          )["panels"]
+          exprs = [
+              t["expr"]
+              for p in panels
+              for t in p.get("targets", [])
+              if t.get("expr")
+          ]
+          assert exprs, "dashboard has no queries to check"
+          rules = "\n".join(
+              f"    - record: dashboard:check{i}\n      expr: |\n        {e}"
+              for i, e in enumerate(exprs)
+          )
+          pathlib.Path("/tmp/dashboard-exprs.yml").write_text(
+              f"groups:\n  - name: dashboard\n    rules:\n{rules}\n"
+          )
+          print(f"extracted {len(exprs)} dashboard queries")
+          PY
+          promtool check rules /tmp/dashboard-exprs.yml
+
+      - name: Canary manifest is valid YAML and carries no mutable tag
+        run: |
+          set -euo pipefail
+          python3 -c "
+          import yaml, pathlib
+          doc = yaml.safe_load(pathlib.Path('deploy/observability/canary/canary-cronjob.yaml').read_text())
+          assert doc['kind'] == 'CronJob', doc['kind']
+          image = doc['spec']['jobTemplate']['spec']['template']['spec']['containers'][0]['image']
+          assert ':latest' not in image, image
+          assert '@sha256:' in image, image
+          print('canary manifest ok:', doc['metadata']['name'])
+          "
+
   helm:
     name: Helm chart validation
     runs-on: ubuntu-latest
