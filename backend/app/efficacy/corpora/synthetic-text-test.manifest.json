@@ -1,0 +1,29 @@
+{
+  "authorization": "",
+  "description": "SYNTHETIC starter corpus for the content-detection surface. Written to exercise every slice axis the harness reports, not to measure real-world efficacy.",
+  "id": "synthetic-text-test",
+  "labeling_protocol": {
+    "adjudication": "none \u2014 single author, no second opinion",
+    "inter_annotator_agreement": "not applicable (single labeler)",
+    "labelers": "1 (the author)",
+    "method": "authored-with-intent: each case was written to be an example of its declared label, so ground truth is the author's intent rather than an observation. This is the weakest labeling protocol there is and is acceptable ONLY because these corpora are explicitly synthetic."
+  },
+  "path": "synthetic_text_test.jsonl",
+  "provenance": {
+    "authorization": "none required \u2014 contains no customer, tenant, or personal data",
+    "collected_at": "2026-08-01",
+    "collected_by": "AISP engineering (P15a sprint)",
+    "license": "BUSL-1.1 (same as the repository); no third-party data included",
+    "source": "hand-authored by the AISP engineering team for harness development"
+  },
+  "representative": false,
+  "sha256": "fa11f1b899cf7a7cb014a5d9e769147d934fcba05f9e80f89ed294f116a452d3",
+  "slice_axes": [
+    "multilingual",
+    "multi_turn",
+    "indirect_injection",
+    "encoded_obfuscated",
+    "benign_hard_negative"
+  ],
+  "split": "test"
+}
