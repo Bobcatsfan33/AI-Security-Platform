@@ -134,6 +134,11 @@ asyncio_default_test_loop_scope = "session"
 markers = [
     "unit: Unit tests (no external services)",
     "integration: Integration tests (require postgres/redis)",
+    # Declares a cross-org isolation claim for the router prefixes the test
+    # drives. Read by tests/unit/test_router_coverage_ratchet.py, which refuses
+    # the claim unless the test really calls those routers AND takes two org
+    # fixtures. Marking a test does not buy the credit; it only makes the claim.
+    "tenant_isolation: Proves a sibling org is excluded from the routers it calls",
 ]
 addopts = "-ra --strict-markers"
 

@@ -256,6 +256,17 @@ class TestAuthenticationIsRequired:
 
         assert response.status_code == 401
 
+    async def test_a_token_for_an_unknown_org_does_not_authorize(self, app_client):
+        """Moved out of TestTenantScoping in P12.1. A random UUID is not a
+        sibling tenant — nothing here compares two orgs, so this is a question
+        about whether a well-formed token for a nonexistent org authenticates,
+        which is what this class is about."""
+        async with app_client as client:
+            response = await client.get("/v1/policies", headers=_headers(uuid.uuid4(), "admin"))
+
+        assert response.status_code in (401, 403, 404, 421)
+        assert response.status_code != 200
+
     async def test_an_unknown_api_key_is_rejected(self, app_client):
         async with app_client as client:
             response = await client.get(
@@ -366,6 +377,7 @@ class TestWriteAuthorization:
         assert response.status_code == 403
 
 
+@pytest.mark.tenant_isolation
 class TestTenantScoping:
     async def test_another_tenants_policy_is_404_not_403(self, app_client, org, other_org):
         """403 would confirm the row exists — a cross-tenant existence oracle."""
@@ -411,13 +423,6 @@ class TestTenantScoping:
         ids = {p["id"] for p in response.json()}
         assert str(mine) in ids
         assert str(theirs) not in ids
-
-    async def test_a_token_for_an_unknown_org_does_not_authorize(self, app_client):
-        async with app_client as client:
-            response = await client.get("/v1/policies", headers=_headers(uuid.uuid4(), "admin"))
-
-        assert response.status_code in (401, 403, 404, 421)
-        assert response.status_code != 200
 
 
 class TestMalformedInput:
@@ -553,6 +558,7 @@ class TestUnauthenticatedAuthSurfaces:
         assert after.status_code == 401, "a revoked jti must stop working immediately"
 
 
+@pytest.mark.tenant_isolation
 class TestAuthIsOrgScopedAcrossTenants:
     """``/auth`` is the surface that *mints* the org claim every other router
     trusts, so a leak here is not one router's leak — it is every router's.
