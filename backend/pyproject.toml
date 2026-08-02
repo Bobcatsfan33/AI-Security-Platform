@@ -131,6 +131,9 @@ ignore = ["E501"]  # line length handled by black
 # which would delete the very characters this module exists to recognise.
 "app/detectors/reported_speech.py" = ["RUF001", "RUF002"]
 "tests/unit/test_reported_speech.py" = ["RUF001", "RUF002"]
+# The quickstart demo prints real prompt injections in German and Chinese;
+# the fullwidth comma is Chinese punctuation, not a homoglyph trick.
+"examples/quickstart.py" = ["RUF001"]
 
 [tool.black]
 line-length = 100
