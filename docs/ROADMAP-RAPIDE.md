@@ -243,7 +243,7 @@ Prove the numbers instead of claiming them. Adversarial validation.
 - Third-party **penetration test** + remediation (focus: agent proxy, SDK trust boundary, pattern DSL sandbox, multi-tenant isolation).
 - **SOC 2 Type II** readiness pass — leverage existing evidence-pack builder (`compliance/evidence_pack.py`); close control gaps.
 - Complete `docs/SECURITY-AUDIT-CHECKLIST.md`; finalize EU AI Act / NIST AI RMF report fidelity.
-- Commercial readiness: metering/tiers (the roadmap's deferred "Tier 4"), billing hooks, license enforcement (BUSL-1.1).
+- Commercial readiness: metering/tiers (the roadmap's deferred "Tier 4"), billing hooks, entitlement enforcement for paid tiers. The source is Apache-2.0, so entitlements gate the hosted/supported offering — not the right to run the code.
 - GA docs: install, operator runbook, detection-content authoring guide, API reference, upgrade/migration guide.
 - Launch checklist: support runbooks, SLA definition, on-call, status page.
 **Features:** Audited, compliant, commercially-packaged GA product.

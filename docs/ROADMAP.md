@@ -12,8 +12,11 @@
   The AI Security Platform is the architecturally-aligned successor with
   blueprint-binding decisions enforced from day one. Both repos live; the
   AI Security Platform selectively adopts modules from TokenDNA.
-- **License: BUSL-1.1** (matching TokenDNA backend). The Sprint 1 scaffold
-  was originally MIT and has been re-licensed.
+- **License: Apache-2.0.** The Sprint 1 scaffold was originally MIT, was
+  re-licensed to BUSL-1.1, and was relicensed again to Apache-2.0 in 2026 by
+  its sole copyright holder — matching loomdb, Pharos, PrismDB, and substrate,
+  and maximizing adoption. TokenDNA remains BUSL-1.1; the two products no
+  longer share a license.
 - **The Sprint 1 scaffold is the target architecture.** TokenDNA modules are
   ported *into* this scaffold's structure (`backend/app/...`), not the other
   way round. Where TokenDNA's structure conflicts with the blueprint, the
@@ -204,10 +207,15 @@ original, the AI Security Platform version is canonical.
 
 | Area | License |
 |---|---|
-| Backend core (this repo) | BUSL-1.1 |
-| SDK (when added) | Apache-2.0 (matching TokenDNA SDK) |
-| Edge / runtime agent client libraries | MIT (matching TokenDNA edge) |
+| Backend core (this repo) | Apache-2.0 |
+| SDKs (`sdks/python`, `sdks/node`) | Apache-2.0 |
+| Runtime agent (`runtime-agent`) | Apache-2.0 |
 | Documentation, example configs | Apache-2.0 |
+
+Every area is covered by the root [`LICENSE`](../LICENSE); there are no
+per-area exceptions. `backend/tests/unit/test_license_consistency.py` fails
+if the LICENSE file, `backend/pyproject.toml`, the SDK manifests, and this
+table stop agreeing.
 
 ## Concrete next moves (in priority order)
 

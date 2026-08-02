@@ -13,7 +13,7 @@
     "authorization": "none required \u2014 contains no customer, tenant, or personal data",
     "collected_at": "2026-08-01",
     "collected_by": "AISP engineering (P15a sprint)",
-    "license": "BUSL-1.1 (same as the repository); no third-party data included",
+    "license": "Apache-2.0 (same as the repository); no third-party data included",
     "source": "hand-authored by the AISP engineering team for harness development"
   },
   "representative": false,

@@ -62,7 +62,8 @@
 
 ## Commercial / GA
 - ☐ Metering + tiers (the roadmap's deferred Tier-4); billing hooks
-- ☐ License enforcement (BUSL-1.1)
+- ☐ Entitlement enforcement for paid tiers (the source is Apache-2.0 — this
+  gates the hosted/supported offering, not the right to run the code)
 - ☐ GA docs: install, operator runbook, **detection-content authoring guide**
   (the pattern DSL — Sprint 9/10), API reference, upgrade/migration guide
 - ☐ Support runbooks, SLA definition, on-call, status page

@@ -146,9 +146,13 @@ ai-security-platform/
 
 ## License
 
-**BUSL-1.1** — Business Source License 1.1. Source-available; production
-use is permitted unless you are offering the work to third parties on a
-hosted or embedded basis to compete with the Licensor. Converts to
-Apache 2.0 four years after each version's publish date.
+**Apache-2.0** — Apache License, Version 2.0. Open source; use, modify, and
+redistribute freely, including commercially and as a hosted service, subject
+to the license's attribution and patent terms. The full text is in
+[`LICENSE`](LICENSE).
 
-For alternative licensing, contact ryanwallac33@gmail.com.
+This repository was previously licensed BUSL-1.1 and was relicensed to
+Apache-2.0 in 2026 by its sole copyright holder. The SDKs (`sdks/python`,
+`sdks/node`) were already Apache-2.0; the whole repository is now one license.
+
+For questions about licensing, contact ryanwallac33@gmail.com.
