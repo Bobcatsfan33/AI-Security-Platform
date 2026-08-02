@@ -28,6 +28,8 @@ pytestmark = pytest.mark.unit
 _ROOT = pathlib.Path(__file__).resolve().parents[3]
 
 _LICENSE = _ROOT / "LICENSE"
+_NOTICE = _ROOT / "NOTICE"
+_AGENT_LICENSE = _ROOT / "runtime-agent" / "LICENSE"
 _BACKEND_PYPROJECT = _ROOT / "backend" / "pyproject.toml"
 _SDK_PYPROJECT = _ROOT / "sdks" / "python" / "pyproject.toml"
 _SDK_PACKAGE_JSON = _ROOT / "sdks" / "node" / "package.json"
@@ -64,6 +66,34 @@ def test_license_file_is_apache_2_0() -> None:
 
 def test_license_file_names_the_copyright_holder() -> None:
     assert _COPYRIGHT in _LICENSE.read_text()
+
+
+def test_nested_go_module_carries_the_same_license_text() -> None:
+    """A nested Go module zip contains only its own subdirectory.
+
+    Without this copy, ``go get .../runtime-agent`` hands the consumer code
+    with no license text at all — the root LICENSE is not in the zip.
+    """
+    assert _AGENT_LICENSE.read_bytes() == _LICENSE.read_bytes()
+
+
+def test_notice_attributes_the_redistributed_third_party_material() -> None:
+    """Apache-2.0 §4(d): the NOTICE must carry real attribution, not ritual.
+
+    The repository redistributes a CC-BY-4.0 corpus and a classifier fit on
+    it, so the attribution requirement is live. If those files are ever
+    removed, this test should be deleted along with the NOTICE — not weakened.
+    """
+    corpus = _ROOT / "backend/app/benchmark/external/deepset_prompt_injections_test.jsonl"
+    model = _ROOT / "backend/app/detectors/models/prompt_injection_linear_v1.model.json"
+    assert corpus.is_file() and model.is_file(), "the attributed material moved"
+
+    notice = _NOTICE.read_text()
+    assert _COPYRIGHT in notice
+    assert "deepset/prompt-injections" in notice
+    assert "CC-BY-4.0" in notice
+    for path in (corpus, model):
+        assert path.relative_to(_ROOT).as_posix() in notice, path
 
 
 def test_backend_distribution_metadata_matches_license_file() -> None:

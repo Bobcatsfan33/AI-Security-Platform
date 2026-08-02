@@ -1,0 +1,44 @@
+AI Security Platform
+Copyright 2026 Ryan Wallace
+
+This product includes software developed by Ryan Wallace, licensed under the
+Apache License, Version 2.0 (see LICENSE).
+
+--------------------------------------------------------------------------------
+
+This product includes third-party material that is redistributed here under
+its own terms. The entries below satisfy that material's attribution
+requirements; they do not change the Apache-2.0 terms of the rest of the work.
+
+1. deepset/prompt-injections
+   Licensed under Creative Commons Attribution 4.0 International (CC-BY-4.0).
+   https://huggingface.co/datasets/deepset/prompt-injections
+   License: https://creativecommons.org/licenses/by/4.0/
+   Source revision: 4f61ecb038e9c3fb77e21034b22511b523772cdd
+
+   Redistributed in adapted form as:
+     backend/app/benchmark/external/deepset_prompt_injections_test.jsonl
+   Changes made: the upstream Parquet test split was converted to normalized
+   JSONL; column names were normalized and labels were mapped from 0/1 to
+   benign/attack. Example text is unchanged.
+
+   Derived work:
+     backend/app/detectors/models/prompt_injection_linear_v1.model.json
+   This is a character n-gram logistic-regression classifier whose parameters
+   were fit on the upstream train split. It is a derivative of the CC-BY-4.0
+   dataset and carries the same attribution requirement.
+
+   Upstream's dataset card metadata also declares Apache-2.0 while its
+   dataset_info declares CC-BY-4.0. This project attributes under CC-BY-4.0 as
+   the conservative reading. See
+   backend/app/benchmark/external/deepset_prompt_injections_test.manifest.json
+   and backend/app/detectors/models/prompt_injection_linear_v1.manifest.json
+   for the full provenance records, including source digests.
+
+--------------------------------------------------------------------------------
+
+Dependencies obtained from package registries (PyPI, the Go module proxy, npm)
+are not redistributed by this repository and are not listed here; they carry
+their own license and notice files. A point-in-time scan of those dependency
+sets is retained at
+docs/evidence/relicense-apache-2.0/dependency-license-scan.md.
