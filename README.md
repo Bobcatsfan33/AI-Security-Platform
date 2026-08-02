@@ -216,9 +216,10 @@ regressions and fails the build if the suite stays green. A ratchet forces
 every mounted API route to carry HTTP and cross-tenant tests — and a
 cross-tenant claim only counts if the test actually compares two tenants.
 
-**Supply chain most projects skip.** Signed images (cosign, keyless), CycloneDX
-SBOM, SLSA provenance, CodeQL, Trivy, and a dependency-lock drift gate — wired
-and running on every push.
+**Supply chain most projects skip.** Signed images (cosign, keyless), SPDX and
+CycloneDX SBOMs, SLSA provenance, CodeQL, Trivy, and a dependency-lock drift
+gate — wired and running on every push. You can verify a release yourself in
+about a minute: [`docs/VERIFYING-RELEASES.md`](docs/VERIFYING-RELEASES.md).
 
 ---
 
@@ -277,6 +278,8 @@ What is **not** done, and what each one is waiting on:
 | [Efficacy harness](docs/EFFICACY-HARNESS.md) | How detection is measured, and its limits |
 | [Known gaps](docs/GAPS.md) | Written down, not buried |
 | [Readiness manifest](docs/enterprise-readiness.json) | The machine-checked one |
+| [Verifying releases](docs/VERIFYING-RELEASES.md) | cosign, SBOM attestation, provenance |
+| [Changelog](CHANGELOG.md) | What shipped, and what is still missing |
 
 ---
 
