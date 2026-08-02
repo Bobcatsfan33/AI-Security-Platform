@@ -159,3 +159,8 @@ Alert meaning, triage, and PromQL investigation queries are maintained in the
 - Policy refresh endpoint: `GET /v1/policies/{policy_id}` (control plane)
 - Telemetry ingest: `POST /v1/runtime/events` (control plane endpoint
   is a Sprint 7 follow-on; agent currently logs to stdout)
+
+## License
+
+Apache-2.0. The runtime agent is covered by the repository's root
+[`LICENSE`](../LICENSE); there is no separate license for this module.
