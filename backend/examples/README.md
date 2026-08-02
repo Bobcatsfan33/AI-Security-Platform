@@ -16,6 +16,31 @@ No database, no Docker, no API key, no model download. It is the same code the
 Go agent calls inline and the same code behind `POST /v1/aiguard/inspect`, so
 what you see here is what runs in the request path.
 
+## `guarded_chat.py` — what the guardrail actually changes
+
+```bash
+python -m examples.guarded_chat
+```
+
+Replays one five-turn support session twice: unguarded, then guarded. Same
+turns, same stubbed model. Unguarded, an injection hidden in a retrieved
+document walks the model into leaking its system prompt. Guarded, that turn and
+a German injection are refused and the rest of the session still works —
+including the user *asking what an injection is*, which is allowed.
+
+The stub model is deliberately gullible and has no refusal training: a model
+that declines on its own would hide whether the guardrail did anything. It
+obeys commands, not mentions — an earlier version leaked on any text containing
+"ignore" and "instruction", which made the guarded run leak on a turn the
+guardrail had correctly allowed. The flaw was in the fake model, not the guard.
+
+**It self-checks.** `main()` exits non-zero if the unguarded run stops leaking
+or the guarded run starts, so this file cannot rot into a demo of something
+that no longer happens. `tests/unit/test_examples.py` asserts the same claims,
+including the negative ones.
+
+Captured output: [`docs/media/guarded-chat.txt`](../../docs/media/guarded-chat.txt).
+
 ## Using it in your own code
 
 The whole integration is one call:
