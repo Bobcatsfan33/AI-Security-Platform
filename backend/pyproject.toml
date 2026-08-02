@@ -184,3 +184,6 @@ omit = ["app/**/migrations/*", "app/main.py"]
 fail_under = 80
 show_missing = true
 skip_covered = false
+
+[project.scripts]
+aisp-quickstart = "app.quickstart:main"
