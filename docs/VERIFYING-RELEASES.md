@@ -29,14 +29,26 @@ verifying a tag proves only what that name pointed at when you looked.
 cosign verify \
   --certificate-identity-regexp '^https://github\.com/Bobcatsfan33/AI-Security-Platform/\.github/workflows/security\.yml@refs/tags/v' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-  "${DIGEST}" | jq '.[0].optional.Subject'
+  "${DIGEST}"
+echo "exit=$?"     # 0 means verified
 ```
 
-**Both flags are load-bearing.** `cosign verify` without an identity constraint
-checks that *somebody* signed the image, which is a much weaker claim than it
-looks — anyone can sign anything. Pinning the identity to this repository's
-release workflow at a version tag is what makes the signature mean "this came
-from that pipeline".
+**Both flags are load-bearing, and the exit code is the result.** `cosign
+verify` without an identity constraint checks that *somebody* signed the image,
+which is a much weaker claim than it looks — anyone can sign anything. Pinning
+the identity to this repository's release workflow at a version tag is what
+makes the signature mean "this came from that pipeline", and a zero exit with
+those flags set is the proof. cosign prints the human-readable summary to
+stderr; the JSON on stdout confirms which digest was checked:
+
+```sh
+cosign verify --certificate-identity-regexp '...' --certificate-oidc-issuer '...' \
+  "${DIGEST}" 2>/dev/null | jq -r '.[0].critical.image."docker-manifest-digest"'
+```
+
+(Earlier drafts of this page suggested `jq '.[0].optional.Subject'`. That field
+is empty on current cosign releases, so the command printed nothing and looked
+like a failure. Verified against cosign 3.x before publishing v0.1.0.)
 
 ## 3. Verify the SBOM attestation
 
@@ -84,8 +96,11 @@ subject before assuming the worst:
 ```sh
 cosign verify --certificate-identity-regexp '.*' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-  "${DIGEST}" | jq '.[0].optional.Subject, .[0].optional.Issuer'
+  "${DIGEST}"
 ```
+
+cosign prints the certificate subject and issuer in its stderr summary; that is
+where to look when the identity regex is what failed.
 
 That command is for *diagnosis only* — `--certificate-identity-regexp '.*'`
 accepts a signature from anyone, so never use it as your actual check.
