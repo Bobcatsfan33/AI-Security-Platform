@@ -1,0 +1,33 @@
+name: Bug report
+description: Something behaves differently from what it claims
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        A bug report that lets someone reproduce it is worth ten that describe
+        a feeling. If you can't reproduce it reliably, say so — intermittent is
+        useful information, not a disqualification.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect instead
+    validations: { required: true }
+  - type: textarea
+    id: repro
+    attributes:
+      label: How to reproduce
+      description: Commands, input, and the output you got. Redact anything sensitive.
+      render: shell
+    validations: { required: true }
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      placeholder: v0.1.0, or the commit SHA
+    validations: { required: true }
+  - type: textarea
+    id: env
+    attributes:
+      label: Environment
+      description: OS, Python/Go/Node version, and whether you ran the quickstart or the full stack.

@@ -1,0 +1,19 @@
+name: Feature request
+description: Something that should exist and doesn't
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem are you hitting?
+      description: The situation, not the solution. It is easier to help if we know what you were trying to do.
+    validations: { required: true }
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would you like it to do?
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What did you try instead?
+      description: Workarounds are useful — they tell us how urgent this is.

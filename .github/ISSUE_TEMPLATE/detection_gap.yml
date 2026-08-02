@@ -1,0 +1,44 @@
+name: Detection gap
+description: An attack that isn't caught, or ordinary traffic that is
+labels: ["detection"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Do not paste real user data.** Reconstruct the shape of the input
+        instead. If the payload is genuinely sensitive, please use the process
+        in [SECURITY.md](../SECURITY.md) rather than a public issue.
+  - type: dropdown
+    id: direction
+    attributes:
+      label: Which way is it wrong?
+      options:
+        - A miss — an attack was allowed
+        - A false positive — ordinary traffic was blocked
+    validations: { required: true }
+  - type: textarea
+    id: input
+    attributes:
+      label: The input (reconstructed, not copied from production)
+      render: text
+    validations: { required: true }
+  - type: input
+    id: language
+    attributes:
+      label: Language
+      placeholder: e.g. Portuguese, or "English"
+  - type: dropdown
+    id: trust
+    attributes:
+      label: Where did the text come from?
+      description: This changes how strictly it is judged, so it matters.
+      options:
+        - A user typed it (direct)
+        - A retrieved document, tool result, or search hit (untrusted)
+    validations: { required: true }
+  - type: textarea
+    id: verdict
+    attributes:
+      label: What the guardrail said
+      description: Output of `python -m examples.quickstart` adapted to your input, or the API response.
+      render: shell
