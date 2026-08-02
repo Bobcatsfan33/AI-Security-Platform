@@ -102,9 +102,7 @@ def test_roadmap_license_posture_table_is_uniform() -> None:
         assert declared == _SPDX, f"{area!r} declares {declared!r}, not {_SPDX!r}"
 
 
-@pytest.mark.parametrize(
-    "manifest", sorted(_CORPORA.glob("*.manifest.json")), ids=lambda p: p.name
-)
+@pytest.mark.parametrize("manifest", sorted(_CORPORA.glob("*.manifest.json")), ids=lambda p: p.name)
 def test_first_party_corpora_ship_under_the_repository_license(
     manifest: pathlib.Path,
 ) -> None:
@@ -127,9 +125,9 @@ def test_no_superseded_license_is_asserted(path: pathlib.Path) -> None:
     """
     text = path.read_text()
     if path == _README:
-        assert re.search(r"previously licensed BUSL-1\.1", text), (
-            "README must record the relicense in the past tense"
-        )
+        assert re.search(
+            r"previously licensed BUSL-1\.1", text
+        ), "README must record the relicense in the past tense"
         return
     for superseded in _SUPERSEDED:
         assert superseded not in text, f"{path.name} still asserts {superseded}"
