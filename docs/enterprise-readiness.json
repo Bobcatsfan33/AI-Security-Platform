@@ -217,8 +217,11 @@
       "status": "open",
       "blocking": true,
       "ownerRole": "GRC and Legal",
-      "acceptanceCriteria": "Approved customer evidence package includes applicable SOC 2 or ISO evidence, SIG or CAIQ responses, DPA, privacy and residency terms, subprocessors, insurance, accessibility, and license terms.",
-      "evidence": []
+      "acceptanceCriteria": "Approved customer evidence package includes applicable SOC 2 or ISO evidence, SIG or CAIQ responses, DPA, privacy and residency terms, subprocessors, insurance, accessibility, and license terms. License terms are Apache-2.0 for the whole repository; the retained evidence below covers that criterion only, and the gate remains open on every other item.",
+      "evidence": [
+        "LICENSE",
+        "docs/evidence/relicense-apache-2.0/dependency-license-scan.md"
+      ]
     },
     {
       "id": "ENG-PRODUCTION",

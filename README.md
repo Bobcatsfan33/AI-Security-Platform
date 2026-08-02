@@ -151,6 +151,10 @@ redistribute freely, including commercially and as a hosted service, subject
 to the license's attribution and patent terms. The full text is in
 [`LICENSE`](LICENSE).
 
+Third-party material redistributed in this repository — the CC-BY-4.0
+`deepset/prompt-injections` corpus and the classifier derived from it — is
+attributed in [`NOTICE`](NOTICE), which must travel with any redistribution.
+
 This repository was previously licensed BUSL-1.1 and was relicensed to
 Apache-2.0 in 2026 by its sole copyright holder. The SDKs (`sdks/python`,
 `sdks/node`) were already Apache-2.0; the whole repository is now one license.
