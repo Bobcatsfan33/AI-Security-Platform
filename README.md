@@ -278,6 +278,7 @@ What is **not** done, and what each one is waiting on:
 | [Efficacy harness](docs/EFFICACY-HARNESS.md) | How detection is measured, and its limits |
 | [Known gaps](docs/GAPS.md) | Written down, not buried |
 | [Readiness manifest](docs/enterprise-readiness.json) | The machine-checked one |
+| [Contributing](CONTRIBUTING.md) | Setup, conventions, good first issues |
 | [Verifying releases](docs/VERIFYING-RELEASES.md) | cosign, SBOM attestation, provenance |
 | [Changelog](CHANGELOG.md) | What shipped, and what is still missing |
 
@@ -301,13 +302,14 @@ docs/             Everything above
 
 ## Contributing
 
-Yes please. Issues labelled
+Yes please — see [`CONTRIBUTING.md`](CONTRIBUTING.md). Issues labelled
 [`good first issue`](https://github.com/Bobcatsfan33/AI-Security-Platform/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22)
 carry context and acceptance criteria.
 
 A warning about the house style: PRs here carry more evidence than you may be
 used to. Claims point at something mechanical, gaps get written down rather than
 smoothed over, and "it works on my machine" is not a result.
+[`CONTRIBUTING.md`](CONTRIBUTING.md#how-this-repo-is-run) explains why.
 
 ---
 
