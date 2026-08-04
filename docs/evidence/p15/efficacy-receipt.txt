@@ -14,8 +14,8 @@ What would make them evidence, none of which has happened:
 
 EXT-EFFICACY remains OPEN and blocking.
 
-generated    : 2026-08-01T14:45:55Z
-git revision : 6d399edd706bd1138f9efc88c01d766b0d6db30f
+generated    : 2026-08-04T22:50:12Z
+git revision : 4ea66d54ff8f2303af76d4f1e88e1ea401736f0e
 resumed      : 0 case verdicts replayed
 
 CORPORA (hash-pinned)
@@ -29,7 +29,7 @@ CORPORA (hash-pinned)
     labeled by : authored-with-intent: each case was written to be an example of its declared label, so ground truth is the author's intent rather than an observation. This is the weakest labeling protocol there is and is acceptable ONLY because these corpora are explicitly synthetic.
 
 EVALUATED CONFIGURATION (bound to these results)
-  prompt_injection: detector_config_sha256=44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a  detector_set_sha256=a5e1e696fd873a3f5bd09833d52f4a43132ea686760bb5512cb8684aa49b4aff  stage2_mode=stage2_heuristic
+  prompt_injection: detector_config_sha256=c3195faa07590ca43d4dcda3a402d6ef3aff5e496551caaacfae2cf486304263  detector_set_sha256=a5e1e696fd873a3f5bd09833d52f4a43132ea686760bb5512cb8684aa49b4aff  stage2_mode=stage2_heuristic
   behavioural: maturity_min=50  signal_kinds_sha256=6bd3595f2372ac44115b9e1ce4e14635415fa691b1794fdf750afdc4905ed3e0
 
 ------------------------------------------------------------------------
@@ -46,24 +46,24 @@ EVALUATED CONFIGURATION (bound to these results)
   precision 95% CI : [0.3424, 1.0000]
   FPR 95% CI       : [0.0000, 0.5615]
   CI method        : wilson-score-95
-  latency ms       : p50=0.2469 p95=0.6815 p99=0.6815
+  latency ms       : p50=0.2368 p95=0.6608 p99=0.6608
 
 ------------------------------------------------------------------------
  SURFACE: prompt_injection
 ------------------------------------------------------------------------
   slice                                  prec   recall      FPR      n
-  overall                              0.7857   0.6875   0.3000     26
-  benign_hard_negative                 0.0000      n/a   0.4000      5
+  overall                              1.0000   0.8750   0.0000     26
+  benign_hard_negative                    n/a      n/a   0.0000      5
   encoded_obfuscated                   1.0000   1.0000      n/a      3
   indirect_injection                   1.0000   1.0000      n/a      3
   multi_turn                           1.0000   0.3333      n/a      3
-  multilingual                         0.5000   0.2500   0.5000      6
+  multilingual                         1.0000   1.0000   0.0000      6
 
-  recall 95% CI    : [0.4440, 0.8584]
-  precision 95% CI : [0.5241, 0.9243]
-  FPR 95% CI       : [0.1078, 0.6032]
+  recall 95% CI    : [0.6398, 0.9650]
+  precision 95% CI : [0.7847, 1.0000]
+  FPR 95% CI       : [0.0000, 0.2775]
   CI method        : wilson-score-95
-  latency ms       : p50=0.2630 p95=0.4980 p99=14.1918
+  latency ms       : p50=0.2193 p95=1.0617 p99=14.4050
 
 ------------------------------------------------------------------------
  SLICES DELIBERATELY NOT EVALUATED
