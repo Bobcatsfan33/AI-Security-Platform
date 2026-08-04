@@ -264,21 +264,69 @@ jobs:
           subject-digest: ${{ steps.build.outputs.digest }}
           push-to-registry: true
 
+      # Bounded verification output (#146).
+      #
+      # `cosign verify-attestation` streams every envelope it verifies to
+      # stdout, and our SBOM envelope carries the whole SPDX document
+      # base64-encoded on a single line. On the v0.1.0 run that line was
+      # 3,818,952 bytes, and writing it into the step log is what cost the
+      # backend 2h40m16s (17:53:53 -> 20:34:09) while the siblings finished in
+      # 3s and 41s. The cost tracks SBOM size superlinearly -- 17KB/3s,
+      # 230KB/41s, 2.9MB/9616s -- which is a log-processing signature, not a
+      # network one; a stalled registry would have tripped cosign's own
+      # timeouts long before 40 minutes, and the step ultimately succeeded.
+      #
+      # Verification scope is unchanged: both commands still run against the
+      # exact build digest with the same strict --certificate-identity. Only
+      # the destination of the output changes -- payloads go to files, and the
+      # log gets a bounded summary that never includes a payload. Redirecting
+      # stdout does not hide the proof: cosign writes its human-readable
+      # "checks that were performed" block to stderr, so that still lands in
+      # the log, and a zero exit with the identity flags set is the result.
       - name: verify published identity and SBOM
+        timeout-minutes: 15
         shell: bash
         run: |
           set -euo pipefail
           IDENTITY="https://github.com/${GITHUB_REPOSITORY}/.github/workflows/security.yml@${GITHUB_REF}"
+          VERIFY_OUT="${{ matrix.name }}-cosign-verify.json"
+          ATTEST_OUT="${{ matrix.name }}-cosign-verify-attestation.json"
           cosign verify \
             --certificate-identity "${IDENTITY}" \
             --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
-            "${IMAGE}@${{ steps.build.outputs.digest }}"
+            "${IMAGE}@${{ steps.build.outputs.digest }}" \
+            > "${VERIFY_OUT}"
           cosign verify-attestation \
             --certificate-identity "${IDENTITY}" \
             --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
             --type spdxjson \
-            "${IMAGE}@${{ steps.build.outputs.digest }}"
+            "${IMAGE}@${{ steps.build.outputs.digest }}" \
+            > "${ATTEST_OUT}"
+          # Summary only. Never echo the files themselves -- that is the bug.
+          for out in "${VERIFY_OUT}" "${ATTEST_OUT}"; do
+            echo "${out}: $(wc -l < "${out}") envelope line(s), $(wc -c < "${out}") bytes"
+          done
 
+      # The payloads are deliberately kept out of the log, so on failure they
+      # are the only evidence of why verification refused. Retain them as an
+      # artifact rather than printing them (#146).
+      - name: retain verification output on failure
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ${{ matrix.name }}-cosign-verification-output-${{ github.run_id }}
+          path: |
+            ${{ matrix.name }}-cosign-verify.json
+            ${{ matrix.name }}-cosign-verify-attestation.json
+          if-no-files-found: ignore
+          retention-days: 30
+
+      # Fail-closed ordering, deliberately (#146): the receipt and the evidence
+      # bundle come after verification, so they run only if verification
+      # passed. An unverified release gets no receipt. The timeout above is
+      # what turns a stall into a loud failure instead of a silent skip -- on
+      # v0.1.0 the step never failed, it just never finished, so the release
+      # sat for 2h40m with no receipt and no signal that anything was wrong.
       - name: write release receipt
         env:
           IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
