@@ -192,6 +192,23 @@ def verify(manifest: pathlib.Path = DEFAULT_MANIFEST) -> None:
     if open_blocking and decision != "not-approved":
         fail("open blocking gates require deploymentDecision=not-approved")
 
+    # softwareReleaseCandidate is a SECOND approval claim, and it was
+    # unguarded: `deploymentDecision: approved` was refused while blocking
+    # gates were open, but flipping this boolean to true was accepted. The
+    # README presents the two as peer facts in one table, so a reader checking
+    # whether the repository really cannot overstate itself would have found
+    # exactly one field that it could.
+    #
+    # Same rule as the decision above: a release candidate is something an
+    # external reviewer has been able to look at, and an open blocking gate
+    # means at least one of them has not.
+    if assessment["softwareReleaseCandidate"] and (open_blocking or incomplete_controls):
+        fail(
+            "softwareReleaseCandidate cannot be true while controls or blocking "
+            f"gates remain open ({open_blocking} open blocking gate(s), "
+            f"{incomplete_controls} incomplete control(s))"
+        )
+
     print(
         "enterprise readiness manifest valid: "
         f"{len(controls)} controls, {open_blocking} open blocking gates, "
