@@ -1,8 +1,9 @@
 # Examples
 
 Runnable from `backend/` with the package installed (`pip install -e .`).
+Needs Python 3.11+.
 
-## `quickstart.py` — 60 seconds, no services
+## `quickstart.py` — under a minute, no services
 
 ```bash
 python -m examples.quickstart
