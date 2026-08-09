@@ -13,20 +13,62 @@ surface**, and reports precision, recall, false-positive rate, detection
 latency, and confidence intervals **per slice** — because an aggregate number
 hides exactly the failures that matter.
 
-The shipped synthetic run demonstrates the point:
+The shipped synthetic run, as of
+[`docs/evidence/p15/efficacy-report.json`](evidence/p15/efficacy-report.json):
+
+| surface | slice | recall | FPR |
+|---|---|---|---|
+| prompt_injection | overall | 0.8750 | 0.00 |
+| prompt_injection | multilingual | 1.0000 | 0.00 |
+| prompt_injection | encoded_obfuscated | 1.0000 | n/a |
+| prompt_injection | benign_hard_negative | n/a | 0.00 |
+| behavioural | overall | 0.4000 | 0.00 |
+
+### The run that motivated all of this
+
+Those numbers are where the harness ended up, not where it started. The **first**
+run — before [#128](https://github.com/Bobcatsfan33/AI-Security-Platform/pull/128)
+(multilingual recall) and the hard-negative work that followed — is the reason
+slices are first-class here rather than a tag on a case:
 
 | surface | slice | recall | FPR |
 |---|---|---|---|
 | prompt_injection | overall | 0.6875 | 0.30 |
 | prompt_injection | multilingual | **0.2500** | **0.50** |
-| prompt_injection | encoded_obfuscated | 1.0000 | n/a |
 | prompt_injection | benign_hard_negative | n/a | **0.40** |
-| behavioural | overall | 0.4000 | 0.00 |
 
-An aggregate "0.69 recall" would have concealed that non-English attacks are
-caught a quarter of the time while half of benign non-English traffic is
-flagged. That asymmetry is the product of a slice-blind report, and it is the
-reason slices are first-class here rather than a tag on a case.
+An aggregate "0.69 recall" concealed that non-English attacks were caught a
+quarter of the time while half of benign non-English traffic was flagged. That
+asymmetry is invisible to a slice-blind report. Worse, the one non-English
+attack scored as *caught* was a false credit — the gibberish detector fired on
+CJK text for having no vowels, so a benign Japanese sample was a false positive
+and an attacking one was a lucky accident. Aggregate recall cannot tell those
+apart; the per-slice FPR column is what exposed it.
+
+That before/after pair is preserved verbatim under
+[`docs/evidence/p15b/`](evidence/p15b/), which is a frozen point-in-time record
+and is never regenerated. The table above it is a current-state report and
+**is** regenerated — see below.
+
+### Keeping the numbers honest
+
+The report went stale once: it was generated before #128 merged and was not
+re-run, so this page and the evidence file both quoted 0.25 for three days while
+the detectors actually scored 1.00. `verify_enterprise_readiness.py` did not
+catch it, because it checks that evidence paths *exist*, never that they are
+*current*.
+
+`backend/tests/unit/test_efficacy_report_is_current.py` now closes that: it
+compares the corpus and detector hashes embedded in the report against the live
+harness, so a detector change without a re-run fails the build the same way a
+dangling evidence path does. To regenerate after an intentional change:
+
+```bash
+cd backend && python scripts/run_efficacy.py \
+  --manifest app/efficacy/corpora/synthetic-text-test.manifest.json \
+  --manifest app/efficacy/corpora/synthetic-events-test.manifest.json \
+  --out ../docs/evidence/p15 --name efficacy
+```
 
 ## Two evaluated surfaces, not one
 
