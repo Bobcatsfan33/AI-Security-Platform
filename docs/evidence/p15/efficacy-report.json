@@ -5,16 +5,16 @@
         "cases": 8,
         "id": "synthetic-events-test",
         "labeling_protocol": {
-          "adjudication": "none \u2014 single author, no second opinion",
+          "adjudication": "none — single author, no second opinion",
           "inter_annotator_agreement": "not applicable (single labeler)",
           "labelers": "1 (the author)",
           "method": "authored-with-intent: each case was written to be an example of its declared label, so ground truth is the author's intent rather than an observation. This is the weakest labeling protocol there is and is acceptable ONLY because these corpora are explicitly synthetic."
         },
         "provenance": {
-          "authorization": "none required \u2014 contains no customer, tenant, or personal data",
+          "authorization": "none required — contains no customer, tenant, or personal data",
           "collected_at": "2026-08-01",
           "collected_by": "AISP engineering (P15a sprint)",
-          "license": "BUSL-1.1 (same as the repository); no third-party data included",
+          "license": "Apache-2.0 (same as the repository); no third-party data included",
           "source": "hand-authored by the AISP engineering team for harness development"
         },
         "representative": false,
@@ -25,16 +25,16 @@
         "cases": 26,
         "id": "synthetic-text-test",
         "labeling_protocol": {
-          "adjudication": "none \u2014 single author, no second opinion",
+          "adjudication": "none — single author, no second opinion",
           "inter_annotator_agreement": "not applicable (single labeler)",
           "labelers": "1 (the author)",
           "method": "authored-with-intent: each case was written to be an example of its declared label, so ground truth is the author's intent rather than an observation. This is the weakest labeling protocol there is and is acceptable ONLY because these corpora are explicitly synthetic."
         },
         "provenance": {
-          "authorization": "none required \u2014 contains no customer, tenant, or personal data",
+          "authorization": "none required — contains no customer, tenant, or personal data",
           "collected_at": "2026-08-01",
           "collected_by": "AISP engineering (P15a sprint)",
-          "license": "BUSL-1.1 (same as the repository); no third-party data included",
+          "license": "Apache-2.0 (same as the repository); no third-party data included",
           "source": "hand-authored by the AISP engineering team for harness development"
         },
         "representative": false,
@@ -42,10 +42,10 @@
         "split": "test"
       }
     ],
-    "git_revision": "6d399edd706bd1138f9efc88c01d766b0d6db30f",
+    "git_revision": "4ea66d54ff8f2303af76d4f1e88e1ea401736f0e",
     "surfaces": [
       {
-        "detector_config_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+        "detector_config_sha256": "c3195faa07590ca43d4dcda3a402d6ef3aff5e496551caaacfae2cf486304263",
         "detector_set_sha256": "a5e1e696fd873a3f5bd09833d52f4a43132ea686760bb5512cb8684aa49b4aff",
         "stage2_mode": "stage2_heuristic",
         "surface": "prompt_injection"
@@ -63,7 +63,7 @@
     "note": "This harness is engineering. The gate needs authorized representative corpora and an independent evaluator, neither of which this run provides.",
     "status": "open"
   },
-  "generated_at": "2026-08-01T14:45:55Z",
+  "generated_at": "2026-08-09T00:24:11Z",
   "independent_evaluation": false,
   "representative": false,
   "resumed_case_verdicts": 0,
@@ -85,10 +85,10 @@
         },
         "latency_ms": {
           "count": 8,
-          "max": 0.6815419983468018,
-          "p50": 0.24687500263098627,
-          "p95": 0.6815419983468018,
-          "p99": 0.6815419983468018
+          "max": 1.515056996140629,
+          "p50": 0.31975400634109974,
+          "p95": 1.515056996140629,
+          "p99": 1.515056996140629
         },
         "precision": 1.0,
         "precision_ci": {
@@ -120,10 +120,10 @@
           },
           "latency_ms": {
             "count": 2,
-            "max": 0.30487500043818727,
-            "p50": 0.24687500263098627,
-            "p95": 0.30487500043818727,
-            "p99": 0.30487500043818727
+            "max": 0.43893199472222477,
+            "p50": 0.31975400634109974,
+            "p95": 0.43893199472222477,
+            "p99": 0.43893199472222477
           },
           "precision": null,
           "precision_ci": {
@@ -154,10 +154,10 @@
           },
           "latency_ms": {
             "count": 1,
-            "max": 0.2267500021844171,
-            "p50": 0.2267500021844171,
-            "p95": 0.2267500021844171,
-            "p99": 0.2267500021844171
+            "max": 0.27945601323153824,
+            "p50": 0.27945601323153824,
+            "p95": 0.27945601323153824,
+            "p99": 0.27945601323153824
           },
           "precision": 1.0,
           "precision_ci": {
@@ -188,10 +188,10 @@
           },
           "latency_ms": {
             "count": 1,
-            "max": 0.34254199999850243,
-            "p50": 0.34254199999850243,
-            "p95": 0.34254199999850243,
-            "p99": 0.34254199999850243
+            "max": 0.453859000117518,
+            "p50": 0.453859000117518,
+            "p95": 0.453859000117518,
+            "p99": 0.453859000117518
           },
           "precision": null,
           "precision_ci": {
@@ -222,10 +222,10 @@
           },
           "latency_ms": {
             "count": 2,
-            "max": 0.30487500043818727,
-            "p50": 0.2175839981646277,
-            "p95": 0.30487500043818727,
-            "p99": 0.30487500043818727
+            "max": 0.43893199472222477,
+            "p50": 0.22997500491328537,
+            "p95": 0.43893199472222477,
+            "p99": 0.43893199472222477
           },
           "precision": null,
           "precision_ci": {
@@ -246,34 +246,34 @@
     "prompt_injection": {
       "overall": {
         "counts": {
-          "false_negative": 5,
-          "false_positive": 3,
-          "true_negative": 7,
-          "true_positive": 11
+          "false_negative": 2,
+          "false_positive": 0,
+          "true_negative": 10,
+          "true_positive": 14
         },
-        "false_positive_rate": 0.3,
+        "false_positive_rate": 0.0,
         "false_positive_rate_ci": {
-          "high": 0.603222,
-          "low": 0.107791,
+          "high": 0.277533,
+          "low": 0.0,
           "method": "wilson-score-95"
         },
         "latency_ms": {
           "count": 26,
-          "max": 14.191791000484955,
-          "p50": 0.26304100174456835,
-          "p95": 0.4979579971404746,
-          "p99": 14.191791000484955
+          "max": 24.51569400727749,
+          "p50": 0.31239999225363135,
+          "p95": 0.6733640038874,
+          "p99": 24.51569400727749
         },
-        "precision": 0.7857142857142857,
+        "precision": 1.0,
         "precision_ci": {
-          "high": 0.924286,
-          "low": 0.524108,
+          "high": 1.0,
+          "low": 0.784689,
           "method": "wilson-score-95"
         },
-        "recall": 0.6875,
+        "recall": 0.875,
         "recall_ci": {
-          "high": 0.858354,
-          "low": 0.444044,
+          "high": 0.965023,
+          "low": 0.639772,
           "method": "wilson-score-95"
         },
         "slice": "prompt_injection:overall"
@@ -282,28 +282,28 @@
         {
           "counts": {
             "false_negative": 0,
-            "false_positive": 2,
-            "true_negative": 3,
+            "false_positive": 0,
+            "true_negative": 5,
             "true_positive": 0
           },
-          "false_positive_rate": 0.4,
+          "false_positive_rate": 0.0,
           "false_positive_rate_ci": {
-            "high": 0.769276,
-            "low": 0.117621,
+            "high": 0.434482,
+            "low": 0.0,
             "method": "wilson-score-95"
           },
           "latency_ms": {
             "count": 5,
-            "max": 0.304208995657973,
-            "p50": 0.27591700199991465,
-            "p95": 0.304208995657973,
-            "p99": 0.304208995657973
+            "max": 0.36473400541581213,
+            "p50": 0.3397840046091005,
+            "p95": 0.36473400541581213,
+            "p99": 0.36473400541581213
           },
-          "precision": 0.0,
+          "precision": null,
           "precision_ci": {
-            "high": 0.65762,
+            "high": 1.0,
             "low": 0.0,
-            "method": "wilson-score-95"
+            "method": "wilson-score-95 (no trials)"
           },
           "recall": null,
           "recall_ci": {
@@ -328,10 +328,10 @@
           },
           "latency_ms": {
             "count": 3,
-            "max": 0.4318749997764826,
-            "p50": 0.40029099909588695,
-            "p95": 0.4318749997764826,
-            "p99": 0.4318749997764826
+            "max": 0.6733640038874,
+            "p50": 0.490495003759861,
+            "p95": 0.6733640038874,
+            "p99": 0.6733640038874
           },
           "precision": 1.0,
           "precision_ci": {
@@ -362,10 +362,10 @@
           },
           "latency_ms": {
             "count": 3,
-            "max": 14.191791000484955,
-            "p50": 0.4830000034417026,
-            "p95": 14.191791000484955,
-            "p99": 14.191791000484955
+            "max": 24.51569400727749,
+            "p50": 0.5777259939350188,
+            "p95": 24.51569400727749,
+            "p99": 24.51569400727749
           },
           "precision": 1.0,
           "precision_ci": {
@@ -396,10 +396,10 @@
           },
           "latency_ms": {
             "count": 3,
-            "max": 0.3022919991053641,
-            "p50": 0.24083400057861581,
-            "p95": 0.3022919991053641,
-            "p99": 0.3022919991053641
+            "max": 0.3487549984129146,
+            "p50": 0.28426699282135814,
+            "p95": 0.3487549984129146,
+            "p99": 0.3487549984129146
           },
           "precision": 1.0,
           "precision_ci": {
@@ -417,34 +417,34 @@
         },
         {
           "counts": {
-            "false_negative": 3,
-            "false_positive": 1,
-            "true_negative": 1,
-            "true_positive": 1
+            "false_negative": 0,
+            "false_positive": 0,
+            "true_negative": 2,
+            "true_positive": 4
           },
-          "false_positive_rate": 0.5,
+          "false_positive_rate": 0.0,
           "false_positive_rate_ci": {
-            "high": 0.905469,
-            "low": 0.094531,
+            "high": 0.65762,
+            "low": 0.0,
             "method": "wilson-score-95"
           },
           "latency_ms": {
             "count": 6,
-            "max": 0.32658299460308626,
-            "p50": 0.2531670033931732,
-            "p95": 0.32658299460308626,
-            "p99": 0.32658299460308626
+            "max": 0.44620598782785237,
+            "p50": 0.297929989756085,
+            "p95": 0.44620598782785237,
+            "p99": 0.44620598782785237
           },
-          "precision": 0.5,
+          "precision": 1.0,
           "precision_ci": {
-            "high": 0.905469,
-            "low": 0.094531,
+            "high": 1.0,
+            "low": 0.510109,
             "method": "wilson-score-95"
           },
-          "recall": 0.25,
+          "recall": 1.0,
           "recall_ci": {
-            "high": 0.699358,
-            "low": 0.045587,
+            "high": 1.0,
+            "low": 0.510109,
             "method": "wilson-score-95"
           },
           "slice": "prompt_injection:multilingual"

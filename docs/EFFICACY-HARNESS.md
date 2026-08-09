@@ -13,7 +13,8 @@ surface**, and reports precision, recall, false-positive rate, detection
 latency, and confidence intervals **per slice** — because an aggregate number
 hides exactly the failures that matter.
 
-The shipped synthetic run demonstrates the point:
+The first synthetic run — **the pre-#128 run, kept here because it is the
+failure that motivated the fix** — demonstrates the point:
 
 | surface | slice | recall | FPR |
 |---|---|---|---|
@@ -23,10 +24,30 @@ The shipped synthetic run demonstrates the point:
 | prompt_injection | benign_hard_negative | n/a | **0.40** |
 | behavioural | overall | 0.4000 | 0.00 |
 
-An aggregate "0.69 recall" would have concealed that non-English attacks are
-caught a quarter of the time while half of benign non-English traffic is
+An aggregate "0.69 recall" would have concealed that non-English attacks were
+caught a quarter of the time while half of benign non-English traffic was
 flagged. That asymmetry is the product of a slice-blind report, and it is the
-reason slices are first-class here rather than a tag on a case.
+reason slices are first-class here rather than a tag on a case. The two
+mechanisms behind those numbers (an English-only pattern table; Latin-script
+heuristics applied to every writing system) were attributed and fixed
+structurally — the full analysis is in [GAPS.md](GAPS.md)'s P15b entry, and
+the before/after receipts are frozen in `docs/evidence/p15b/`.
+
+The current shipped run (`docs/evidence/p15/`, regenerated at `4ea66d5`):
+
+| surface | slice | recall | FPR |
+|---|---|---|---|
+| prompt_injection | overall | 0.8750 | 0.00 |
+| prompt_injection | multilingual | 1.0000 | 0.00 |
+| prompt_injection | encoded_obfuscated | 1.0000 | n/a |
+| prompt_injection | benign_hard_negative | n/a | 0.00 |
+| prompt_injection | multi_turn | **0.3333** | n/a |
+| behavioural | overall | 0.4000 | 0.00 |
+
+The remaining bold number is deliberate: multi-turn injections are still mostly
+missed, and the slice report says so instead of averaging it away. These are
+still synthetic corpora — better numbers on them are regression evidence, not
+an efficacy claim, and EXT-EFFICACY stays open either way.
 
 ## Two evaluated surfaces, not one
 
