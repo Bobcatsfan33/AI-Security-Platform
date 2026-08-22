@@ -133,6 +133,42 @@ def test_confidence_always_in_range():
             assert 0.0 <= r.confidence <= 1.0
 
 
+@pytest.mark.parametrize(
+    "secret",
+    [
+        "the database password is " + "hunter2SuperSecretValue!",
+        "export GITHUB_TOKEN=" + "ghp_" + "a" * 36,
+        "fine grained token " + "github_pat_" + "a" * 40,
+        "slack webhook https://hooks.slack.com/services/T00000000/B00000000/" + "X" * 24,
+        "stripe live key " + "sk_live_" + "a" * 32,
+        "gitlab token " + "glpat-" + "a" * 24,
+    ],
+)
+def test_secrets_detector_catches_provider_and_context_bound_credentials(secret):
+    det = get("credentials_secrets")
+    assert det is not None
+    result = det.detect(secret, DetectorContext())
+    assert result.confidence >= det.default_threshold
+    # Evidence names the kind of credential, never the credential value.
+    assert secret not in str(result.evidence)
+
+
+@pytest.mark.parametrize(
+    "benign",
+    [
+        "request id 123e4567-e89b-12d3-a456-426614174000",
+        "commit 0123456789abcdef0123456789abcdef01234567",
+        "image data iVBORw0KGgoAAAANSUhEUgAAAAUA" + "A" * 80,
+        "use password authentication for this database connection",
+        "the password is invalid",
+    ],
+)
+def test_secrets_detector_does_not_flag_lookalikes(benign):
+    det = get("credentials_secrets")
+    assert det is not None
+    assert det.detect(benign, DetectorContext()).confidence == 0.0
+
+
 def test_llm_refusal_is_outbound_only():
     det = get("llm_refusal")
     assert applies(det, Direction.OUTBOUND)
