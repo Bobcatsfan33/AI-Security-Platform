@@ -71,7 +71,9 @@ _SECRET_PATTERNS: dict[str, re.Pattern[str]] = {
     # GitHub's legacy token bodies have changed length over time and fine-grained
     # tokens use a different prefix.  Keep the provider prefix as the strong
     # signal instead of pinning the detector to one historical body length.
-    "github_pat": re.compile(r"\b(?:gh[pousr]_[A-Za-z0-9]{32,255}|github_pat_[A-Za-z0-9_]{22,255})\b"),
+    "github_pat": re.compile(
+        r"\b(?:gh[pousr]_[A-Za-z0-9]{32,255}|github_pat_[A-Za-z0-9_]{22,255})\b"
+    ),
     "gitlab_pat": re.compile(r"\bglpat-[A-Za-z0-9_-]{20,255}\b"),
     "huggingface_token": re.compile(r"\bhf_[A-Za-z0-9]{30,255}\b"),
     "npm_token": re.compile(r"\bnpm_[A-Za-z0-9]{30,255}\b"),
@@ -86,8 +88,7 @@ _SECRET_PATTERNS: dict[str, re.Pattern[str]] = {
     "jwt": re.compile(r"\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b"),
     "bearer": re.compile(r"\b[Bb]earer\s+[A-Za-z0-9._-]{20,}\b"),
     "secret_env_assignment": re.compile(
-        r"\b[A-Z][A-Z0-9_]*(?:TOKEN|KEY|SECRET|PASSWORD)\s*=\s*"
-        r"(?P<value>\S{8,})",
+        r"\b[A-Z][A-Z0-9_]*(?:TOKEN|KEY|SECRET|PASSWORD)\s*=\s*" r"(?P<value>\S{8,})",
         re.I,
     ),
     "password_assign": re.compile(
