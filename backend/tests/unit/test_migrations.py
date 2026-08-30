@@ -119,7 +119,15 @@ class TestOfflineRoundTrip:
     def test_forward_and_rollback_sql_is_symmetric(self):
         up = self._alembic("upgrade", "--sql", "head")
         down = self._alembic("downgrade", "--sql", "head:base")
-        creates = len(re.findall(r"CREATE TABLE", up, re.IGNORECASE))
-        drops = len(re.findall(r"DROP TABLE", down, re.IGNORECASE))
+        # Alembic owns its version table, and its offline create/drop lifecycle
+        # varies by execution environment. Compare only application migrations.
+        creates = len(re.findall(r"CREATE TABLE (?!alembic_version\b)", up, re.IGNORECASE))
+        drops = len(
+            re.findall(
+                r"DROP TABLE (?:IF EXISTS )?(?!alembic_version\b)",
+                down,
+                re.IGNORECASE,
+            )
+        )
         assert creates > 0
         assert creates == drops, f"non-reversible: {creates} CREATE vs {drops} DROP"

@@ -41,7 +41,8 @@ LABEL org.opencontainers.image.base.name="${PYTHON_IMAGE}"
 # Runtime shared libraries only (no -dev headers, no compiler): libpq for the
 # DB driver, libxmlsec/libxml2 for SAML signature verification.
 RUN groupadd -g 10001 app && useradd -u 10001 -g app -s /usr/sbin/nologin app \
- && apt-get update && apt-get install -y --no-install-recommends \
+ && apt-get update && apt-get upgrade -y \
+ && apt-get install -y --no-install-recommends \
         libpq5 libxml2 libxmlsec1 libxmlsec1-openssl \
  && rm -rf /var/lib/apt/lists/*
 COPY --from=builder /install /usr/local

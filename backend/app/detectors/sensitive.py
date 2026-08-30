@@ -68,14 +68,33 @@ _SECRET_PATTERNS: dict[str, re.Pattern[str]] = {
     "aws_access_key": re.compile(r"\bAKIA[0-9A-Z]{16}\b"),
     "aws_secret": re.compile(r"\b(?<![A-Za-z0-9/+])[A-Za-z0-9/+]{40}(?![A-Za-z0-9/+])\b"),
     "openai_key": re.compile(r"\bsk-[A-Za-z0-9_-]{20,}\b"),
-    "github_pat": re.compile(r"\bghp_[A-Za-z0-9]{36}\b"),
+    # GitHub's legacy token bodies have changed length over time and fine-grained
+    # tokens use a different prefix.  Keep the provider prefix as the strong
+    # signal instead of pinning the detector to one historical body length.
+    "github_pat": re.compile(
+        r"\b(?:gh[pousr]_[A-Za-z0-9]{32,255}|github_pat_[A-Za-z0-9_]{22,255})\b"
+    ),
+    "gitlab_pat": re.compile(r"\bglpat-[A-Za-z0-9_-]{20,255}\b"),
+    "huggingface_token": re.compile(r"\bhf_[A-Za-z0-9]{30,255}\b"),
+    "npm_token": re.compile(r"\bnpm_[A-Za-z0-9]{30,255}\b"),
+    "stripe_live_key": re.compile(r"\b(?:sk|rk)_live_[A-Za-z0-9]{20,255}\b"),
     "slack_token": re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{10,}\b"),
+    "slack_webhook": re.compile(
+        r"\bhttps://hooks\.slack\.com/services/[A-Z0-9]{8,}/[A-Z0-9]{8,}/[A-Za-z0-9_-]{20,}\b",
+        re.I,
+    ),
     "google_api": re.compile(r"\bAIza[0-9A-Za-z_-]{35}\b"),
     "private_key": re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----"),
     "jwt": re.compile(r"\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b"),
     "bearer": re.compile(r"\b[Bb]earer\s+[A-Za-z0-9._-]{20,}\b"),
+    "secret_env_assignment": re.compile(
+        r"\b[A-Z][A-Z0-9_]*(?:TOKEN|KEY|SECRET|PASSWORD)\s*=\s*" r"(?P<value>\S{8,})",
+        re.I,
+    ),
     "password_assign": re.compile(
-        r"\b(?:password|passwd|pwd|secret|api[_-]?key)\s*[=:]\s*\S{6,}", re.I
+        r"\b(?:password|passwd|pwd|secret|api[_-]?key)\b"
+        r"(?:\s+(?:is|was|equals?)\s+|\s*[=:]\s*)(?P<value>\S{8,})",
+        re.I,
     ),
 }
 
@@ -96,6 +115,14 @@ class SecretsDetector:
             # entropy gate for the generic 40-char AWS-secret shape to cut FPs
             if label == "aws_secret" and util.shannon_entropy(m.group(0)) < 4.0:
                 continue
+            if label in {"password_assign", "secret_env_assignment"}:
+                value = m.group("value")
+                classes = sum(
+                    any(check(char) for char in value)
+                    for check in (str.islower, str.isupper, str.isdigit)
+                ) + int(any(not char.isalnum() for char in value))
+                if classes < 2:
+                    continue
             hits.append(label)
         if not hits:
             return DetectorResult(self.name, self.category, 0.0, "info", {})
