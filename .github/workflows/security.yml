@@ -139,7 +139,7 @@ jobs:
           exit-code: 0
 
       - name: retain assurance evidence
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: ${{ matrix.name }}-image-assurance-${{ github.run_id }}
           path: |
@@ -312,7 +312,7 @@ jobs:
       # artifact rather than printing them (#146).
       - name: retain verification output on failure
         if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: ${{ matrix.name }}-cosign-verification-output-${{ github.run_id }}
           path: |
@@ -353,7 +353,7 @@ jobs:
             }' > "${{ matrix.name }}-release-receipt.json"
 
       - name: retain release evidence
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: ${{ matrix.name }}-release-evidence-${{ github.run_id }}
           path: |
