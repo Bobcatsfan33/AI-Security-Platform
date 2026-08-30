@@ -42,6 +42,17 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    ignore:
+      # @types/node must not outrun the Node we actually ship. The frontend
+      # image is node:22-alpine (frontend/Dockerfile) and CI builds on
+      # node-version 22, so 23+ types would let tsc accept APIs that are
+      # absent in production — green build, runtime TypeError. 22.x
+      # patch/minor bumps still flow through.
+      #
+      # Raise this in the same change that moves the Dockerfile base image and
+      # the setup-node versions in ci.yml. They are one decision.
+      - dependency-name: "@types/node"
+        versions: [">=23"]
     labels:
       - dependencies
       - frontend
