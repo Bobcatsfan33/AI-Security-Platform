@@ -5,6 +5,9 @@ is stored in plaintext for indexed lookup; the full key is bcrypt-hashed and
 compared on auth. The plaintext key is shown to the user exactly once at
 creation time.
 
+Hashing goes through ``app.auth.password_hashing`` — the one module that calls
+bcrypt — so the cost factor and the 72-byte policy live in a single place.
+
 Why bcrypt: API keys are credentials and should never be reversible. The
 prefix is the only attacker-observable part; you cannot enumerate keys by
 brute-forcing the prefix because matching it gets you nothing without the
@@ -19,10 +22,10 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from passlib.hash import bcrypt
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth.password_hashing import hash_secret, verify_secret
 from app.db.models.api_key import ApiKey
 from app.security.audit_log import AuditEventType, log_event
 
@@ -54,7 +57,7 @@ async def create_api_key(
     expires_at: datetime | None = None,
 ) -> CreatedApiKey:
     prefix, plaintext = _generate_plaintext()
-    key_hash = bcrypt.hash(plaintext)
+    key_hash = hash_secret(plaintext)
 
     record = ApiKey(
         org_id=org_id,
@@ -106,15 +109,14 @@ async def verify_api_key(db: AsyncSession, plaintext: str) -> ApiKey | None:
         await db.execute(text("SELECT set_config('app.api_key_prefix', '', true)"))
 
     for candidate in candidates:
-        # bcrypt.verify is constant-time per candidate. We loop because two keys
-        # could in theory share a prefix (collisions are rare but possible).
-        try:
-            if bcrypt.verify(plaintext, candidate.key_hash):
-                if candidate.expires_at is not None:
-                    now = datetime.now(UTC)
-                    if candidate.expires_at < now:
-                        return None
-                return candidate
-        except ValueError:
-            continue
+        # verify_secret is constant-time per candidate and total: a malformed
+        # stored hash or an over-length presented key is an ordinary miss, not an
+        # exception. We loop because two keys could in theory share a prefix
+        # (collisions are rare but possible).
+        if verify_secret(plaintext, candidate.key_hash):
+            if candidate.expires_at is not None:
+                now = datetime.now(UTC)
+                if candidate.expires_at < now:
+                    return None
+            return candidate
     return None
