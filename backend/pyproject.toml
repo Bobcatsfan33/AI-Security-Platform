@@ -53,10 +53,8 @@ dependencies = [
 
     # Auth primitives
     "pyjwt[crypto]>=2.9",              # JWT (replaces python-jose; RS256-ready)
-    # bcrypt directly, no passlib: passlib 1.7.4 (last release 2020) probes its
-    # backend with an over-72-byte secret, which bcrypt 5.x raises on, breaking
-    # the FIRST hash/verify of every process. See app/auth/password_hashing.py.
-    "bcrypt>=4.0",                     # api-key / SCIM-token hashing
+    "passlib[bcrypt]>=1.7.4",          # password / api-key hashing
+    "bcrypt<5.0,>=4.0",                # passlib pin
     "cryptography>=50.0",              # field-level encryption (Fernet); >=50 for PYSEC-2026-3552
 
     # Logging
