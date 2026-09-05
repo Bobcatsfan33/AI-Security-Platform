@@ -96,7 +96,7 @@ async def scim_authenticated_idp(
         yield org, idp
 
 
-# ───────────────────────────────────────────── token minting
+# ─────────────────────────────────────────────── token minting
 
 
 def generate_scim_token() -> tuple[str, str]:
