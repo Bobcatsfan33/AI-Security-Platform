@@ -20,10 +20,10 @@ import secrets
 from collections.abc import AsyncIterator
 
 from fastapi import Depends, Header, status
-from passlib.hash import bcrypt
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth.password_hashing import hash_secret, verify_secret
 from app.db.models.idp_config import IdpConfig
 from app.db.models.organization import Organization
 from app.db.session import get_db
@@ -85,7 +85,7 @@ async def scim_authenticated_idp(
             )
 
         stored_hash = (idp.scim_config or {}).get("bearer_token_hash") or ""
-        if not stored_hash or not _verify_token(token, stored_hash):
+        if not stored_hash or not verify_secret(token, stored_hash):
             raise SCIMError(
                 status=status.HTTP_401_UNAUTHORIZED,
                 detail="invalid_bearer_token",
@@ -96,18 +96,11 @@ async def scim_authenticated_idp(
         yield org, idp
 
 
-def _verify_token(plaintext: str, hashed: str) -> bool:
-    try:
-        return bcrypt.verify(plaintext, hashed)
-    except (ValueError, TypeError):
-        return False
-
-
-# ─────────────────────────────────────────────── token minting
+# ───────────────────────────────────────────── token minting
 
 
 def generate_scim_token() -> tuple[str, str]:
     """Return ``(plaintext, bcrypt_hash)``. The plaintext is shown to the
     admin exactly once at creation time and never persisted."""
     plaintext = "scim_" + secrets.token_urlsafe(40)
-    return plaintext, bcrypt.hash(plaintext)
+    return plaintext, hash_secret(plaintext)
