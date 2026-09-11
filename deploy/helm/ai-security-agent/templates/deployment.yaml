@@ -39,10 +39,17 @@ spec:
           env:
             - name: AGENT_BIND
               value: {{ .Values.bind.proxy | quote }}
+            {{- /*
+            Kubernetes HTTP probes connect to the pod IP, so the diagnostic
+            listener must not be restricted to the container loopback device.
+            NetworkPolicy and the Service still control external exposure: with
+            metrics disabled, port 8401 is absent from the NetworkPolicy ingress
+            allowlist, so peers cannot reach it and only the kubelet can.
+
+            A template comment, not a YAML one, so the rationale reaches whoever
+            edits this chart without being stamped into every rendered manifest.
+            */}}
             - name: AGENT_DIAG_BIND
-              # Kubernetes HTTP probes connect to the pod IP, so the diagnostic
-              # listener must not be restricted to the container loopback device.
-              # NetworkPolicy and the Service still control external exposure.
               value: ":8401"
             - name: PLATFORM_URL
               value: {{ .Values.config.platformUrl | quote }}
