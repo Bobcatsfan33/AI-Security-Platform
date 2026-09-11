@@ -117,7 +117,7 @@ jobs:
           ${{ matrix.runtime_arg }}
 
       - name: generate SPDX SBOM
-        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610
+        uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26
         with:
           image: ${{ matrix.local_image }}
           format: spdx-json
@@ -240,7 +240,7 @@ jobs:
         run: cosign sign --yes "${IMAGE}@${{ steps.build.outputs.digest }}"
 
       - name: generate release SPDX SBOM
-        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610
+        uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26
         with:
           image: ${{ env.IMAGE }}@${{ steps.build.outputs.digest }}
           registry-username: ${{ github.actor }}
