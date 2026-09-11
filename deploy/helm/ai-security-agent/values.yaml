@@ -83,6 +83,8 @@ mtls:
 
 bind:
   proxy: ":8400"
+  # Used by sidecar/manual integrations. Chart-managed Deployments bind the
+  # diagnostic listener to :8401 so kubelet health probes can reach the pod.
   diagnostic: "127.0.0.1:8401"
 
 service:
@@ -132,9 +134,10 @@ networkPolicy:
         kubernetes.io/metadata.name: kube-system
     podSelector: {}
 
-# Diagnostic endpoints (/healthz, /readyz, /metrics) live on the
-# diagnostic port and are bound to 127.0.0.1 by default. Enable to
-# expose for Prometheus scraping (set bind.diagnostic to ``:8401``).
+# Diagnostic endpoints (/healthz, /readyz, /metrics) live on port 8401.
+# Chart-managed Deployments expose that listener to the pod network for kubelet
+# probes, but the Service and NetworkPolicy expose it to peers only when metrics
+# are enabled.
 metrics:
   enabled: false
   serviceMonitor:
