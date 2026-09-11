@@ -62,6 +62,20 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 3
+    ignore:
+      # Same rule as the frontend above, for the same reason: @types/node must
+      # not outrun the Node this SDK actually supports. package.json declares
+      # engines.node ">=22", so 23+ types would let tsc accept APIs that are
+      # absent on a supported consumer's runtime — green build here, runtime
+      # TypeError in somebody else's process, which is worse than in our own
+      # because we do not get the stack trace.
+      #
+      # Raise this in the same change that raises engines.node in
+      # sdks/node/package.json and node-version in ci.yml's SDKs job. They are
+      # one decision, and splitting them is what produced the drift this rule
+      # exists to stop.
+      - dependency-name: "@types/node"
+        versions: [">=23"]
     labels:
       - dependencies
       - sdk
