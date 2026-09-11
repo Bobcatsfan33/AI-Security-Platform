@@ -33,16 +33,17 @@ spec:
             - name: proxy
               containerPort: 8400
               protocol: TCP
-            {{- if .Values.metrics.enabled }}
             - name: diag
               containerPort: 8401
               protocol: TCP
-            {{- end }}
           env:
             - name: AGENT_BIND
               value: {{ .Values.bind.proxy | quote }}
             - name: AGENT_DIAG_BIND
-              value: {{ if .Values.metrics.enabled }}":8401"{{ else }}{{ .Values.bind.diagnostic | quote }}{{ end }}
+              # Kubernetes HTTP probes connect to the pod IP, so the diagnostic
+              # listener must not be restricted to the container loopback device.
+              # NetworkPolicy and the Service still control external exposure.
+              value: ":8401"
             - name: PLATFORM_URL
               value: {{ .Values.config.platformUrl | quote }}
             - name: REDIS_URL

@@ -270,6 +270,11 @@ jobs:
           CI_IMAGE_DIGEST: sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
         run: |
           helm lint deploy/helm/ai-security-agent --set mtls.enabled=true --set config.platformUrl=https://api.platform.svc.cluster.local:8000 --set image.digest="${CI_IMAGE_DIGEST}"
+          helm template ci-default deploy/helm/ai-security-agent --set mtls.enabled=true --set config.platformUrl=https://api.platform.svc.cluster.local:8000 --set image.digest="${CI_IMAGE_DIGEST}" > /tmp/runtime-agent-default.yaml
+          grep -A3 'name: AGENT_DIAG_BIND' /tmp/runtime-agent-default.yaml | grep -q 'value: ":8401"'
+          grep -q 'name: diag' /tmp/runtime-agent-default.yaml
+          grep -q 'path: /healthz' /tmp/runtime-agent-default.yaml
+          grep -q 'path: /readyz' /tmp/runtime-agent-default.yaml
           helm template ci deploy/helm/ai-security-agent --set mtls.enabled=true --set config.platformUrl=https://api.platform.svc.cluster.local:8000 --set image.digest="${CI_IMAGE_DIGEST}" --set metrics.enabled=true --set metrics.serviceMonitor.enabled=true --set metrics.prometheusRule.enabled=true > /tmp/runtime-agent.yaml
           grep -q "ghcr.io/bobcatsfan33/ai-security-platform-agent@${CI_IMAGE_DIGEST}" /tmp/runtime-agent.yaml
           grep -q "kind: NetworkPolicy" /tmp/runtime-agent.yaml
