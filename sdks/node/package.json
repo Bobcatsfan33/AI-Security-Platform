@@ -12,6 +12,9 @@
     "./anthropic": "./dist/anthropic.js"
   },
   "files": ["dist", "src", "README.md"],
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "build": "tsc",
     "test": "node --test dist/*.test.js"
@@ -25,7 +28,7 @@
     "@anthropic-ai/sdk": { "optional": true }
   },
   "devDependencies": {
-    "@types/node": "^26.2.0",
+    "@types/node": "^22.0.0",
     "typescript": "^7.0.2"
   }
 }
