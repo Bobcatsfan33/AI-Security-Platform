@@ -2,20 +2,29 @@
   "_comment": [
     "Expiring exceptions for the frontend npm-audit gate (scripts/audit-gate.mjs).",
     "",
-    "POLICY (also in docs/GAPS.md): the gate STAYS BLOCKING — it never goes",
+    "POLICY (also in docs/GAPS.md): the gate STAYS BLOCKING \u2014 it never goes",
     "warn-only. An exception is a TIME-BOXED, JUSTIFIED, OWNED deferral, not an",
     "ignore. Rules the gate enforces:",
-    "  - A non-optional PRODUCTION dependency advisory gets NO exception — the",
+    "  - A non-optional PRODUCTION dependency advisory gets NO exception \u2014 the",
     "    hard bar. It must be fixed, not deferred.",
     "  - Only dev / build-chain / optional-and-unused advisories are",
     "    exception-eligible, and only with a written exposure justification.",
     "  - expiry is 30 days by default, 90 days maximum. An EXPIRED exception is a",
-    "    RED gate (the build fails), not a stale ignore — so the debt is revisited",
+    "    RED gate (the build fails), not a stale ignore \u2014 so the debt is revisited",
     "    on a clock, never forgotten.",
     "",
     "Each entry: id (GHSA/advisory), package, justification (grounded in OUR",
     "exposure, not the advisory's generic text), owner, added, expires (YYYY-MM-DD).",
     "A window over 30 days (the default) also needs 'window_reason'."
   ],
-  "exceptions": []
+  "exceptions": [
+    {
+      "id": "GHSA-vfj7-8cjw-p6xm",
+      "package": "braces",
+      "justification": "Dev-only build-chain exposure: braces reaches us solely via eslint-config-next -> fast-glob -> micromatch, which runs at lint time on our own repository globs, never on untrusted input, and is absent from the signed artifact's prod closure. No patched braces release exists yet (3.0.3 is newest and affected); take the fix the day upstream ships one.",
+      "owner": "Bobcatsfan33",
+      "added": "2026-10-03",
+      "expires": "2026-11-02"
+    }
+  ]
 }
